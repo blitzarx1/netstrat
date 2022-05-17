@@ -5,6 +5,8 @@ use tracing_subscriber;
 
 use crate::sources::binance::client::Client;
 
+// use poll_promise::Promise;
+
 mod network;
 mod sources;
 
@@ -68,26 +70,38 @@ impl eframe::App for TemplateApp {
                 ui.add_space(5f32);
                 ui.separator();
                 ui.add_space(5f32);
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::widgets::TextEdit::singleline(&mut self.filter_value)
-                            .hint_text("filter pairs"),
-                    );
+                ui.add(
+                    egui::widgets::TextEdit::singleline(&mut self.filter_value)
+                        .hint_text(egui::WidgetText::from("filter pairs").italics()),
+                );
+                let filtered: Vec<&String> = self
+                    .pairs
+                    .iter()
+                    .filter(|s| {
+                        s.to_lowercase()
+                            .contains(self.filter_value.to_lowercase().as_str())
+                    })
+                    .collect();
+                ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
+                    ui.add(egui::widgets::Label::new(
+                        egui::WidgetText::from(format!("{}/{}", filtered.len(), self.pairs.len()))
+                            .small(),
+                    ));
                 });
                 ui.add_space(5f32);
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
-                        self.pairs
-                            .iter()
-                            .filter(|s| {
-                                s.to_lowercase()
-                                    .contains(self.filter_value.to_lowercase().as_str())
-                            })
-                            .for_each(|s| {
-                                if ui.selectable_label(false, s.to_string()).clicked() {
-                                    self.selected_pair = s.to_string();
-                                };
-                            })
+                        filtered.iter().for_each(|s| {
+                            if ui
+                                .selectable_label(
+                                    false,
+                                    egui::WidgetText::from(s.to_string()).strong(),
+                                )
+                                .clicked()
+                            {
+                                self.selected_pair = s.to_string();
+                            };
+                        });
                     })
                 });
             });
