@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::task::Context;
 
 use serde::Deserialize;
 use serde_json;
@@ -158,18 +159,18 @@ impl Client {
             .collect())
     }
 
-    pub async fn info() -> Result<Info, Box<dyn std::error::Error>> {
+    pub async fn info() ->Info {
         let url = format!("{}{}", BASE_URL, PATH_INFO);
-        let resp = Rest::new().get(&url).await?;
-        let json_str = &resp.text().await?;
-        let res: Info = serde_json::from_str(json_str)?;
-        Ok(res)
+        let resp = Rest::new().get(&url).await.unwrap();
+        let json_str = &resp.text().await.unwrap();
+        let res: Info = serde_json::from_str(json_str).unwrap();
+        res
     }
 
-    pub fn info_blocking() -> Result<Info, Box<dyn std::error::Error>> {
+    pub fn info_blocking() -> Info {
         let url = format!("{}{}", BASE_URL, PATH_INFO);
         let resp = Rest::new().get_blocking(&url);
-        let res: Info = serde_json::from_str(resp.unwrap().text().unwrap().as_str())?;
-        Ok(res)
+        let res: Info = serde_json::from_str(resp.unwrap().text().unwrap().as_str()).unwrap();
+        res
     }
 }

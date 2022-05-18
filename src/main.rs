@@ -1,14 +1,15 @@
+use poll_promise::Promise;
+use std::task::{Context, Poll};
+
 use eframe;
-use egui::TextBuffer;
-use serde_json::to_string;
+use futures::{poll, AsyncWrite};
 use tracing_subscriber;
 
-use crate::sources::binance::client::Client;
-
-// use poll_promise::Promise;
+use crate::sources::binance::client::{Client, Info};
 
 mod network;
 mod sources;
+use tokio;
 
 #[derive(Default)]
 pub struct TemplateApp {
@@ -17,6 +18,7 @@ pub struct TemplateApp {
     connected: bool,
     loading: bool,
     selected_pair: String,
+    promise: Option<Promise<Info>>,
 }
 
 impl TemplateApp {
@@ -41,24 +43,31 @@ impl eframe::App for TemplateApp {
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
+            if let Some(promise) = &self.promise {
+                if let Some(result) = promise.ready() {
+                    self.loading = false;
+
+                    self.pairs = result
+                        .symbols
+                        .iter()
+                        .map(|s| -> String { s.symbol.to_string() })
+                        .collect()
+                }
+            }
+
             if self.loading {
                 ui.centered_and_justified(|ui| {
                     ui.spinner();
                 });
                 return;
             }
+
             if !self.connected {
                 if ui.button("connect to binance".to_string()).clicked() {
-                    // todo make async as in https://github.com/emilk/egui/blob/master/egui_demo_app/src/apps/http_app.rs
-                    Client::info_blocking()
-                        .unwrap()
-                        .symbols
-                        .iter()
-                        .for_each(|sym| {
-                            self.pairs.push(sym.symbol.to_string());
-                        });
+                    self.promise = Some(Promise::spawn_async(async move { Client::info().await }));
 
                     self.connected = !self.connected;
+                    self.loading = true;
                 };
                 return;
             }
@@ -70,10 +79,14 @@ impl eframe::App for TemplateApp {
                 ui.add_space(5f32);
                 ui.separator();
                 ui.add_space(5f32);
+
+                // render filter
                 ui.add(
                     egui::widgets::TextEdit::singleline(&mut self.filter_value)
                         .hint_text(egui::WidgetText::from("filter pairs").italics()),
                 );
+
+                // aply filter
                 let filtered: Vec<&String> = self
                     .pairs
                     .iter()
@@ -88,7 +101,10 @@ impl eframe::App for TemplateApp {
                             .small(),
                     ));
                 });
+
                 ui.add_space(5f32);
+
+                // render pairs list
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
                         filtered.iter().for_each(|s| {
@@ -117,12 +133,13 @@ impl eframe::App for TemplateApp {
     }
 
     /// Called by the frame work to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
         println!("called save")
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Log to stdout (if you run with `RUST_LOG=debug`).
     tracing_subscriber::fmt::init();
 
