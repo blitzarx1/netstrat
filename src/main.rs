@@ -1,11 +1,9 @@
 use poll_promise::Promise;
-use std::task::{Context, Poll};
 
 use eframe;
-use futures::{poll, AsyncWrite};
 use tracing_subscriber;
 
-use crate::sources::binance::client::{Client, Info, Symbol};
+use crate::sources::binance::client::{Client, Info};
 
 mod network;
 mod sources;

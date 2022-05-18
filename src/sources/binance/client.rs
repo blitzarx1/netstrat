@@ -159,7 +159,7 @@ impl Client {
             .collect())
     }
 
-    pub async fn info() ->Info {
+    pub async fn info() -> Info {
         let url = format!("{}{}", BASE_URL, PATH_INFO);
         let resp = Rest::new().get(&url).await.unwrap();
         let json_str = &resp.text().await.unwrap();
