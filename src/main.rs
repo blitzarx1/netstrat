@@ -5,25 +5,37 @@ use eframe;
 use futures::{poll, AsyncWrite};
 use tracing_subscriber;
 
-use crate::sources::binance::client::{Client, Info};
+use crate::sources::binance::client::{Client, Info, Symbol};
 
 mod network;
 mod sources;
 use tokio;
 
 #[derive(Default)]
-pub struct TemplateApp {
-    filter_value: String,
-    pairs: Vec<String>,
+struct GuiPair {
+    symbol: String,
+    active: bool,
+}
+
+#[derive(Default)]
+struct TemplateApp {
+    filter: FilterProps,
+    pairs: Vec<GuiPair>,
     connected: bool,
     loading: bool,
     selected_pair: String,
     promise: Option<Promise<Info>>,
 }
 
+#[derive(Default)]
+struct FilterProps {
+    value: String,
+    active_only: bool,
+}
+
 impl TemplateApp {
     /// Called once before the first frame.
-    pub fn new(_ctx: &eframe::CreationContext<'_>) -> Self {
+    fn new(_ctx: &eframe::CreationContext<'_>) -> Self {
         let pairs = vec![];
 
         Self {
@@ -50,8 +62,13 @@ impl eframe::App for TemplateApp {
                     self.pairs = result
                         .symbols
                         .iter()
-                        .map(|s| -> String { s.symbol.to_string() })
-                        .collect()
+                        .map(|s| -> GuiPair {
+                            GuiPair {
+                                symbol: s.symbol.to_string(),
+                                active: s.status == "TRADING",
+                            }
+                        })
+                        .collect();
                 }
             }
 
@@ -82,20 +99,27 @@ impl eframe::App for TemplateApp {
 
                 // render filter
                 ui.add(
-                    egui::widgets::TextEdit::singleline(&mut self.filter_value)
+                    egui::widgets::TextEdit::singleline(&mut self.filter.value)
                         .hint_text(egui::WidgetText::from("filter pairs").italics()),
                 );
 
                 // aply filter
-                let filtered: Vec<&String> = self
+                let filtered: Vec<&GuiPair> = self
                     .pairs
                     .iter()
                     .filter(|s| {
-                        s.to_lowercase()
-                            .contains(self.filter_value.to_lowercase().as_str())
+                        let match_value = s
+                            .symbol
+                            .to_lowercase()
+                            .contains(self.filter.value.to_lowercase().as_str());
+                        if self.filter.active_only {
+                            return match_value && s.active;
+                        }
+                        match_value
                     })
                     .collect();
                 ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
+                    ui.checkbox(&mut self.filter.active_only, "active only");
                     ui.add(egui::widgets::Label::new(
                         egui::WidgetText::from(format!("{}/{}", filtered.len(), self.pairs.len()))
                             .small(),
@@ -105,30 +129,36 @@ impl eframe::App for TemplateApp {
                 ui.add_space(5f32);
 
                 // render pairs list
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
-                        filtered.iter().for_each(|s| {
-                            if ui
-                                .selectable_label(
-                                    false,
-                                    egui::WidgetText::from(s.to_string()).strong(),
-                                )
-                                .clicked()
-                            {
-                                self.selected_pair = s.to_string();
-                            };
-                        });
-                    })
-                });
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
+                            filtered.iter().for_each(|s| {
+                                if ui
+                                    .selectable_label(
+                                        false,
+                                        egui::WidgetText::from(s.symbol.to_string())
+                                            .background_color({
+                                                match s.active {
+                                                    true => egui::Color32::LIGHT_GREEN,
+                                                    false => egui::Color32::LIGHT_RED,
+                                                }
+                                            })
+                                            .strong(),
+                                    )
+                                    .clicked()
+                                {
+                                    self.selected_pair = s.symbol.to_string();
+                                };
+                            });
+                        })
+                    });
             });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // TODO: theme change placeholder
-            ui.heading(format!(
-                "TODO: show graph for: {}",
-                self.selected_pair.to_string()
-            ));
+            ui.heading(format!("TODO: show graph for: {}", self.selected_pair,));
         });
     }
 
