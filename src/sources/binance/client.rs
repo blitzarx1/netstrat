@@ -21,20 +21,19 @@ pub struct Info {
 
 #[derive(Deserialize)]
 struct KlineData(
-    i64, // Open time
-    f32, // Open
-    f32, // High
-    f32, // Low
-    f32, // Close
-    f32, // Volume
-    i64, // Close time
-    f32, // Quote asset volume
-    i64, // Number of trades
-    f32, // Taker buy base asset volume
-    f32, // Taker buy quote asset volume
-    f32, // Ignore
+    i64,    // Open time
+    String, // Open
+    String, // High
+    String, // Low
+    String, // Close
+    String, // Volume
+    i64,    // Close time
+    String, // Quote asset volume
+    i64,    // Number of trades
+    String, // Taker buy base asset volume
+    String, // Taker buy quote asset volume
+    String, // Ignore
 );
-
 #[derive(Debug, Deserialize, Default)]
 pub struct Symbol {
     pub symbol: String,
@@ -80,7 +79,7 @@ pub struct Symbol {
     is_margin_trading_allowed: bool,
 }
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy, Default)]
 pub struct Kline {
     pub t_open: i64,
     pub open: f32,
@@ -99,16 +98,16 @@ impl Kline {
     fn from_kline_data(data: KlineData) -> Self {
         Kline {
             t_open: data.0,
-            open: data.1,
-            high: data.2,
-            low: data.3,
-            close: data.4,
-            volume: data.5,
+            open: data.1.parse::<f32>().unwrap(),
+            high: data.2.parse::<f32>().unwrap(),
+            low: data.3.parse::<f32>().unwrap(),
+            close: data.4.parse::<f32>().unwrap(),
+            volume: data.5.parse::<f32>().unwrap(),
             t_close: data.6,
-            quote_asset_volume: data.7,
+            quote_asset_volume: data.7.parse::<f32>().unwrap(),
             number_of_trades: data.8,
-            taker_buy_base_asset_volume: data.9,
-            taker_buy_quote_asset_volume: data.10,
+            taker_buy_base_asset_volume: data.9.parse::<f32>().unwrap(),
+            taker_buy_quote_asset_volume: data.10.parse::<f32>().unwrap(),
         }
     }
 }
@@ -141,7 +140,7 @@ impl Client {
         interval: Interval,
         start_time: i64,
         limit: usize,
-    ) -> Result<Vec<Kline>, Box<dyn std::error::Error>> {
+    ) -> Vec<Kline> {
         let url = format!("{}{}", BASE_URL, PATH_KLINE);
         let params = &[
             ("symbol", symbol.as_str()),
@@ -149,14 +148,13 @@ impl Client {
             ("startTime", &start_time.to_string()),
             ("limit", &limit.to_string()),
         ];
-        let resp = Rest::new().get_with_params_blocking(&url, params).await?;
-        let json_str = &resp.text().await?;
-        let res: Vec<KlineData> = serde_json::from_str(json_str)?;
+        let resp = Rest::new().get_with_params(&url, params).await.unwrap();
+        let json_str = &resp.text().await.unwrap();
+        let res: Vec<KlineData> = serde_json::from_str(json_str).unwrap();
 
-        Ok(res
-            .into_iter()
+        res.into_iter()
             .map(|data| Kline::from_kline_data(data))
-            .collect())
+            .collect()
     }
 
     pub async fn info() -> Info {
@@ -164,13 +162,6 @@ impl Client {
         let resp = Rest::new().get(&url).await.unwrap();
         let json_str = &resp.text().await.unwrap();
         let res: Info = serde_json::from_str(json_str).unwrap();
-        res
-    }
-
-    pub fn info_blocking() -> Info {
-        let url = format!("{}{}", BASE_URL, PATH_INFO);
-        let resp = Rest::new().get_blocking(&url);
-        let res: Info = serde_json::from_str(resp.unwrap().text().unwrap().as_str()).unwrap();
         res
     }
 }

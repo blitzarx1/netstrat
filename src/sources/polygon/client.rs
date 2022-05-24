@@ -64,21 +64,21 @@ impl Client {
 
     async fn get_blocking(&self, url: &str) -> Result<reqwest::Response, reqwest::Error> {
         let params = &[("apiKey", <&str>::from(&self.api_key[..]))];
-        self.c.get_with_params_blocking(url, params).await
+        self.c.get_with_params(url, params).await
     }
 
-    async fn get_with_params_blocking(
+    async fn get_with_params(
         &self,
         url: &str,
         params: &[(&str, &str)],
     ) -> Result<reqwest::Response, reqwest::Error> {
         let params = &[&[("apiKey", <&str>::from(&self.api_key[..]))], params].concat();
-        self.c.get_with_params_blocking(url, params).await
+        self.c.get_with_params(url, params).await
     }
 
     pub async fn info(&self) -> Result<Info, Box<dyn std::error::Error>> {
         let resp = self
-            .get_with_params_blocking(
+            .get_with_params(
                 "https://api.polygon.io/v3/reference/exchanges",
                 &[("asset_class", "crypto")],
             )

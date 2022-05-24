@@ -1,13 +1,22 @@
+use std::{fmt::format, thread::sleep, time::Duration};
+
+use egui::{style::Widgets, widgets};
 use poll_promise::Promise;
 
 use eframe;
-use tracing_subscriber;
+use sources::binance::client::Kline;
 
 use crate::sources::binance::client::{Client, Info};
 
 mod network;
 mod sources;
 use tokio;
+
+#[derive(Default, Debug)]
+struct GuiKline {
+    close: f32,
+    ts: i64,
+}
 
 #[derive(Default)]
 struct GuiPair {
@@ -19,10 +28,13 @@ struct GuiPair {
 struct TemplateApp {
     filter: FilterProps,
     pairs: Vec<GuiPair>,
+    klines: Vec<GuiKline>,
     connected: bool,
-    loading: bool,
+    loading_pairs: bool,
+    loading_klines: bool,
     selected_pair: String,
-    promise: Option<Promise<Info>>,
+    pairs_promise: Option<Promise<Info>>,
+    klines_promise: Option<Promise<Vec<Kline>>>,
 }
 
 #[derive(Default)]
@@ -47,30 +59,46 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let Some(promise) = &self.klines_promise {
+            if let Some(result) = promise.ready() {
+                self.loading_klines = false;
+
+                self.klines = result
+                    .iter()
+                    .map(|k| -> GuiKline {
+                        GuiKline {
+                            close: k.close,
+                            ts: k.t_close,
+                        }
+                    })
+                    .collect();
+            }
+        }
+
+        if let Some(promise) = &self.pairs_promise {
+            if let Some(result) = promise.ready() {
+                self.loading_pairs = false;
+
+                self.pairs = result
+                    .symbols
+                    .iter()
+                    .map(|s| -> GuiPair {
+                        GuiPair {
+                            symbol: s.symbol.to_string(),
+                            active: s.status == "TRADING",
+                        }
+                    })
+                    .collect();
+            }
+        }
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // TODO: theme change placeholder
             ui.heading("TODO: theme change placeholder");
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
-            if let Some(promise) = &self.promise {
-                if let Some(result) = promise.ready() {
-                    self.loading = false;
-
-                    self.pairs = result
-                        .symbols
-                        .iter()
-                        .map(|s| -> GuiPair {
-                            GuiPair {
-                                symbol: s.symbol.to_string(),
-                                active: s.status == "TRADING",
-                            }
-                        })
-                        .collect();
-                }
-            }
-
-            if self.loading {
+            if self.loading_pairs {
                 ui.centered_and_justified(|ui| {
                     ui.spinner();
                 });
@@ -79,10 +107,10 @@ impl eframe::App for TemplateApp {
 
             if !self.connected {
                 if ui.button("connect to binance".to_string()).clicked() {
-                    self.promise = Some(Promise::spawn_async(async move { Client::info().await }));
+                    self.pairs_promise = Some(Promise::spawn_async(async { Client::info().await }));
 
                     self.connected = !self.connected;
-                    self.loading = true;
+                    self.loading_pairs = true;
                 };
                 return;
             }
@@ -132,6 +160,7 @@ impl eframe::App for TemplateApp {
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
                             filtered.iter().for_each(|s| {
+                                let symbol_for_klines_request = s.symbol.to_string();
                                 if ui
                                     .selectable_label(
                                         false,
@@ -146,6 +175,16 @@ impl eframe::App for TemplateApp {
                                     )
                                     .clicked()
                                 {
+                                    self.loading_klines = true;
+                                    self.klines_promise = Some(Promise::spawn_async(async {
+                                        Client::kline(
+                                            symbol_for_klines_request,
+                                            sources::binance::interval::Interval::Minute,
+                                            1651995344000,
+                                            1000,
+                                        )
+                                        .await
+                                    }));
                                     self.selected_pair = s.symbol.to_string();
                                 };
                             });
@@ -155,8 +194,21 @@ impl eframe::App for TemplateApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // TODO: theme change placeholder
-            ui.heading(format!("TODO: show graph for: {}", self.selected_pair,));
+            if self.loading_klines {
+                ui.centered_and_justified(|ui| {
+                    ui.spinner();
+                });
+            }
+
+            if !self.loading_klines && self.klines.len() > 0 {
+                let line = egui::plot::Line::new(egui::plot::Values::from_values_iter(
+                    self.klines.iter().map(|k| -> egui::plot::Value {
+                        egui::plot::Value::new(k.ts as f64, k.close)
+                    }),
+                ));
+
+                egui::plot::Plot::new("plot").show(ui, |ui| ui.line(line));
+            }
         });
     }
 
@@ -168,9 +220,6 @@ impl eframe::App for TemplateApp {
 
 #[tokio::main]
 async fn main() {
-    // Log to stdout (if you run with `RUST_LOG=debug`).
-    tracing_subscriber::fmt::init();
-
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
         "eframe template",

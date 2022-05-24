@@ -16,11 +16,7 @@ impl Rest {
         self.execute_request(req).await
     }
 
-    pub fn get_blocking(&self, url: &str) -> reqwest::Result<reqwest::blocking::Response> {
-        reqwest::blocking::get(url)
-    }
-
-    pub async fn get_with_params_blocking(
+    pub async fn get_with_params(
         &self,
         url: &str,
         params: &[(&str, &str)],
@@ -35,7 +31,7 @@ impl Rest {
         req: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, reqwest::Error> {
         let req_builded = req.build()?;
-        // log::debug!(
+        // println!(
         //     "sending request:\n\tmethod: {:?}\n\turl: {:?},\n\theaders: {:?},\n\tbody: {:?}",
         //     req_builded.method(),
         //     req_builded.url().as_str(),
