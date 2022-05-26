@@ -11,7 +11,7 @@ use egui::plot::{Line, Plot, Value, Values};
 use egui::widgets::Label;
 use egui::{
     Align, CentralPanel, CollapsingHeader, Layout, ScrollArea, SidePanel, TextEdit, TopBottomPanel,
-    WidgetText, Window,
+    Ui, WidgetText, Window,
 };
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -80,62 +80,109 @@ impl TemplateApp {
             ..Default::default()
         }
     }
-}
 
-impl eframe::App for TemplateApp {
-    /// Called each time the UI needs repainting, which may be many times per second.
-    /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if let Some(promise) = &self.klines_promise {
-            if let Some(result) = promise.ready() {
-                self.loading_klines = false;
-
-                self.klines = result
-                    .iter()
-                    .map(|k| -> GuiKline {
-                        GuiKline {
-                            close: k.close,
-                            ts: k.t_close,
-                        }
-                    })
-                    .collect();
+    fn render_center_panel(&mut self, ctx: &egui::Context) {
+        CentralPanel::default().show(ctx, |ui| {
+            if self.loading_klines {
+                ui.centered_and_justified(|ui| {
+                    ui.spinner();
+                });
             }
-        }
 
-        if let Some(promise) = &self.pairs_promise {
-            if let Some(result) = promise.ready() {
-                self.loading_pairs = false;
-
-                self.pairs = result
-                    .symbols
+            if !self.loading_klines && self.klines.len() > 0 {
+                let max_y_kline = self
+                    .klines
                     .iter()
-                    .map(|s| -> GuiPair {
-                        GuiPair {
-                            symbol: s.symbol.to_string(),
-                            active: s.status == "TRADING",
+                    .max_by(|l, r| {
+                        if l.close > r.close {
+                            return Ordering::Greater;
                         }
+
+                        Ordering::Less
                     })
-                    .collect();
+                    .unwrap();
+                let max_x_kline = &self.klines[self.klines.len() - 1];
+                let min_x_kline = &self.klines[0];
+
+                Window::new(self.selected_pair.to_string()).show(ctx, |ui| {
+                    ui.collapsing("time period", |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.add(Label::new(WidgetText::from("start")));
+                            ui.add(
+                                egui_extras::DatePickerButton::new(&mut self.graph_props.start)
+                                    .id_source("datepicker_start"),
+                            );
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            ui.add(Label::new(WidgetText::from("end")));
+                            ui.add(
+                                egui_extras::DatePickerButton::new(&mut self.graph_props.end)
+                                    .id_source("datepicker_end"),
+                            );
+                        });
+                    });
+                    ui.vertical_centered(|ui| {
+                        if ui.button("apply").clicked() {
+                            let ts = self
+                                .graph_props
+                                .start
+                                .and_hms(0, 0, 0)
+                                .timestamp_millis()
+                                .clone();
+                            let pair = self.selected_pair.to_string();
+                            self.loading_klines = true;
+                            self.klines_promise = Some(Promise::spawn_async(async move {
+                                Client::kline(
+                                    pair,
+                                    sources::binance::interval::Interval::Minute,
+                                    ts,
+                                    1000,
+                                )
+                                .await
+                            }));
+                        }
+                    });
+                });
+
+                let line = Line::new(Values::from_values_iter(
+                    self.klines
+                        .iter()
+                        .map(|k| -> Value { Value::new(k.ts as f64, k.close) }),
+                ));
+
+                Plot::new("plot")
+                    .label_formatter(|_s, v| {
+                        format!(
+                            "y: ${}\nx: {}",
+                            v.y,
+                            format_datetime((v.x / 1000f64) as i64)
+                        )
+                        .to_string()
+                    })
+                    .x_axis_formatter(|v, _range| format_datetime((v / 1000f64) as i64))
+                    .include_x(max_x_kline.ts as f64)
+                    .include_y(max_y_kline.close)
+                    .show(ui, |ui| ui.line(line));
             }
-        }
+        });
+    }
 
-        if self.debug_visible {
-            Window::new("debug").show(ctx, |ui| {
-                ui.label("TODO: console and debug stats here");
-            });
-        }
-
+    fn render_top_panel(&mut self, ctx: &egui::Context) {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // TODO: theme change placeholder
             ui.heading("TODO: theme change placeholder");
         });
+    }
 
+    fn render_bottom_panel(&mut self, ctx: &egui::Context) {
         TopBottomPanel::bottom("bot panel").show(ctx, |ui| {
             if ui.button("debug").clicked() {
                 self.debug_visible = !self.debug_visible;
             }
         });
+    }
 
+    fn render_side_panel(&mut self, ctx: &egui::Context) {
         SidePanel::left("side_panel").show(ctx, |ui| {
             if self.loading_pairs {
                 ui.centered_and_justified(|ui| {
@@ -212,7 +259,12 @@ impl eframe::App for TemplateApp {
                                         .strong(),
                                 );
 
-                                let ts = self.graph_props.start.and_hms(0, 0, 0).timestamp_millis().clone();
+                                let ts = self
+                                    .graph_props
+                                    .start
+                                    .and_hms(0, 0, 0)
+                                    .timestamp_millis()
+                                    .clone();
 
                                 if label.clicked() {
                                     label.scroll_to_me(Some(Align::Center));
@@ -233,70 +285,56 @@ impl eframe::App for TemplateApp {
                     });
             });
         });
+    }
+}
 
-        CentralPanel::default().show(ctx, |ui| {
-            if self.loading_klines {
-                ui.centered_and_justified(|ui| {
-                    ui.spinner();
-                });
-            }
+impl eframe::App for TemplateApp {
+    /// Called each time the UI needs repainting, which may be many times per second.
+    /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let Some(promise) = &self.klines_promise {
+            if let Some(result) = promise.ready() {
+                self.loading_klines = false;
 
-            if !self.loading_klines && self.klines.len() > 0 {
-                let max_y_kline = self
-                    .klines
+                self.klines = result
                     .iter()
-                    .max_by(|l, r| {
-                        if l.close > r.close {
-                            return Ordering::Greater;
+                    .map(|k| -> GuiKline {
+                        GuiKline {
+                            close: k.close,
+                            ts: k.t_close,
                         }
-
-                        Ordering::Less
                     })
-                    .unwrap();
-                let max_x_kline = &self.klines[self.klines.len() - 1];
-                let min_x_kline = &self.klines[0];
-
-                Window::new(self.selected_pair.to_string()).show(ctx, |ui| {
-                    ui.collapsing("time period", |ui| {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.add(Label::new(WidgetText::from("start")));
-                            ui.add(
-                                egui_extras::DatePickerButton::new(&mut self.graph_props.start)
-                                    .id_source("datepicker_start"),
-                            );
-                        });
-                        ui.horizontal_wrapped(|ui| {
-                            ui.add(Label::new(WidgetText::from("end")));
-                            ui.add(
-                                egui_extras::DatePickerButton::new(&mut self.graph_props.end)
-                                    .id_source("datepicker_end"),
-                            );
-                        });
-                    });
-                    ui.vertical_centered(|ui| ui.button("apply"));
-                });
-
-                let line = Line::new(Values::from_values_iter(
-                    self.klines
-                        .iter()
-                        .map(|k| -> Value { Value::new(k.ts as f64, k.close) }),
-                ));
-
-                Plot::new("plot")
-                    .label_formatter(|_s, v| {
-                        format!(
-                            "y: ${}\nx: {}",
-                            v.y,
-                            format_datetime((v.x / 1000f64) as i64)
-                        )
-                        .to_string()
-                    })
-                    .x_axis_formatter(|v, _range| format_datetime((v / 1000f64) as i64))
-                    .include_x(max_x_kline.ts as f64)
-                    .include_y(max_y_kline.close)
-                    .show(ui, |ui| ui.line(line));
+                    .collect();
             }
-        });
+        }
+
+        if let Some(promise) = &self.pairs_promise {
+            if let Some(result) = promise.ready() {
+                self.loading_pairs = false;
+
+                self.pairs = result
+                    .symbols
+                    .iter()
+                    .map(|s| -> GuiPair {
+                        GuiPair {
+                            symbol: s.symbol.to_string(),
+                            active: s.status == "TRADING",
+                        }
+                    })
+                    .collect();
+            }
+        }
+
+        if self.debug_visible {
+            Window::new("debug").show(ctx, |ui| {
+                ui.label("TODO: console and debug stats here");
+            });
+        }
+
+        self.render_top_panel(ctx);
+        self.render_bottom_panel(ctx);
+        self.render_side_panel(ctx);
+        self.render_center_panel(ctx);
     }
 
     /// Called by the frame work to save state before shutdown.
