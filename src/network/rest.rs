@@ -1,3 +1,5 @@
+use tracing::debug;
+
 #[derive(Clone, Debug)]
 pub struct Rest {
     c: reqwest::Client,
@@ -31,13 +33,13 @@ impl Rest {
         req: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, reqwest::Error> {
         let req_builded = req.build()?;
-        // println!(
-        //     "sending request:\n\tmethod: {:?}\n\turl: {:?},\n\theaders: {:?},\n\tbody: {:?}",
-        //     req_builded.method(),
-        //     req_builded.url().as_str(),
-        //     req_builded.headers(),
-        //     req_builded.body(),
-        // );
+        debug!(
+            "sending request: method: {:?}; url: {:?}; headers: {:?}; body: {:?}",
+            req_builded.method(),
+            req_builded.url().as_str(),
+            req_builded.headers(),
+            req_builded.body(),
+        );
 
         self.c.execute(req_builded).await
     }

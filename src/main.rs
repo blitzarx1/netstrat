@@ -1,16 +1,41 @@
-use std::{fmt::format, thread::sleep, time::Duration};
+use std::cmp::Ordering;
+use std::ops::Add;
 
-use egui::{style::Widgets, widgets};
 use poll_promise::Promise;
 
 use eframe;
 use sources::binance::client::Kline;
+
+use chrono::{prelude::*, Duration};
+use egui::plot::{Line, Plot, Value, Values};
+use egui::widgets::Label;
+use egui::{
+    Align, CentralPanel, CollapsingHeader, Layout, ScrollArea, SidePanel, TextEdit, TopBottomPanel,
+    WidgetText, Window,
+};
+use tracing::{debug, info, Level};
+use tracing_subscriber::FmtSubscriber;
 
 use crate::sources::binance::client::{Client, Info};
 
 mod network;
 mod sources;
 use tokio;
+
+#[derive(Debug)]
+struct GraphProps {
+    start: chrono::Date<Utc>,
+    end: chrono::Date<Utc>,
+}
+
+impl Default for GraphProps {
+    fn default() -> Self {
+        Self {
+            start: Date::from(Utc::now().date()) - Duration::days(1),
+            end: Date::from(Utc::now().date()),
+        }
+    }
+}
 
 #[derive(Default, Debug)]
 struct GuiKline {
@@ -35,6 +60,8 @@ struct TemplateApp {
     selected_pair: String,
     pairs_promise: Option<Promise<Info>>,
     klines_promise: Option<Promise<Vec<Kline>>>,
+    debug_visible: bool,
+    graph_props: GraphProps,
 }
 
 #[derive(Default)]
@@ -92,12 +119,24 @@ impl eframe::App for TemplateApp {
             }
         }
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+        if self.debug_visible {
+            Window::new("debug").show(ctx, |ui| {
+                ui.label("TODO: console and debug stats here");
+            });
+        }
+
+        TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // TODO: theme change placeholder
             ui.heading("TODO: theme change placeholder");
         });
 
-        egui::SidePanel::left("side_panel").show(ctx, |ui| {
+        TopBottomPanel::bottom("bot panel").show(ctx, |ui| {
+            if ui.button("debug").clicked() {
+                self.debug_visible = !self.debug_visible;
+            }
+        });
+
+        SidePanel::left("side_panel").show(ctx, |ui| {
             if self.loading_pairs {
                 ui.centered_and_justified(|ui| {
                     ui.spinner();
@@ -115,7 +154,7 @@ impl eframe::App for TemplateApp {
                 return;
             }
 
-            ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
+            ui.with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
                 if ui.button("back").clicked() {
                     self.connected = !self.connected;
                 }
@@ -125,8 +164,8 @@ impl eframe::App for TemplateApp {
 
                 // render filter
                 ui.add(
-                    egui::widgets::TextEdit::singleline(&mut self.filter.value)
-                        .hint_text(egui::WidgetText::from("filter pairs").italics()),
+                    TextEdit::singleline(&mut self.filter.value)
+                        .hint_text(WidgetText::from("filter pairs").italics()),
                 );
 
                 // aply filter
@@ -144,10 +183,10 @@ impl eframe::App for TemplateApp {
                         match_value
                     })
                     .collect();
-                ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
+                ui.with_layout(Layout::top_down(egui::Align::RIGHT), |ui| {
                     ui.checkbox(&mut self.filter.active_only, "active only");
-                    ui.add(egui::widgets::Label::new(
-                        egui::WidgetText::from(format!("{}/{}", filtered.len(), self.pairs.len()))
+                    ui.add(Label::new(
+                        WidgetText::from(format!("{}/{}", filtered.len(), self.pairs.len()))
                             .small(),
                     ));
                 });
@@ -155,32 +194,34 @@ impl eframe::App for TemplateApp {
                 ui.add_space(5f32);
 
                 // render pairs list
-                egui::ScrollArea::vertical()
+                ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
+                        ui.with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
                             filtered.iter().for_each(|s| {
                                 let symbol_for_klines_request = s.symbol.to_string();
-                                if ui
-                                    .selectable_label(
-                                        false,
-                                        egui::WidgetText::from(s.symbol.to_string())
-                                            .background_color({
-                                                match s.active {
-                                                    true => egui::Color32::LIGHT_GREEN,
-                                                    false => egui::Color32::LIGHT_RED,
-                                                }
-                                            })
-                                            .strong(),
-                                    )
-                                    .clicked()
-                                {
+                                let label = ui.selectable_label(
+                                    false,
+                                    WidgetText::from(s.symbol.to_string())
+                                        .background_color({
+                                            match s.active {
+                                                true => egui::Color32::LIGHT_GREEN,
+                                                false => egui::Color32::LIGHT_RED,
+                                            }
+                                        })
+                                        .strong(),
+                                );
+
+                                let ts = self.graph_props.start.and_hms(0, 0, 0).timestamp_millis().clone();
+
+                                if label.clicked() {
+                                    label.scroll_to_me(Some(Align::Center));
                                     self.loading_klines = true;
-                                    self.klines_promise = Some(Promise::spawn_async(async {
+                                    self.klines_promise = Some(Promise::spawn_async(async move {
                                         Client::kline(
                                             symbol_for_klines_request,
                                             sources::binance::interval::Interval::Minute,
-                                            1651995344000,
+                                            ts,
                                             1000,
                                         )
                                         .await
@@ -193,7 +234,7 @@ impl eframe::App for TemplateApp {
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show(ctx, |ui| {
             if self.loading_klines {
                 ui.centered_and_justified(|ui| {
                     ui.spinner();
@@ -201,28 +242,93 @@ impl eframe::App for TemplateApp {
             }
 
             if !self.loading_klines && self.klines.len() > 0 {
-                let line = egui::plot::Line::new(egui::plot::Values::from_values_iter(
-                    self.klines.iter().map(|k| -> egui::plot::Value {
-                        egui::plot::Value::new(k.ts as f64, k.close)
-                    }),
+                let max_y_kline = self
+                    .klines
+                    .iter()
+                    .max_by(|l, r| {
+                        if l.close > r.close {
+                            return Ordering::Greater;
+                        }
+
+                        Ordering::Less
+                    })
+                    .unwrap();
+                let max_x_kline = &self.klines[self.klines.len() - 1];
+                let min_x_kline = &self.klines[0];
+
+                Window::new(self.selected_pair.to_string()).show(ctx, |ui| {
+                    ui.collapsing("time period", |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.add(Label::new(WidgetText::from("start")));
+                            ui.add(
+                                egui_extras::DatePickerButton::new(&mut self.graph_props.start)
+                                    .id_source("datepicker_start"),
+                            );
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            ui.add(Label::new(WidgetText::from("end")));
+                            ui.add(
+                                egui_extras::DatePickerButton::new(&mut self.graph_props.end)
+                                    .id_source("datepicker_end"),
+                            );
+                        });
+                    });
+                    ui.vertical_centered(|ui| ui.button("apply"));
+                });
+
+                let line = Line::new(Values::from_values_iter(
+                    self.klines
+                        .iter()
+                        .map(|k| -> Value { Value::new(k.ts as f64, k.close) }),
                 ));
 
-                egui::plot::Plot::new("plot").show(ui, |ui| ui.line(line));
+                Plot::new("plot")
+                    .label_formatter(|_s, v| {
+                        format!(
+                            "y: ${}\nx: {}",
+                            v.y,
+                            format_datetime((v.x / 1000f64) as i64)
+                        )
+                        .to_string()
+                    })
+                    .x_axis_formatter(|v, _range| format_datetime((v / 1000f64) as i64))
+                    .include_x(max_x_kline.ts as f64)
+                    .include_y(max_y_kline.close)
+                    .show(ui, |ui| ui.line(line));
             }
         });
     }
 
     /// Called by the frame work to save state before shutdown.
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {
-        println!("called save")
+        info!("called save")
     }
+}
+
+fn format_datetime(ts: i64) -> String {
+    let naive = NaiveDateTime::from_timestamp(ts, 0);
+    let datetime: DateTime<Utc> = DateTime::from_utc(naive, Utc);
+
+    datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+fn init_tracing() {
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::DEBUG)
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 }
 
 #[tokio::main]
 async fn main() {
+    init_tracing();
+
+    info!("tracing inited");
+
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
-        "eframe template",
+        "hedgegraph",
         native_options,
         Box::new(|cc| Box::new(TemplateApp::new(cc))),
     );
