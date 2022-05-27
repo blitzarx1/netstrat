@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::i8::MAX;
 
 use poll_promise::Promise;
 
@@ -12,7 +13,7 @@ use egui::{
     Align, CentralPanel, Layout, ProgressBar, ScrollArea, SidePanel, TextEdit, TopBottomPanel,
     Visuals, WidgetText, Window,
 };
-use sources::binance::interval::{self, Interval};
+use sources::binance::interval::Interval;
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -22,11 +23,14 @@ mod network;
 mod sources;
 use tokio;
 
+static MAX_LIMIT: u32 = 1000;
+
 #[derive(Default, Debug, Clone, Copy)]
 struct GraphLoadingState {
     initial: GraphProps,
     received: u32,
-    to_receive: u32,
+    pages: u32,
+    last_page_limit: usize,
 }
 
 impl GraphLoadingState {
@@ -38,38 +42,44 @@ impl GraphLoadingState {
 
     fn from_graph_props(props: &GraphProps) -> Self {
         let diff_days = props.date_end - props.date_start;
+
+        debug!("start: {:?}, end: {:?}", props.date_start, props.date_end);
+
         match props.interval {
             Interval::Minute => {
-                let mut to_receive = (Duration::num_minutes(&diff_days) / 1000) as u32;
-                if to_receive < 1 {
-                    to_receive = 1;
-                }
+                let pages_proto = Duration::num_minutes(&diff_days) as f32 / MAX_LIMIT as f32;
+                let pages = pages_proto.ceil() as u32;
+                let last_page_limit = (pages_proto.fract() * MAX_LIMIT as f32) as usize;
+
                 GraphLoadingState {
                     initial: props.clone(),
-                    to_receive,
+                    pages,
                     received: 0,
+                    last_page_limit,
                 }
             }
             Interval::Hour => {
-                let mut to_receive = (Duration::num_hours(&diff_days) / 1000) as u32;
-                if to_receive < 1 {
-                    to_receive = 1;
-                }
+                let pages_proto = Duration::num_hours(&diff_days) as f32 / MAX_LIMIT as f32;
+                let pages = pages_proto.ceil() as u32;
+                let last_page_limit = (pages_proto.fract() * MAX_LIMIT as f32) as usize;
+
                 GraphLoadingState {
                     initial: props.clone(),
-                    to_receive,
+                    pages,
                     received: 0,
+                    last_page_limit,
                 }
             }
             Interval::Day => {
-                let mut to_receive = (Duration::num_days(&diff_days) / 1000) as u32;
-                if to_receive < 1 {
-                    to_receive = 1;
-                }
+                let pages_proto = Duration::num_days(&diff_days) as f32 / MAX_LIMIT as f32;
+                let pages = pages_proto.ceil() as u32;
+                let last_page_limit = (pages_proto.fract() * MAX_LIMIT as f32) as usize;
+
                 GraphLoadingState {
                     initial: props.clone(),
-                    to_receive,
+                    pages,
                     received: 0,
+                    last_page_limit,
                 }
             }
         }
@@ -102,10 +112,14 @@ impl GraphLoadingState {
     }
 
     fn progress(&self) -> f32 {
-        if self.to_receive == 0 {
+        if self.pages == 0 {
             return 1f32;
         }
-        self.received as f32 / self.to_receive as f32
+        self.received as f32 / self.pages as f32
+    }
+
+    fn is_last_page(&self) -> bool {
+        return self.pages - self.received == 1;
     }
 }
 
@@ -199,26 +213,25 @@ impl TemplateApp {
                     })
                     .unwrap();
                 let max_x_kline = &self.klines[self.klines.len() - 1];
-                let min_x_kline = &self.klines[0];
 
                 Window::new(self.selected_pair.to_string()).show(ctx, |ui| {
                     ui.collapsing("time period", |ui| {
                         ui.horizontal_wrapped(|ui| {
-                            ui.add(Label::new(WidgetText::from("start")));
                             ui.add(
                                 egui_extras::DatePickerButton::new(
                                     &mut self.graph_props.date_start,
                                 )
                                 .id_source("datepicker_start"),
                             );
+                            ui.add(Label::new(WidgetText::from("date start")));
                         });
                         ui.horizontal_wrapped(|ui| {
-                            ui.add(Label::new(WidgetText::from("end")));
                             ui.add(
                                 egui_extras::DatePickerButton::new(&mut self.graph_props.date_end)
                                     .id_source("datepicker_end"),
                             );
                         });
+                        ui.add(Label::new(WidgetText::from("date end")));
                     });
                     ui.collapsing("interval", |ui| {
                         egui::ComboBox::from_label("pick data interval")
@@ -254,7 +267,11 @@ impl TemplateApp {
                             .clone();
                         let pair = self.selected_pair.to_string();
                         let interval = self.graph_props.interval.clone();
-                        let limit = self.graph_props.limit.clone();
+                        let mut limit = self.graph_props.limit.clone();
+
+                        if self.graph_loading_state.is_last_page() {
+                            limit = self.graph_loading_state.last_page_limit
+                        }
 
                         self.klines_promise = Some(Promise::spawn_async(async move {
                             Client::kline(pair, interval, start, limit).await
@@ -287,12 +304,15 @@ impl TemplateApp {
 
     fn render_top_panel(&mut self, ctx: &egui::Context) {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            if ui.button({
-                match self.dark_mode {
-                    true => "🔆",
-                    false => "🌙",
-                }
-            }).clicked() {
+            if ui
+                .button({
+                    match self.dark_mode {
+                        true => "🔆",
+                        false => "🌙",
+                    }
+                })
+                .clicked()
+            {
                 self.dark_mode = !self.dark_mode
             }
         });
@@ -393,12 +413,25 @@ impl TemplateApp {
 
                                     self.graph_loading_state =
                                         GraphLoadingState::from_graph_props(&self.graph_props);
+
+                                    let interval = self.graph_props.interval.clone();
+                                    let start = self
+                                        .graph_loading_state
+                                        .left_edge()
+                                        .timestamp_millis()
+                                        .clone();
+
+                                    let mut limit = self.graph_props.limit.clone();
+                                    if self.graph_loading_state.is_last_page() {
+                                        limit = self.graph_loading_state.last_page_limit;
+                                    }
+
                                     self.klines_promise = Some(Promise::spawn_async(async move {
                                         Client::kline(
                                             symbol_for_klines_request,
-                                            sources::binance::interval::Interval::Hour,
-                                            ts,
-                                            24,
+                                            interval,
+                                            start,
+                                            limit,
                                         )
                                         .await
                                     }));
@@ -446,7 +479,10 @@ impl eframe::App for TemplateApp {
 
                     let pair = self.selected_pair.to_string();
                     let interval = self.graph_props.interval.clone();
-                    let limit = self.graph_props.limit.clone();
+                    let mut limit = self.graph_props.limit.clone();
+                    if self.graph_loading_state.is_last_page() {
+                        limit = self.graph_loading_state.last_page_limit
+                    }
 
                     self.klines_promise = Some(Promise::spawn_async(async move {
                         Client::kline(pair, interval, start, limit).await
