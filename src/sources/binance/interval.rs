@@ -1,3 +1,4 @@
+#[derive(Debug, Clone, Copy)]
 pub enum Interval {
     Minute,
     Hour,
@@ -11,5 +12,11 @@ impl Interval {
             Interval::Hour => "1h",
             Interval::Day => "1d",
         }
+    }
+}
+
+impl PartialEq for Interval {
+    fn eq(&self, other: &Self) -> bool {
+        format!("{:?}", self) == format!("{:?}", other)
     }
 }

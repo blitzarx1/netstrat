@@ -1,4 +1,3 @@
-// TODO: implement widgets for set of custom widgets
 use std::cmp::Ordering;
 
 use poll_promise::Promise;
@@ -10,9 +9,10 @@ use chrono::{prelude::*, Duration};
 use egui::plot::{Line, Plot, Value, Values};
 use egui::widgets::Label;
 use egui::{
-    Align, CentralPanel, CollapsingHeader, Layout, ScrollArea, SidePanel, TextEdit, TopBottomPanel,
-    Ui, Visuals, WidgetText, Window,
+    Align, CentralPanel, Layout, ProgressBar, ScrollArea, SidePanel, TextEdit, TopBottomPanel,
+    Visuals, WidgetText, Window,
 };
+use sources::binance::interval::{self, Interval};
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -22,17 +22,108 @@ mod network;
 mod sources;
 use tokio;
 
-#[derive(Debug)]
+#[derive(Default, Debug, Clone, Copy)]
+struct GraphLoadingState {
+    initial: GraphProps,
+    received: u32,
+    to_receive: u32,
+}
+
+impl GraphLoadingState {
+    fn new() -> Self {
+        Self {
+            ..Default::default()
+        }
+    }
+
+    fn from_graph_props(props: &GraphProps) -> Self {
+        let diff_days = props.date_end - props.date_start;
+        match props.interval {
+            Interval::Minute => {
+                let mut to_receive = (Duration::num_minutes(&diff_days) / 1000) as u32;
+                if to_receive < 1 {
+                    to_receive = 1;
+                }
+                GraphLoadingState {
+                    initial: props.clone(),
+                    to_receive,
+                    received: 0,
+                }
+            }
+            Interval::Hour => {
+                let mut to_receive = (Duration::num_hours(&diff_days) / 1000) as u32;
+                if to_receive < 1 {
+                    to_receive = 1;
+                }
+                GraphLoadingState {
+                    initial: props.clone(),
+                    to_receive,
+                    received: 0,
+                }
+            }
+            Interval::Day => {
+                let mut to_receive = (Duration::num_days(&diff_days) / 1000) as u32;
+                if to_receive < 1 {
+                    to_receive = 1;
+                }
+                GraphLoadingState {
+                    initial: props.clone(),
+                    to_receive,
+                    received: 0,
+                }
+            }
+        }
+    }
+
+    fn left_edge(&self) -> DateTime<Utc> {
+        let covered: Duration;
+
+        match self.initial.interval {
+            Interval::Minute => {
+                covered = Duration::minutes((self.received * self.initial.limit as u32) as i64)
+            }
+            Interval::Hour => {
+                covered = Duration::hours((self.received * self.initial.limit as u32) as i64)
+            }
+            Interval::Day => {
+                covered = Duration::days((self.received * self.initial.limit as u32) as i64)
+            }
+        };
+
+        self.initial.date_start.and_hms(0, 0, 0) + covered
+    }
+
+    fn received(&mut self) {
+        self.received += 1;
+    }
+
+    fn is_finished(&self) -> bool {
+        return self.progress() == 1f32;
+    }
+
+    fn progress(&self) -> f32 {
+        if self.to_receive == 0 {
+            return 1f32;
+        }
+        self.received as f32 / self.to_receive as f32
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 struct GraphProps {
-    start: chrono::Date<Utc>,
-    end: chrono::Date<Utc>,
+    date_start: chrono::Date<Utc>,
+    date_end: chrono::Date<Utc>,
+    interval: Interval,
+    limit: usize,
 }
 
 impl Default for GraphProps {
     fn default() -> Self {
         Self {
-            start: Date::from(Utc::now().date()) - Duration::days(1),
-            end: Date::from(Utc::now().date()),
+            date_start: Date::from(Utc::now().date()) - Duration::days(1),
+            date_end: Date::from(Utc::now().date()),
+            interval: Interval::Minute,
+            limit: 1000,
         }
     }
 }
@@ -56,13 +147,13 @@ struct TemplateApp {
     klines: Vec<GuiKline>,
     connected: bool,
     loading_pairs: bool,
-    loading_klines: bool,
     selected_pair: String,
     pairs_promise: Option<Promise<Info>>,
     klines_promise: Option<Promise<Vec<Kline>>>,
     debug_visible: bool,
     graph_props: GraphProps,
     dark_mode: bool,
+    graph_loading_state: GraphLoadingState,
 }
 
 #[derive(Default)]
@@ -85,13 +176,17 @@ impl TemplateApp {
 
     fn render_center_panel(&mut self, ctx: &egui::Context) {
         CentralPanel::default().show(ctx, |ui| {
-            if self.loading_klines {
+            if !self.graph_loading_state.is_finished() {
                 ui.centered_and_justified(|ui| {
-                    ui.spinner();
+                    ui.add(
+                        ProgressBar::new(self.graph_loading_state.progress())
+                            .show_percentage()
+                            .animate(true),
+                    )
                 });
             }
 
-            if !self.loading_klines && self.klines.len() > 0 {
+            if self.graph_loading_state.is_finished() && self.klines.len() > 0 {
                 let max_y_kline = self
                     .klines
                     .iter()
@@ -111,39 +206,60 @@ impl TemplateApp {
                         ui.horizontal_wrapped(|ui| {
                             ui.add(Label::new(WidgetText::from("start")));
                             ui.add(
-                                egui_extras::DatePickerButton::new(&mut self.graph_props.start)
-                                    .id_source("datepicker_start"),
+                                egui_extras::DatePickerButton::new(
+                                    &mut self.graph_props.date_start,
+                                )
+                                .id_source("datepicker_start"),
                             );
                         });
                         ui.horizontal_wrapped(|ui| {
                             ui.add(Label::new(WidgetText::from("end")));
                             ui.add(
-                                egui_extras::DatePickerButton::new(&mut self.graph_props.end)
+                                egui_extras::DatePickerButton::new(&mut self.graph_props.date_end)
                                     .id_source("datepicker_end"),
                             );
                         });
                     });
-                    ui.vertical_centered(|ui| {
-                        if ui.button("apply").clicked() {
-                            let ts = self
-                                .graph_props
-                                .start
-                                .and_hms(0, 0, 0)
-                                .timestamp_millis()
-                                .clone();
-                            let pair = self.selected_pair.to_string();
-                            self.loading_klines = true;
-                            self.klines_promise = Some(Promise::spawn_async(async move {
-                                Client::kline(
-                                    pair,
-                                    sources::binance::interval::Interval::Minute,
-                                    ts,
-                                    1000,
-                                )
-                                .await
-                            }));
-                        }
+                    ui.collapsing("interval", |ui| {
+                        egui::ComboBox::from_label("pick data interval")
+                            .selected_text(format!("{:?}", self.graph_props.interval))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.graph_props.interval,
+                                    Interval::Day,
+                                    "Day",
+                                );
+                                ui.selectable_value(
+                                    &mut self.graph_props.interval,
+                                    Interval::Hour,
+                                    "Hour",
+                                );
+                                ui.selectable_value(
+                                    &mut self.graph_props.interval,
+                                    Interval::Minute,
+                                    "Minute",
+                                );
+                            });
                     });
+                    ui.add_space(5f32);
+                    if ui.button("apply").clicked() {
+                        self.graph_loading_state =
+                            GraphLoadingState::from_graph_props(&self.graph_props);
+
+                        let start = self
+                            .graph_props
+                            .date_start
+                            .and_hms(0, 0, 0)
+                            .timestamp_millis()
+                            .clone();
+                        let pair = self.selected_pair.to_string();
+                        let interval = self.graph_props.interval.clone();
+                        let limit = self.graph_props.limit.clone();
+
+                        self.klines_promise = Some(Promise::spawn_async(async move {
+                            Client::kline(pair, interval, start, limit).await
+                        }));
+                    }
                 });
 
                 let line = Line::new(Values::from_values_iter(
@@ -171,7 +287,12 @@ impl TemplateApp {
 
     fn render_top_panel(&mut self, ctx: &egui::Context) {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            if ui.button("theme").clicked() {
+            if ui.button({
+                match self.dark_mode {
+                    true => "🔆",
+                    false => "🌙",
+                }
+            }).clicked() {
                 self.dark_mode = !self.dark_mode
             }
         });
@@ -260,22 +381,24 @@ impl TemplateApp {
                                     },
                                 );
 
-                                let ts = self
-                                    .graph_props
-                                    .start
-                                    .and_hms(0, 0, 0)
-                                    .timestamp_millis()
-                                    .clone();
-
                                 if label.clicked() {
                                     label.scroll_to_me(Some(Align::Center));
-                                    self.loading_klines = true;
+
+                                    let ts = self
+                                        .graph_props
+                                        .date_start
+                                        .and_hms(0, 0, 0)
+                                        .timestamp_millis()
+                                        .clone();
+
+                                    self.graph_loading_state =
+                                        GraphLoadingState::from_graph_props(&self.graph_props);
                                     self.klines_promise = Some(Promise::spawn_async(async move {
                                         Client::kline(
                                             symbol_for_klines_request,
-                                            sources::binance::interval::Interval::Minute,
+                                            sources::binance::interval::Interval::Hour,
                                             ts,
-                                            1000,
+                                            24,
                                         )
                                         .await
                                     }));
@@ -290,8 +413,6 @@ impl TemplateApp {
 }
 
 impl eframe::App for TemplateApp {
-    /// Called each time the UI needs repainting, which may be many times per second.
-    /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.dark_mode {
             ctx.set_visuals(Visuals::dark())
@@ -301,17 +422,36 @@ impl eframe::App for TemplateApp {
 
         if let Some(promise) = &self.klines_promise {
             if let Some(result) = promise.ready() {
-                self.loading_klines = false;
+                self.graph_loading_state.received();
 
-                self.klines = result
-                    .iter()
-                    .map(|k| -> GuiKline {
-                        GuiKline {
-                            close: k.close,
-                            ts: k.t_close,
-                        }
-                    })
-                    .collect();
+                if self.graph_loading_state.received == 1 {
+                    self.klines = vec![];
+                }
+
+                result.iter().for_each(|k| {
+                    self.klines.push(GuiKline {
+                        close: k.close,
+                        ts: k.t_close,
+                    });
+                });
+
+                self.klines_promise = None;
+
+                if !self.graph_loading_state.is_finished() {
+                    let start = self
+                        .graph_loading_state
+                        .left_edge()
+                        .timestamp_millis()
+                        .clone();
+
+                    let pair = self.selected_pair.to_string();
+                    let interval = self.graph_props.interval.clone();
+                    let limit = self.graph_props.limit.clone();
+
+                    self.klines_promise = Some(Promise::spawn_async(async move {
+                        Client::kline(pair, interval, start, limit).await
+                    }));
+                }
             }
         }
 
