@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
-use std::i8::MAX;
+use std::fmt::Write;
+use std::io;
 
 use poll_promise::Promise;
 
@@ -10,11 +11,12 @@ use chrono::{prelude::*, Duration};
 use egui::plot::{Line, Plot, Value, Values};
 use egui::widgets::Label;
 use egui::{
-    Align, CentralPanel, Layout, ProgressBar, ScrollArea, SidePanel, TextEdit, TopBottomPanel,
-    Visuals, WidgetText, Window,
+    CentralPanel, Layout, ProgressBar, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visuals,
+    WidgetText, Window,
 };
 use sources::binance::interval::Interval;
 use tracing::{debug, info, Level};
+use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::FmtSubscriber;
 
 use crate::sources::binance::client::{Client, Info};
@@ -34,12 +36,6 @@ struct GraphLoadingState {
 }
 
 impl GraphLoadingState {
-    fn new() -> Self {
-        Self {
-            ..Default::default()
-        }
-    }
-
     fn from_graph_props(props: &GraphProps) -> Self {
         let diff_days = props.date_end - props.date_start;
 
@@ -223,15 +219,15 @@ impl TemplateApp {
                                 )
                                 .id_source("datepicker_start"),
                             );
-                            ui.add(Label::new(WidgetText::from("date start")));
+                            ui.label("date start");
                         });
                         ui.horizontal_wrapped(|ui| {
                             ui.add(
                                 egui_extras::DatePickerButton::new(&mut self.graph_props.date_end)
                                     .id_source("datepicker_end"),
                             );
+                            ui.label("date end");
                         });
-                        ui.add(Label::new(WidgetText::from("date end")));
                     });
                     ui.collapsing("interval", |ui| {
                         egui::ComboBox::from_label("pick data interval")
@@ -392,7 +388,7 @@ impl TemplateApp {
                             filtered.iter().for_each(|s| {
                                 let symbol_for_klines_request = s.symbol.to_string();
                                 let label = ui.selectable_label(
-                                    false,
+                                    s.symbol == self.selected_pair,
                                     match s.active {
                                         true => WidgetText::from(s.symbol.to_string()).strong(),
                                         false => {
@@ -402,15 +398,6 @@ impl TemplateApp {
                                 );
 
                                 if label.clicked() {
-                                    label.scroll_to_me(Some(Align::Center));
-
-                                    let ts = self
-                                        .graph_props
-                                        .date_start
-                                        .and_hms(0, 0, 0)
-                                        .timestamp_millis()
-                                        .clone();
-
                                     self.graph_loading_state =
                                         GraphLoadingState::from_graph_props(&self.graph_props);
 
@@ -510,7 +497,14 @@ impl eframe::App for TemplateApp {
 
         if self.debug_visible {
             Window::new("debug").show(ctx, |ui| {
-                ui.label("TODO: console and debug stats here");
+                ScrollArea::both()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let mut text = "text";
+                        TextEdit::multiline(&mut text)
+                            .desired_rows(10)
+                            .show(ui);
+                    });
             });
         }
 
@@ -533,24 +527,24 @@ fn format_datetime(ts: i64) -> String {
     datetime.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
-fn init_tracing() {
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
-        .finish();
-
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-}
-
 #[tokio::main]
 async fn main() {
-    init_tracing();
-
-    info!("tracing inited");
-
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
         "hedgegraph",
         native_options,
-        Box::new(|cc| Box::new(TemplateApp::new(cc))),
+        Box::new(|cc| {
+            let a = TemplateApp::new(cc);
+
+            let subscriber = FmtSubscriber::builder()
+                .with_max_level(Level::DEBUG)
+                .finish();
+
+            tracing::subscriber::set_global_default(subscriber)
+                .expect("setting default subscriber failed");
+
+            info!("tracing inited");
+            Box::new(a)
+        }),
     );
 }
