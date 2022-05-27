@@ -1,5 +1,5 @@
+// TODO: implement widgets for set of custom widgets
 use std::cmp::Ordering;
-use std::ops::Add;
 
 use poll_promise::Promise;
 
@@ -11,7 +11,7 @@ use egui::plot::{Line, Plot, Value, Values};
 use egui::widgets::Label;
 use egui::{
     Align, CentralPanel, CollapsingHeader, Layout, ScrollArea, SidePanel, TextEdit, TopBottomPanel,
-    Ui, WidgetText, Window,
+    Ui, Visuals, WidgetText, Window,
 };
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -62,6 +62,7 @@ struct TemplateApp {
     klines_promise: Option<Promise<Vec<Kline>>>,
     debug_visible: bool,
     graph_props: GraphProps,
+    dark_mode: bool,
 }
 
 #[derive(Default)]
@@ -77,6 +78,7 @@ impl TemplateApp {
 
         Self {
             pairs,
+            dark_mode: true,
             ..Default::default()
         }
     }
@@ -169,8 +171,9 @@ impl TemplateApp {
 
     fn render_top_panel(&mut self, ctx: &egui::Context) {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            // TODO: theme change placeholder
-            ui.heading("TODO: theme change placeholder");
+            if ui.button("theme").clicked() {
+                self.dark_mode = !self.dark_mode
+            }
         });
     }
 
@@ -249,14 +252,12 @@ impl TemplateApp {
                                 let symbol_for_klines_request = s.symbol.to_string();
                                 let label = ui.selectable_label(
                                     false,
-                                    WidgetText::from(s.symbol.to_string())
-                                        .background_color({
-                                            match s.active {
-                                                true => egui::Color32::LIGHT_GREEN,
-                                                false => egui::Color32::LIGHT_RED,
-                                            }
-                                        })
-                                        .strong(),
+                                    match s.active {
+                                        true => WidgetText::from(s.symbol.to_string()).strong(),
+                                        false => {
+                                            WidgetText::from(s.symbol.to_string()).strikethrough()
+                                        }
+                                    },
                                 );
 
                                 let ts = self
@@ -292,6 +293,12 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.dark_mode {
+            ctx.set_visuals(Visuals::dark())
+        } else {
+            ctx.set_visuals(Visuals::light())
+        }
+
         if let Some(promise) = &self.klines_promise {
             if let Some(result) = promise.ready() {
                 self.loading_klines = false;
