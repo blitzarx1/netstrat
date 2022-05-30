@@ -1,6 +1,4 @@
 use std::cmp::Ordering;
-use std::fmt::Write;
-use std::io;
 
 use poll_promise::Promise;
 
@@ -16,7 +14,6 @@ use egui::{
 };
 use sources::binance::interval::Interval;
 use tracing::{debug, info, Level};
-use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::FmtSubscriber;
 
 use crate::sources::binance::client::{Client, Info};
@@ -155,7 +152,7 @@ struct TemplateApp {
     filter: FilterProps,
     pairs: Vec<GuiPair>,
     klines: Vec<GuiKline>,
-    connected: bool,
+    pairs_loaded: bool,
     loading_pairs: bool,
     selected_pair: String,
     pairs_promise: Option<Promise<Info>>,
@@ -284,7 +281,7 @@ impl TemplateApp {
                 Plot::new("plot")
                     .label_formatter(|_s, v| {
                         format!(
-                            "y: ${}\nx: {}",
+                            "y: {}\nx: {}",
                             v.y,
                             format_datetime((v.x / 1000f64) as i64)
                         )
@@ -331,19 +328,17 @@ impl TemplateApp {
                 return;
             }
 
-            if !self.connected {
-                if ui.button("connect to binance".to_string()).clicked() {
-                    self.pairs_promise = Some(Promise::spawn_async(async { Client::info().await }));
+            if !self.pairs_loaded {
+                self.pairs_promise = Some(Promise::spawn_async(async { Client::info().await }));
 
-                    self.connected = !self.connected;
-                    self.loading_pairs = true;
-                };
+                self.pairs_loaded = !self.pairs_loaded;
+                self.loading_pairs = true;
                 return;
             }
 
             ui.with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
                 if ui.button("back").clicked() {
-                    self.connected = !self.connected;
+                    self.pairs_loaded = !self.pairs_loaded;
                 }
                 ui.add_space(5f32);
                 ui.separator();
@@ -501,9 +496,7 @@ impl eframe::App for TemplateApp {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         let mut text = "text";
-                        TextEdit::multiline(&mut text)
-                            .desired_rows(10)
-                            .show(ui);
+                        TextEdit::multiline(&mut text).desired_rows(10).show(ui);
                     });
             });
         }
