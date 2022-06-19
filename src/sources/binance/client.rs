@@ -34,7 +34,7 @@ struct KlineData(
     String, // Taker buy quote asset volume
     String, // Ignore
 );
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct Symbol {
     pub symbol: String,
     pub status: String,
@@ -77,6 +77,12 @@ pub struct Symbol {
 
     #[serde(rename = "isMarginTradingAllowed")]
     is_margin_trading_allowed: bool,
+}
+
+impl Symbol {
+    pub fn active(&self) -> bool {
+        self.status == "TRADING"
+    }
 }
 
 #[derive(PartialEq, Debug, Clone, Copy, Default)]

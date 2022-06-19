@@ -3,14 +3,14 @@ use std::cmp::Ordering;
 use poll_promise::Promise;
 
 use eframe;
-use sources::binance::client::Kline;
+use sources::binance::client::{Kline, Symbol};
 
 use chrono::{prelude::*, Duration};
-use egui::plot::{Line, Plot, Value, Values};
+use egui::plot::{BoxElem, BoxPlot, BoxSpread, Plot, PlotUi};
 use egui::widgets::Label;
 use egui::{
-    CentralPanel, Layout, ProgressBar, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visuals,
-    WidgetText, Window,
+    CentralPanel, Color32, Layout, ProgressBar, ScrollArea, SidePanel, Stroke, TextEdit,
+    TopBottomPanel, Visuals, WidgetText, Window,
 };
 use sources::binance::interval::Interval;
 use tracing::{debug, info, Level};
@@ -135,23 +135,11 @@ impl Default for GraphProps {
     }
 }
 
-#[derive(Default, Debug)]
-struct GuiKline {
-    close: f32,
-    ts: i64,
-}
-
-#[derive(Default)]
-struct GuiPair {
-    symbol: String,
-    active: bool,
-}
-
 #[derive(Default)]
 struct TemplateApp {
     filter: FilterProps,
-    pairs: Vec<GuiPair>,
-    klines: Vec<GuiKline>,
+    pairs: Vec<Symbol>,
+    klines: Vec<Kline>,
     pairs_loaded: bool,
     loading_pairs: bool,
     selected_pair: String,
@@ -272,25 +260,44 @@ impl TemplateApp {
                     }
                 });
 
-                let line = Line::new(Values::from_values_iter(
-                    self.klines
-                        .iter()
-                        .map(|k| -> Value { Value::new(k.ts as f64, k.close) }),
-                ));
-
-                Plot::new("plot")
-                    .label_formatter(|_s, v| {
-                        format!(
-                            "y: {}\nx: {}",
-                            v.y,
-                            format_datetime((v.x / 1000f64) as i64)
+                let box_data: Vec<BoxElem> = self
+                    .klines
+                    .iter()
+                    .map(|k| -> BoxElem {
+                        BoxElem::new(
+                            (k.t_open + k.t_close) as f64 / 2.0,
+                            BoxSpread::new(
+                                k.low as f64,
+                                {
+                                    match k.open < k.close {
+                                        true => k.close as f64,
+                                        false => k.open as f64,
+                                    }
+                                },
+                                ((k.open - k.close) / 2.0) as f64,
+                                {
+                                    match k.open < k.close {
+                                        true => k.open as f64,
+                                        false => k.close as f64,
+                                    }
+                                },
+                                k.high as f64,
+                            ),
                         )
-                        .to_string()
+                        .fill({
+                            if k.open < k.close {
+                                Color32::LIGHT_GREEN
+                            } else {
+                                Color32::LIGHT_RED
+                            }
+                        })
+                        .box_width((k.t_open - k.t_close) as f64)
                     })
-                    .x_axis_formatter(|v, _range| format_datetime((v / 1000f64) as i64))
-                    .include_x(max_x_kline.ts as f64)
-                    .include_y(max_y_kline.close)
-                    .show(ui, |ui| ui.line(line));
+                    .collect();
+
+                Plot::new("box plot").show(ui, |plot_ui| {
+                    plot_ui.box_plot(BoxPlot::new(box_data).vertical());
+                });
             }
         });
     }
@@ -351,7 +358,7 @@ impl TemplateApp {
                 );
 
                 // aply filter
-                let filtered: Vec<&GuiPair> = self
+                let filtered: Vec<&Symbol> = self
                     .pairs
                     .iter()
                     .filter(|s| {
@@ -360,7 +367,7 @@ impl TemplateApp {
                             .to_lowercase()
                             .contains(self.filter.value.to_lowercase().as_str());
                         if self.filter.active_only {
-                            return match_value && s.active;
+                            return match_value && s.active();
                         }
                         match_value
                     })
@@ -384,7 +391,7 @@ impl TemplateApp {
                                 let symbol_for_klines_request = s.symbol.to_string();
                                 let label = ui.selectable_label(
                                     s.symbol == self.selected_pair,
-                                    match s.active {
+                                    match s.active() {
                                         true => WidgetText::from(s.symbol.to_string()).strong(),
                                         false => {
                                             WidgetText::from(s.symbol.to_string()).strikethrough()
@@ -440,15 +447,8 @@ impl eframe::App for TemplateApp {
                 self.graph_loading_state.received();
 
                 if self.graph_loading_state.received == 1 {
-                    self.klines = vec![];
+                    self.klines = result.iter().map(|k| -> Kline { *k }).collect();
                 }
-
-                result.iter().for_each(|k| {
-                    self.klines.push(GuiKline {
-                        close: k.close,
-                        ts: k.t_close,
-                    });
-                });
 
                 self.klines_promise = None;
 
@@ -480,12 +480,7 @@ impl eframe::App for TemplateApp {
                 self.pairs = result
                     .symbols
                     .iter()
-                    .map(|s| -> GuiPair {
-                        GuiPair {
-                            symbol: s.symbol.to_string(),
-                            active: s.status == "TRADING",
-                        }
-                    })
+                    .map(|s| -> Symbol { s.clone() })
                     .collect();
             }
         }
