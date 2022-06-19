@@ -269,14 +269,14 @@ impl TemplateApp {
                             BoxSpread::new(
                                 k.low as f64,
                                 {
-                                    match k.open < k.close {
+                                    match k.open > k.close {
                                         true => k.close as f64,
                                         false => k.open as f64,
                                     }
                                 },
-                                ((k.open - k.close) / 2.0) as f64,
+                                ((k.open + k.close) / 2.0) as f64,
                                 {
-                                    match k.open < k.close {
+                                    match k.open > k.close {
                                         true => k.open as f64,
                                         false => k.close as f64,
                                     }
@@ -284,6 +284,7 @@ impl TemplateApp {
                                 k.high as f64,
                             ),
                         )
+                        .name(format!("{}", k.t_close))
                         .fill({
                             if k.open < k.close {
                                 Color32::LIGHT_GREEN
@@ -291,11 +292,19 @@ impl TemplateApp {
                                 Color32::LIGHT_RED
                             }
                         })
+                        .whisker_width(0.0)
+                        .stroke(Stroke::new(1.0, {
+                            if k.open < k.close {
+                                Color32::LIGHT_GREEN
+                            } else {
+                                Color32::LIGHT_RED
+                            }
+                        }))
                         .box_width((k.t_open - k.t_close) as f64)
                     })
                     .collect();
 
-                Plot::new("box plot").show(ui, |plot_ui| {
+                Plot::new("box plot").view_aspect(1.0).show(ui, |plot_ui| {
                     plot_ui.box_plot(BoxPlot::new(box_data).vertical());
                 });
             }
