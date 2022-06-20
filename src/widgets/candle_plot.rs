@@ -144,11 +144,6 @@ impl CandlePlot {
             ..Default::default()
         }
     }
-
-    pub fn plot(&mut self, symbol: String) {
-        self.symbol = symbol;
-        self.graph_loading_state = GraphLoadingState::default()
-    }
 }
 
 impl Widget for &mut CandlePlot {
