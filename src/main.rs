@@ -1,10 +1,6 @@
-use std::sync::{mpsc, Arc, Mutex};
-
 use crossbeam::channel::unbounded;
-use poll_promise::Promise;
 
 use eframe;
-use sources::binance::client::Symbol;
 
 use egui::{CentralPanel, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visuals, Window};
 use tracing::{debug, info, Level};

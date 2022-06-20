@@ -1,7 +1,5 @@
 use crossbeam::channel::{unbounded, Receiver};
-use std::time::Instant;
-use std::{cmp::Ordering, sync::Mutex};
-use std::{thread, time};
+use std::cmp::Ordering;
 
 use chrono::{prelude::*, Duration};
 use egui::{
