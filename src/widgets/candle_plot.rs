@@ -352,7 +352,7 @@ impl Widget for &mut CandlePlot {
                     }
                 })
                 .whisker_width(0.0)
-                .box_width((k.t_open - k.t_close) as f64)
+                .box_width((k.t_open - k.t_close) as f64 * 0.9)
             })
             .collect();
 
