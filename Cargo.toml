@@ -7,6 +7,7 @@ version = "0.1.0"
 
 [dependencies]
 chrono = "0.4.19"
+crossbeam = "0.8.1"
 eframe = {version = "0.18.0", features = ["persistence"]}
 egui = {version = "0.18.0", features = ["serde"]}
 egui_extras = {version = "0.18.0", features = ["chrono", "serde"]}

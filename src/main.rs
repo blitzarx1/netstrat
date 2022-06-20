@@ -1,63 +1,49 @@
+use std::sync::{mpsc, Arc, Mutex};
+
+use crossbeam::channel::unbounded;
 use poll_promise::Promise;
 
 use eframe;
 use sources::binance::client::Symbol;
 
-use egui::widgets::Label;
-use egui::{
-    CentralPanel, Layout, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visuals, WidgetText,
-    Window,
-};
+use egui::{CentralPanel, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visuals, Window};
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 use widgets::candle_plot::CandlePlot;
-
-use crate::sources::binance::client::{Client, Info};
+use widgets::symbols::Symbols;
 
 mod network;
 mod sources;
 mod widgets;
 use tokio;
 
-#[derive(Default)]
 struct TemplateApp {
-    graph: CandlePlot,
-    filter: FilterProps,
     candle_plot: CandlePlot,
-    symbols: Vec<Symbol>,
-    symbols_loaded: bool,
-    loading_symbols: bool,
-    selected_symbol: String,
-    symbols_promise: Option<Promise<Info>>,
+    symbols: Symbols,
     debug_visible: bool,
     dark_mode: bool,
 }
 
-#[derive(Default)]
-struct FilterProps {
-    value: String,
-    active_only: bool,
-}
-
 impl TemplateApp {
     fn new(_ctx: &eframe::CreationContext<'_>) -> Self {
-        let symbols = vec![];
-
+        let (s, r) = unbounded();
+        let plot = CandlePlot::new(r);
         Self {
-            symbols,
             dark_mode: true,
-            candle_plot: CandlePlot::new(),
-            ..Default::default()
+            candle_plot: plot,
+            symbols: Symbols::new(s),
+            debug_visible: false,
         }
     }
 
     fn render_center_panel(&mut self, ctx: &egui::Context) {
-        CentralPanel::default().show(ctx, |ui| ui.add(&mut self.candle_plot));
+        CentralPanel::default().show(ctx, |ui| {
+            ui.add(&mut self.candle_plot);
+        });
     }
 
     fn render_top_panel(&mut self, ctx: &egui::Context) {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            ui.add(&mut self.graph);
             if ui
                 .button({
                     match self.dark_mode {
@@ -81,82 +67,7 @@ impl TemplateApp {
     }
 
     fn render_side_panel(&mut self, ctx: &egui::Context) {
-        SidePanel::left("side_panel").show(ctx, |ui| {
-            if self.loading_symbols {
-                ui.centered_and_justified(|ui| {
-                    ui.spinner();
-                });
-                return;
-            }
-
-            if !self.symbols_loaded {
-                self.symbols_promise = Some(Promise::spawn_async(async { Client::info().await }));
-
-                self.symbols_loaded = !self.symbols_loaded;
-                self.loading_symbols = true;
-                return;
-            }
-
-            ui.with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
-                ui.add_space(5f32);
-                ui.separator();
-                ui.add_space(5f32);
-
-                // render filter
-                ui.add(
-                    TextEdit::singleline(&mut self.filter.value)
-                        .hint_text(WidgetText::from("filter symbols").italics()),
-                );
-
-                // aply filter
-                let filtered: Vec<&Symbol> = self
-                    .symbols
-                    .iter()
-                    .filter(|s| {
-                        let match_value = s
-                            .symbol
-                            .to_lowercase()
-                            .contains(self.filter.value.to_lowercase().as_str());
-                        if self.filter.active_only {
-                            return match_value && s.active();
-                        }
-                        match_value
-                    })
-                    .collect();
-                ui.with_layout(Layout::top_down(egui::Align::RIGHT), |ui| {
-                    ui.checkbox(&mut self.filter.active_only, "active only");
-                    ui.add(Label::new(
-                        WidgetText::from(format!("{}/{}", filtered.len(), self.symbols.len()))
-                            .small(),
-                    ));
-                });
-
-                ui.add_space(5f32);
-
-                // render symbols list
-                ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        ui.with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
-                            filtered.iter().for_each(|s| {
-                                let label = ui.selectable_label(
-                                    s.symbol == self.selected_symbol,
-                                    match s.active() {
-                                        true => WidgetText::from(s.symbol.to_string()).strong(),
-                                        false => {
-                                            WidgetText::from(s.symbol.to_string()).strikethrough()
-                                        }
-                                    },
-                                );
-
-                                if label.clicked() {
-                                    self.candle_plot.plot(s.symbol.clone())
-                                };
-                            });
-                        })
-                    });
-            });
-        });
+        SidePanel::left("side_panel").show(ctx, |ui| ui.add(&mut self.symbols));
     }
 }
 
@@ -166,18 +77,6 @@ impl eframe::App for TemplateApp {
             ctx.set_visuals(Visuals::dark())
         } else {
             ctx.set_visuals(Visuals::light())
-        }
-
-        if let Some(promise) = &self.symbols_promise {
-            if let Some(result) = promise.ready() {
-                self.loading_symbols = false;
-
-                self.symbols = result
-                    .symbols
-                    .iter()
-                    .map(|s| -> Symbol { s.clone() })
-                    .collect();
-            }
         }
 
         if self.debug_visible {
