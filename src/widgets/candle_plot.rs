@@ -1,4 +1,7 @@
-use std::cmp::Ordering;
+use crossbeam::channel::{unbounded, Receiver};
+use std::time::Instant;
+use std::{cmp::Ordering, sync::Mutex};
+use std::{thread, time};
 
 use chrono::{prelude::*, Duration};
 use egui::{
@@ -129,18 +132,33 @@ impl GraphLoadingState {
     }
 }
 
-#[derive(Default)]
 pub struct CandlePlot {
     symbol: String,
     klines: Vec<Kline>,
     graph_props: GraphProps,
     graph_loading_state: GraphLoadingState,
     klines_promise: Option<Promise<Vec<Kline>>>,
+    symbol_chan: Receiver<String>,
+}
+
+impl Default for CandlePlot {
+    fn default() -> Self {
+        let (_, r) = unbounded();
+        Self {
+            symbol: Default::default(),
+            klines: Default::default(),
+            graph_props: Default::default(),
+            graph_loading_state: Default::default(),
+            klines_promise: Default::default(),
+            symbol_chan: r,
+        }
+    }
 }
 
 impl CandlePlot {
-    pub fn new() -> Self {
+    pub fn new(symbol_chan: Receiver<String>) -> Self {
         Self {
+            symbol_chan: symbol_chan,
             ..Default::default()
         }
     }
@@ -148,6 +166,18 @@ impl CandlePlot {
 
 impl Widget for &mut CandlePlot {
     fn ui(self, ui: &mut Ui) -> Response {
+        let sym_wrapped = self
+            .symbol_chan
+            .recv_timeout(std::time::Duration::from_millis(10));
+
+        match sym_wrapped {
+            Ok(symbol) => {
+                self.symbol = symbol;
+                self.graph_loading_state = Default::default();
+            }
+            Err(_) => {}
+        }
+
         if self.symbol == "" {
             return ui.label("select symbol");
         }

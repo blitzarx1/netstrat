@@ -1,3 +1,4 @@
+use crossbeam::channel::{unbounded, Sender};
 use egui::{Label, Layout, Response, ScrollArea, TextEdit, Widget, WidgetText};
 use poll_promise::Promise;
 
@@ -15,29 +16,30 @@ pub struct Symbols {
     loading: bool,
     selected_symbol: String,
     symbols_promise: Option<Promise<Info>>,
-    select_callback: Box<FnMut(String)>,
-}
-
-impl Symbols {
-    pub fn new(select_callback: dyn Fn(String)) -> Self {
-        Self {
-            loading: true,
-            symbols_promise: Some(Promise::spawn_async(async { Client::info().await })),
-            select_callback,
-            ..Default::default()
-        }
-    }
+    symbol_chan: Sender<String>,
 }
 
 impl Default for Symbols {
     fn default() -> Self {
+        let (s, _) = unbounded();
         Self {
             symbols: Default::default(),
             filter: Default::default(),
             loading: Default::default(),
             selected_symbol: Default::default(),
             symbols_promise: Default::default(),
-            select_callback: &|_: String| {},
+            symbol_chan: s,
+        }
+    }
+}
+
+impl Symbols {
+    pub fn new(symbol_chan: Sender<String>) -> Self {
+        Self {
+            loading: true,
+            symbols_promise: Some(Promise::spawn_async(async { Client::info().await })),
+            symbol_chan,
+            ..Default::default()
         }
     }
 }
@@ -113,9 +115,9 @@ impl Widget for &mut Symbols {
                                 },
                             );
 
-                            // if label.clicked() {
-                            //     self.candle_plot.plot(s.symbol.clone())
-                            // };
+                            if label.clicked() {
+                                self.symbol_chan.send(s.symbol.clone()).unwrap();
+                            };
                         });
                     })
                 });

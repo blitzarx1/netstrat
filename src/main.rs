@@ -1,5 +1,6 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 
+use crossbeam::channel::unbounded;
 use poll_promise::Promise;
 
 use eframe;
@@ -9,7 +10,7 @@ use egui::{CentralPanel, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visual
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 use widgets::candle_plot::CandlePlot;
-use widgets::symbols::{SymbolConsumer, Symbols};
+use widgets::symbols::Symbols;
 
 mod network;
 mod sources;
@@ -17,26 +18,27 @@ mod widgets;
 use tokio;
 
 struct TemplateApp {
-    candle_plot: Arc<Mutex<CandlePlot>>,
-    symbols: Symbols<'static>,
+    candle_plot: CandlePlot,
+    symbols: Symbols,
     debug_visible: bool,
     dark_mode: bool,
 }
 
 impl TemplateApp {
     fn new(_ctx: &eframe::CreationContext<'_>) -> Self {
-        let plot = Arc::new(Mutex::new(CandlePlot::new()));
+        let (s, r) = unbounded();
+        let plot = CandlePlot::new(r);
         Self {
             dark_mode: true,
             candle_plot: plot,
-            symbols: Symbols::new(&plot),
+            symbols: Symbols::new(s),
             debug_visible: false,
         }
     }
 
     fn render_center_panel(&mut self, ctx: &egui::Context) {
         CentralPanel::default().show(ctx, |ui| {
-            ui.add(Mutex::get_mut(&mut self.candle_plot).unwrap());
+            ui.add(&mut self.candle_plot);
         });
     }
 
