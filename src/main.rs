@@ -1,21 +1,16 @@
-use std::cmp::Ordering;
-
 use poll_promise::Promise;
 
 use eframe;
-use sources::binance::client::{Kline, Symbol};
+use sources::binance::client::Symbol;
 
-use chrono::{prelude::*, Duration};
-use egui::plot::{BoxElem, BoxPlot, BoxSpread, Plot, PlotUi};
 use egui::widgets::Label;
 use egui::{
-    CentralPanel, Color32, Layout, ProgressBar, Response, ScrollArea, SidePanel, Stroke, TextEdit,
-    TopBottomPanel, Ui, Visuals, WidgetText, Window,
+    CentralPanel, Layout, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visuals, WidgetText,
+    Window,
 };
-use sources::binance::interval::Interval;
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
-use widgets::candle_plot::{self, CandlePlot};
+use widgets::candle_plot::CandlePlot;
 
 use crate::sources::binance::client::{Client, Info};
 
@@ -29,11 +24,11 @@ struct TemplateApp {
     graph: CandlePlot,
     filter: FilterProps,
     candle_plot: CandlePlot,
-    pairs: Vec<Symbol>,
-    pairs_loaded: bool,
-    loading_pairs: bool,
-    selected_pair: String,
-    pairs_promise: Option<Promise<Info>>,
+    symbols: Vec<Symbol>,
+    symbols_loaded: bool,
+    loading_symbols: bool,
+    selected_symbol: String,
+    symbols_promise: Option<Promise<Info>>,
     debug_visible: bool,
     dark_mode: bool,
 }
@@ -46,10 +41,10 @@ struct FilterProps {
 
 impl TemplateApp {
     fn new(_ctx: &eframe::CreationContext<'_>) -> Self {
-        let pairs = vec![];
+        let symbols = vec![];
 
         Self {
-            pairs,
+            symbols,
             dark_mode: true,
             candle_plot: CandlePlot::new(),
             ..Default::default()
@@ -87,25 +82,22 @@ impl TemplateApp {
 
     fn render_side_panel(&mut self, ctx: &egui::Context) {
         SidePanel::left("side_panel").show(ctx, |ui| {
-            if self.loading_pairs {
+            if self.loading_symbols {
                 ui.centered_and_justified(|ui| {
                     ui.spinner();
                 });
                 return;
             }
 
-            if !self.pairs_loaded {
-                self.pairs_promise = Some(Promise::spawn_async(async { Client::info().await }));
+            if !self.symbols_loaded {
+                self.symbols_promise = Some(Promise::spawn_async(async { Client::info().await }));
 
-                self.pairs_loaded = !self.pairs_loaded;
-                self.loading_pairs = true;
+                self.symbols_loaded = !self.symbols_loaded;
+                self.loading_symbols = true;
                 return;
             }
 
             ui.with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
-                if ui.button("back").clicked() {
-                    self.pairs_loaded = !self.pairs_loaded;
-                }
                 ui.add_space(5f32);
                 ui.separator();
                 ui.add_space(5f32);
@@ -113,12 +105,12 @@ impl TemplateApp {
                 // render filter
                 ui.add(
                     TextEdit::singleline(&mut self.filter.value)
-                        .hint_text(WidgetText::from("filter pairs").italics()),
+                        .hint_text(WidgetText::from("filter symbols").italics()),
                 );
 
                 // aply filter
                 let filtered: Vec<&Symbol> = self
-                    .pairs
+                    .symbols
                     .iter()
                     .filter(|s| {
                         let match_value = s
@@ -134,22 +126,21 @@ impl TemplateApp {
                 ui.with_layout(Layout::top_down(egui::Align::RIGHT), |ui| {
                     ui.checkbox(&mut self.filter.active_only, "active only");
                     ui.add(Label::new(
-                        WidgetText::from(format!("{}/{}", filtered.len(), self.pairs.len()))
+                        WidgetText::from(format!("{}/{}", filtered.len(), self.symbols.len()))
                             .small(),
                     ));
                 });
 
                 ui.add_space(5f32);
 
-                // render pairs list
+                // render symbols list
                 ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
                             filtered.iter().for_each(|s| {
-                                let symbol_for_klines_request = s.symbol.to_string();
                                 let label = ui.selectable_label(
-                                    s.symbol == self.selected_pair,
+                                    s.symbol == self.selected_symbol,
                                     match s.active() {
                                         true => WidgetText::from(s.symbol.to_string()).strong(),
                                         false => {
@@ -177,11 +168,11 @@ impl eframe::App for TemplateApp {
             ctx.set_visuals(Visuals::light())
         }
 
-        if let Some(promise) = &self.pairs_promise {
+        if let Some(promise) = &self.symbols_promise {
             if let Some(result) = promise.ready() {
-                self.loading_pairs = false;
+                self.loading_symbols = false;
 
-                self.pairs = result
+                self.symbols = result
                     .symbols
                     .iter()
                     .map(|s| -> Symbol { s.clone() })

@@ -7,7 +7,7 @@ use serde_json;
 use crate::network::rest::Rest;
 use crate::sources::binance::interval::Interval;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Client {}
 
 const BASE_URL: &str = "https://api.binance.com";

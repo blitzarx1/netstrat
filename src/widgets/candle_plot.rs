@@ -35,6 +35,7 @@ impl Default for GraphProps {
 
 #[derive(Default, Debug, Clone, Copy)]
 struct GraphLoadingState {
+    triggered: bool,
     initial: GraphProps,
     received: u32,
     pages: u32,
@@ -54,6 +55,7 @@ impl GraphLoadingState {
                 let last_page_limit = (pages_proto.fract() * MAX_LIMIT as f32) as usize;
 
                 GraphLoadingState {
+                    triggered: false,
                     initial: props.clone(),
                     pages,
                     received: 0,
@@ -66,6 +68,7 @@ impl GraphLoadingState {
                 let last_page_limit = (pages_proto.fract() * MAX_LIMIT as f32) as usize;
 
                 GraphLoadingState {
+                    triggered: false,
                     initial: props.clone(),
                     pages,
                     received: 0,
@@ -78,6 +81,7 @@ impl GraphLoadingState {
                 let last_page_limit = (pages_proto.fract() * MAX_LIMIT as f32) as usize;
 
                 GraphLoadingState {
+                    triggered: false,
                     initial: props.clone(),
                     pages,
                     received: 0,
@@ -143,6 +147,7 @@ impl CandlePlot {
 
     pub fn plot(&mut self, symbol: String) {
         self.symbol = symbol;
+        self.graph_loading_state = GraphLoadingState::default()
     }
 }
 
@@ -152,198 +157,190 @@ impl Widget for &mut CandlePlot {
             return ui.label("select symbol");
         }
 
-        return ui.label(format!("{} is selected", self.symbol));
+        if let Some(promise) = &self.klines_promise {
+            if let Some(result) = promise.ready() {
+                self.graph_loading_state.received();
 
-        // self.graph_loading_state = GraphLoadingState::from_graph_props(&self.graph_props);
+                if self.graph_loading_state.received == 1 {
+                    self.klines = result.iter().map(|k| -> Kline { *k }).collect();
+                }
 
-        // let interval = self.graph_props.interval.clone();
-        // let start = self
-        //     .graph_loading_state
-        //     .left_edge()
-        //     .timestamp_millis()
-        //     .clone();
+                self.klines_promise = None;
 
-        // let mut limit = self.graph_props.limit.clone();
-        // if self.graph_loading_state.is_last_page() {
-        //     limit = self.graph_loading_state.last_page_limit;
-        // }
+                if !self.graph_loading_state.is_finished() {
+                    let start = self
+                        .graph_loading_state
+                        .left_edge()
+                        .timestamp_millis()
+                        .clone();
 
-        // self.klines_promise = Some(Promise::spawn_async(async move {
-        //     Client::kline(symbol_for_klines_request, interval, start, limit).await
-        // }));
-        // self.selected_pair = s.symbol.to_string();
+                    let symbol = self.symbol.to_string();
+                    let interval = self.graph_props.interval.clone();
+                    let mut limit = self.graph_props.limit.clone();
+                    if self.graph_loading_state.is_last_page() {
+                        limit = self.graph_loading_state.last_page_limit
+                    }
 
-        // if let Some(promise) = &self.klines_promise {
-        //     if let Some(result) = promise.ready() {
-        //         self.graph_loading_state.received();
+                    self.klines_promise = Some(Promise::spawn_async(async move {
+                        Client::kline(symbol, interval, start, limit).await
+                    }));
+                }
+            }
+        } else if !self.graph_loading_state.triggered {
+            self.graph_loading_state = GraphLoadingState::from_graph_props(&self.graph_props);
+            self.graph_loading_state.triggered = true;
 
-        //         if self.graph_loading_state.received == 1 {
-        //             self.klines = result.iter().map(|k| -> Kline { *k }).collect();
-        //         }
+            let interval = self.graph_props.interval.clone();
+            let start = self
+                .graph_loading_state
+                .left_edge()
+                .timestamp_millis()
+                .clone();
 
-        //         self.klines_promise = None;
+            let mut limit = self.graph_props.limit.clone();
+            if self.graph_loading_state.is_last_page() {
+                limit = self.graph_loading_state.last_page_limit;
+            }
 
-        //         if !self.graph_loading_state.is_finished() {
-        //             let start = self
-        //                 .graph_loading_state
-        //                 .left_edge()
-        //                 .timestamp_millis()
-        //                 .clone();
+            let symbol = self.symbol.to_string();
 
-        //             let pair = self.selected_pair.to_string();
-        //             let interval = self.graph_props.interval.clone();
-        //             let mut limit = self.graph_props.limit.clone();
-        //             if self.graph_loading_state.is_last_page() {
-        //                 limit = self.graph_loading_state.last_page_limit
-        //             }
+            self.klines_promise = Some(Promise::spawn_async(async move {
+                Client::kline(symbol, interval, start, limit).await
+            }));
+        }
 
-        //             self.klines_promise = Some(Promise::spawn_async(async move {
-        //                 Client::kline(pair, interval, start, limit).await
-        //             }));
-        //         }
-        //     }
-        // }
+        if !self.graph_loading_state.is_finished() {
+            return ui
+                .centered_and_justified(|ui| {
+                    ui.add(
+                        ProgressBar::new(self.graph_loading_state.progress())
+                            .show_percentage()
+                            .animate(true),
+                    )
+                })
+                .response;
+        }
 
-        // if !self.graph_loading_state.is_finished() {
-        //     ui.centered_and_justified(|ui| {
-        //         ui.add(
-        //             ProgressBar::new(self.graph_loading_state.progress())
-        //                 .show_percentage()
-        //                 .animate(true),
-        //         )
-        //     });
-        // }
+        let max_y_kline = self
+            .klines
+            .iter()
+            .max_by(|l, r| {
+                if l.close > r.close {
+                    return Ordering::Greater;
+                }
 
-        // if self.graph_loading_state.is_finished() && self.klines.len() > 0 {
-        //     let max_y_kline = self
-        //         .klines
-        //         .iter()
-        //         .max_by(|l, r| {
-        //             if l.close > r.close {
-        //                 return Ordering::Greater;
-        //             }
+                Ordering::Less
+            })
+            .unwrap();
+        let max_x_kline = &self.klines[self.klines.len() - 1];
 
-        //             Ordering::Less
-        //         })
-        //         .unwrap();
-        //     let max_x_kline = &self.klines[self.klines.len() - 1];
+        Window::new(self.symbol.to_string()).show(ui.ctx(), |ui| {
+            ui.collapsing("time period", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(
+                        egui_extras::DatePickerButton::new(&mut self.graph_props.date_start)
+                            .id_source("datepicker_start"),
+                    );
+                    ui.label("date start");
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(
+                        egui_extras::DatePickerButton::new(&mut self.graph_props.date_end)
+                            .id_source("datepicker_end"),
+                    );
+                    ui.label("date end");
+                });
+            });
+            ui.collapsing("interval", |ui| {
+                egui::ComboBox::from_label("pick data interval")
+                    .selected_text(format!("{:?}", self.graph_props.interval))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.graph_props.interval, Interval::Day, "Day");
+                        ui.selectable_value(&mut self.graph_props.interval, Interval::Hour, "Hour");
+                        ui.selectable_value(
+                            &mut self.graph_props.interval,
+                            Interval::Minute,
+                            "Minute",
+                        );
+                    });
+            });
+            ui.add_space(5f32);
+            if ui.button("apply").clicked() {
+                self.graph_loading_state = GraphLoadingState::from_graph_props(&self.graph_props);
+                self.graph_loading_state.triggered = true;
 
-        //     Window::new(self.selected_pair.to_string()).show(ctx, |ui| {
-        //         ui.collapsing("time period", |ui| {
-        //             ui.horizontal_wrapped(|ui| {
-        //                 ui.add(
-        //                     egui_extras::DatePickerButton::new(&mut self.graph_props.date_start)
-        //                         .id_source("datepicker_start"),
-        //                 );
-        //                 ui.label("date start");
-        //             });
-        //             ui.horizontal_wrapped(|ui| {
-        //                 ui.add(
-        //                     egui_extras::DatePickerButton::new(&mut self.graph_props.date_end)
-        //                         .id_source("datepicker_end"),
-        //                 );
-        //                 ui.label("date end");
-        //             });
-        //         });
-        //         ui.collapsing("interval", |ui| {
-        //             egui::ComboBox::from_label("pick data interval")
-        //                 .selected_text(format!("{:?}", self.graph_props.interval))
-        //                 .show_ui(ui, |ui| {
-        //                     ui.selectable_value(
-        //                         &mut self.graph_props.interval,
-        //                         Interval::Day,
-        //                         "Day",
-        //                     );
-        //                     ui.selectable_value(
-        //                         &mut self.graph_props.interval,
-        //                         Interval::Hour,
-        //                         "Hour",
-        //                     );
-        //                     ui.selectable_value(
-        //                         &mut self.graph_props.interval,
-        //                         Interval::Minute,
-        //                         "Minute",
-        //                     );
-        //                 });
-        //         });
-        //         ui.add_space(5f32);
-        //         if ui.button("apply").clicked() {
-        //             self.graph_loading_state =
-        //                 GraphLoadingState::from_graph_props(&self.graph_props);
+                let start = self
+                    .graph_props
+                    .date_start
+                    .and_hms(0, 0, 0)
+                    .timestamp_millis()
+                    .clone();
+                let pair = self.symbol.to_string();
+                let interval = self.graph_props.interval.clone();
+                let mut limit = self.graph_props.limit.clone();
 
-        //             let start = self
-        //                 .graph_props
-        //                 .date_start
-        //                 .and_hms(0, 0, 0)
-        //                 .timestamp_millis()
-        //                 .clone();
-        //             let pair = self.selected_pair.to_string();
-        //             let interval = self.graph_props.interval.clone();
-        //             let mut limit = self.graph_props.limit.clone();
+                if self.graph_loading_state.is_last_page() {
+                    limit = self.graph_loading_state.last_page_limit
+                }
 
-        //             if self.graph_loading_state.is_last_page() {
-        //                 limit = self.graph_loading_state.last_page_limit
-        //             }
+                self.klines_promise = Some(Promise::spawn_async(async move {
+                    Client::kline(pair, interval, start, limit).await
+                }));
+            }
+        });
 
-        //             self.klines_promise = Some(Promise::spawn_async(async move {
-        //                 Client::kline(pair, interval, start, limit).await
-        //             }));
-        //         }
-        //     });
+        let box_data: Vec<BoxElem> = self
+            .klines
+            .iter()
+            .map(|k| -> BoxElem {
+                BoxElem::new(
+                    (k.t_open + k.t_close) as f64 / 2.0,
+                    BoxSpread::new(
+                        k.low as f64,
+                        {
+                            match k.open > k.close {
+                                true => k.close as f64,
+                                false => k.open as f64,
+                            }
+                        },
+                        ((k.open + k.close) / 2.0) as f64,
+                        {
+                            match k.open > k.close {
+                                true => k.open as f64,
+                                false => k.close as f64,
+                            }
+                        },
+                        k.high as f64,
+                    ),
+                )
+                .name(format_datetime((k.t_close as f64 / 1000f64) as i64))
+                .stroke(Stroke::new(1.0, {
+                    if k.open < k.close {
+                        Color32::LIGHT_GREEN
+                    } else {
+                        Color32::LIGHT_RED
+                    }
+                }))
+                .fill({
+                    if k.open < k.close {
+                        Color32::LIGHT_GREEN.linear_multiply(0.5)
+                    } else {
+                        Color32::LIGHT_RED.linear_multiply(0.5)
+                    }
+                })
+                .whisker_width(0.0)
+                .box_width((k.t_open - k.t_close) as f64)
+            })
+            .collect();
 
-        //     let box_data: Vec<BoxElem> = self
-        //         .klines
-        //         .iter()
-        //         .map(|k| -> BoxElem {
-        //             BoxElem::new(
-        //                 (k.t_open + k.t_close) as f64 / 2.0,
-        //                 BoxSpread::new(
-        //                     k.low as f64,
-        //                     {
-        //                         match k.open > k.close {
-        //                             true => k.close as f64,
-        //                             false => k.open as f64,
-        //                         }
-        //                     },
-        //                     ((k.open + k.close) / 2.0) as f64,
-        //                     {
-        //                         match k.open > k.close {
-        //                             true => k.open as f64,
-        //                             false => k.close as f64,
-        //                         }
-        //                     },
-        //                     k.high as f64,
-        //                 ),
-        //             )
-        //             .name(format_datetime((k.t_close as f64 / 1000f64) as i64))
-        //             .stroke(Stroke::new(1.0, {
-        //                 if k.open < k.close {
-        //                     Color32::LIGHT_GREEN
-        //                 } else {
-        //                     Color32::LIGHT_RED
-        //                 }
-        //             }))
-        //             .fill({
-        //                 if k.open < k.close {
-        //                     Color32::LIGHT_GREEN.linear_multiply(0.5)
-        //                 } else {
-        //                     Color32::LIGHT_RED.linear_multiply(0.5)
-        //                 }
-        //             })
-        //             .whisker_width(0.0)
-        //             .box_width((k.t_open - k.t_close) as f64)
-        //         })
-        //         .collect();
-
-        //     Plot::new("box plot")
-        //         .x_axis_formatter(|v, _range| format_datetime((v / 1000f64) as i64))
-        //         .include_x(max_x_kline.t_close as f64)
-        //         .include_y(max_y_kline.close)
-        //         .show(ui, |plot_ui| {
-        //             plot_ui.box_plot(BoxPlot::new(box_data).vertical());
-        //         })
-        //         .response
-        // }
+        Plot::new("box plot")
+            .x_axis_formatter(|v, _range| format_datetime((v / 1000f64) as i64))
+            .include_x(max_x_kline.t_close as f64)
+            .include_y(max_y_kline.close)
+            .show(ui, |plot_ui| {
+                plot_ui.box_plot(BoxPlot::new(box_data).vertical());
+            })
+            .response
     }
 }
 
