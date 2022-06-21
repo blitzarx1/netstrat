@@ -326,7 +326,7 @@ impl Widget for &mut CandlePlot {
                                 false => k.open as f64,
                             }
                         },
-                        ((k.open + k.close) / 2.0) as f64,
+                        k.open as f64, // we don't need to see median for candle
                         {
                             match k.open > k.close {
                                 true => k.open as f64,
