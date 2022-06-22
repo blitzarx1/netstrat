@@ -3,7 +3,7 @@ use std::ops::RangeInclusive;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use egui::{
     plot::{Bar, BarChart, LinkedAxisGroup, Plot},
-    Color32, PointerState, Widget,
+    Color32, Widget,
 };
 
 use super::data::Data;
