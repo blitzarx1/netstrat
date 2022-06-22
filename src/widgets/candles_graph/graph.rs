@@ -1,9 +1,10 @@
 use crossbeam::channel::{unbounded, Receiver};
 use std::cmp::Ordering;
+use tracing_subscriber::field::debug;
 
 use chrono::{prelude::*, Duration};
 use egui::{
-    plot::{BoxElem, BoxPlot, BoxSpread, Plot},
+    plot::{Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Plot},
     Color32, ProgressBar, Response, Stroke, Ui, Widget, Window,
 };
 use poll_promise::Promise;
@@ -12,6 +13,8 @@ use crate::sources::binance::{
     client::{Client, Kline},
     interval::Interval,
 };
+
+use super::{candles::Candles, volume::Volume};
 
 static MAX_LIMIT: u32 = 1000;
 
@@ -110,7 +113,7 @@ impl GraphLoadingState {
         self.initial.date_start.and_hms(0, 0, 0) + covered
     }
 
-    fn received(&mut self) {
+    fn inc_received(&mut self) {
         self.received += 1;
     }
 
@@ -130,7 +133,9 @@ impl GraphLoadingState {
     }
 }
 
-pub struct CandlePlot {
+pub struct Graph {
+    candles: Candles,
+    volume: Volume,
     symbol: String,
     klines: Vec<Kline>,
     graph_props: GraphProps,
@@ -139,10 +144,12 @@ pub struct CandlePlot {
     symbol_chan: Receiver<String>,
 }
 
-impl Default for CandlePlot {
+impl Default for Graph {
     fn default() -> Self {
         let (_, r) = unbounded();
         Self {
+            candles: Default::default(),
+            volume: Default::default(),
             symbol: Default::default(),
             klines: Default::default(),
             graph_props: Default::default(),
@@ -153,7 +160,7 @@ impl Default for CandlePlot {
     }
 }
 
-impl CandlePlot {
+impl Graph {
     pub fn new(symbol_chan: Receiver<String>) -> Self {
         Self {
             symbol_chan: symbol_chan,
@@ -162,7 +169,7 @@ impl CandlePlot {
     }
 }
 
-impl Widget for &mut CandlePlot {
+impl Widget for &mut Graph {
     fn ui(self, ui: &mut Ui) -> Response {
         let sym_wrapped = self
             .symbol_chan
@@ -182,10 +189,16 @@ impl Widget for &mut CandlePlot {
 
         if let Some(promise) = &self.klines_promise {
             if let Some(result) = promise.ready() {
-                self.graph_loading_state.received();
+                if self.graph_loading_state.received == 0 {
+                    self.klines = vec![];
+                }
 
-                if self.graph_loading_state.received == 1 {
-                    self.klines = result.iter().map(|k| -> Kline { *k }).collect();
+                self.graph_loading_state.inc_received();
+
+                if self.graph_loading_state.received > 1 {
+                    result.iter().for_each(|k| {
+                        self.klines.push(*k);
+                    });
                 }
 
                 self.klines_promise = None;
@@ -356,12 +369,23 @@ impl Widget for &mut CandlePlot {
             })
             .collect();
 
+        let bar_chart_data: Vec<Bar> = self
+            .klines
+            .iter()
+            .map(|k| {
+                Bar::new((k.t_open + k.t_close) as f64 / 2.0, k.volume as f64)
+                    .width((k.t_open - k.t_close) as f64 * 0.9)
+                    .fill(Color32::LIGHT_GREEN.linear_multiply(0.5))
+            })
+            .collect();
+
         Plot::new("box plot")
             .x_axis_formatter(|v, _range| format_datetime((v / 1000f64) as i64))
             .include_x(max_x_kline.t_close as f64)
             .include_y(max_y_kline.close)
             .show(ui, |plot_ui| {
                 plot_ui.box_plot(BoxPlot::new(box_data).vertical());
+                // plot_ui.bar_chart(BarChart::new(bar_chart_data).vertical());
             })
             .response
     }

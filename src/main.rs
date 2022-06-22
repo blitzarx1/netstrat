@@ -5,7 +5,7 @@ use eframe;
 use egui::{CentralPanel, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visuals, Window};
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
-use widgets::candle_plot::CandlePlot;
+use widgets::candles_graph::graph::Graph;
 use widgets::symbols::Symbols;
 
 mod network;
@@ -14,7 +14,7 @@ mod widgets;
 use tokio;
 
 struct TemplateApp {
-    candle_plot: CandlePlot,
+    candle_plot: Graph,
     symbols: Symbols,
     debug_visible: bool,
     dark_mode: bool,
@@ -23,7 +23,7 @@ struct TemplateApp {
 impl TemplateApp {
     fn new(_ctx: &eframe::CreationContext<'_>) -> Self {
         let (s, r) = unbounded();
-        let plot = CandlePlot::new(r);
+        let plot = Graph::new(r);
         Self {
             dark_mode: true,
             candle_plot: plot,

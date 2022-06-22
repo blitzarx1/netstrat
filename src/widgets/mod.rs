@@ -1,2 +1,2 @@
-pub mod candle_plot;
+pub mod candles_graph;
 pub mod symbols;
