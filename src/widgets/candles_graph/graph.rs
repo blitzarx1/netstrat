@@ -167,11 +167,11 @@ impl Graph {
 
 impl Widget for &mut Graph {
     fn ui(self, ui: &mut Ui) -> Response {
-        let sym_wrapped = self
+        let symbol_wrapped = self
             .symbol_chan
             .recv_timeout(std::time::Duration::from_millis(10));
 
-        match sym_wrapped {
+        match symbol_wrapped {
             Ok(symbol) => {
                 self.symbol = symbol;
                 self.graph_loading_state = Default::default();
