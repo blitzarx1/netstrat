@@ -101,7 +101,6 @@ impl Widget for &mut Symbols {
 
             ui.add_space(5f32);
 
-            // render symbols list
             ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
