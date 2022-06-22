@@ -52,7 +52,7 @@ impl Widget for &Volume {
             .x_axis_formatter(|v: f64, _: &RangeInclusive<f64>| format_ts(v))
             .label_formatter(|_, v| format!("{}", format_ts(v.x)))
             .include_x(self.data.max_x())
-            .include_y(self.data.max_y())
+            .include_y(self.data.max_vol())
             .allow_scroll(false)
             .allow_boxed_zoom(false)
             .allow_drag(false)
