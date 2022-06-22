@@ -1,7 +1,5 @@
 use std::cmp::Ordering;
 
-use chrono::{DateTime, NaiveDateTime, Utc};
-
 use crate::sources::binance::client::Kline;
 
 #[derive(Default, Clone)]

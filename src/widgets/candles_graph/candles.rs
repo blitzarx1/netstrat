@@ -1,11 +1,10 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use egui::{
     plot::{BoxElem, BoxPlot, BoxSpread, LinkedAxisGroup, Plot},
-    Color32, Link, Response, Stroke, Widget,
+    Color32, Response, Stroke, Widget,
 };
 
 use super::data::Data;
-use crate::sources::binance::client::Kline;
 
 #[derive(Clone)]
 pub struct Candles {

@@ -117,6 +117,7 @@ impl Widget for &mut Symbols {
 
                             if label.clicked() {
                                 self.symbol_chan.send(s.symbol.clone()).unwrap();
+                                self.selected_symbol = s.symbol.clone();
                             };
                         });
                     })
