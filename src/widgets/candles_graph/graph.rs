@@ -14,7 +14,7 @@ use crate::sources::binance::{
     interval::Interval,
 };
 
-use super::{candles::Candles, volume::Volume};
+use super::{candles::Candles, data::Data, volume::Volume};
 
 static MAX_LIMIT: u32 = 1000;
 
@@ -195,7 +195,7 @@ impl Widget for &mut Graph {
 
                 self.graph_loading_state.inc_received();
 
-                if self.graph_loading_state.received > 1 {
+                if self.graph_loading_state.received > 0 {
                     result.iter().for_each(|k| {
                         self.klines.push(*k);
                     });
@@ -203,23 +203,30 @@ impl Widget for &mut Graph {
 
                 self.klines_promise = None;
 
-                if !self.graph_loading_state.is_finished() {
-                    let start = self
-                        .graph_loading_state
-                        .left_edge()
-                        .timestamp_millis()
-                        .clone();
-
-                    let symbol = self.symbol.to_string();
-                    let interval = self.graph_props.interval.clone();
-                    let mut limit = self.graph_props.limit.clone();
-                    if self.graph_loading_state.is_last_page() {
-                        limit = self.graph_loading_state.last_page_limit
+                match self.graph_loading_state.is_finished() {
+                    true => {
+                        let data = Data::new(self.klines.clone());
+                        self.volume = Volume::new(data.clone());
+                        self.candles = Candles::new(data);
                     }
+                    false => {
+                        let start = self
+                            .graph_loading_state
+                            .left_edge()
+                            .timestamp_millis()
+                            .clone();
 
-                    self.klines_promise = Some(Promise::spawn_async(async move {
-                        Client::kline(symbol, interval, start, limit).await
-                    }));
+                        let symbol = self.symbol.to_string();
+                        let interval = self.graph_props.interval.clone();
+                        let mut limit = self.graph_props.limit.clone();
+                        if self.graph_loading_state.is_last_page() {
+                            limit = self.graph_loading_state.last_page_limit
+                        }
+
+                        self.klines_promise = Some(Promise::spawn_async(async move {
+                            Client::kline(symbol, interval, start, limit).await
+                        }));
+                    }
                 }
             }
         } else if !self.graph_loading_state.triggered {
@@ -256,19 +263,6 @@ impl Widget for &mut Graph {
                 })
                 .response;
         }
-
-        let max_y_kline = self
-            .klines
-            .iter()
-            .max_by(|l, r| {
-                if l.close > r.close {
-                    return Ordering::Greater;
-                }
-
-                Ordering::Less
-            })
-            .unwrap();
-        let max_x_kline = &self.klines[self.klines.len() - 1];
 
         Window::new(self.symbol.to_string()).show(ui.ctx(), |ui| {
             ui.collapsing("time period", |ui| {
@@ -325,69 +319,8 @@ impl Widget for &mut Graph {
             }
         });
 
-        let box_data: Vec<BoxElem> = self
-            .klines
-            .iter()
-            .map(|k| -> BoxElem {
-                BoxElem::new(
-                    (k.t_open + k.t_close) as f64 / 2.0,
-                    BoxSpread::new(
-                        k.low as f64,
-                        {
-                            match k.open > k.close {
-                                true => k.close as f64,
-                                false => k.open as f64,
-                            }
-                        },
-                        k.open as f64, // we don't need to see median for candle
-                        {
-                            match k.open > k.close {
-                                true => k.open as f64,
-                                false => k.close as f64,
-                            }
-                        },
-                        k.high as f64,
-                    ),
-                )
-                .name(format_datetime((k.t_close as f64 / 1000f64) as i64))
-                .stroke(Stroke::new(1.0, {
-                    if k.open < k.close {
-                        Color32::LIGHT_GREEN
-                    } else {
-                        Color32::LIGHT_RED
-                    }
-                }))
-                .fill({
-                    if k.open < k.close {
-                        Color32::LIGHT_GREEN.linear_multiply(0.5)
-                    } else {
-                        Color32::LIGHT_RED.linear_multiply(0.5)
-                    }
-                })
-                .whisker_width(0.0)
-                .box_width((k.t_open - k.t_close) as f64 * 0.9)
-            })
-            .collect();
-
-        let bar_chart_data: Vec<Bar> = self
-            .klines
-            .iter()
-            .map(|k| {
-                Bar::new((k.t_open + k.t_close) as f64 / 2.0, k.volume as f64)
-                    .width((k.t_open - k.t_close) as f64 * 0.9)
-                    .fill(Color32::LIGHT_GREEN.linear_multiply(0.5))
-            })
-            .collect();
-
-        Plot::new("box plot")
-            .x_axis_formatter(|v, _range| format_datetime((v / 1000f64) as i64))
-            .include_x(max_x_kline.t_close as f64)
-            .include_y(max_y_kline.close)
-            .show(ui, |plot_ui| {
-                plot_ui.box_plot(BoxPlot::new(box_data).vertical());
-                // plot_ui.bar_chart(BarChart::new(bar_chart_data).vertical());
-            })
-            .response
+        ui.add(&self.volume)
+        // ui.add(&self.candles)
     }
 }
 
