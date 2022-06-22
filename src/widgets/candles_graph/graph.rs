@@ -1,9 +1,7 @@
 use crossbeam::channel::{unbounded, Receiver};
 
 use chrono::{prelude::*, Duration};
-use egui::{
-    plot::LinkedAxisGroup, Align, CentralPanel, Layout, ProgressBar, Response, Ui, Widget, Window,
-};
+use egui::{plot::LinkedAxisGroup, ProgressBar, Response, Ui, Widget, Window};
 use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
 

@@ -82,12 +82,25 @@ impl Widget for &Candles {
     fn ui(self, ui: &mut egui::Ui) -> Response {
         Plot::new("candles")
             .link_axis(self.axes_group.clone())
-            .label_formatter(|_, v| format!("{}\n{}", format_ts(v.x), v.y))
+            .label_formatter(|_, v| format!("{}", format_ts(v.x)))
             .x_axis_formatter(|v, _range| format_ts(v))
             .include_x(self.data.max_x())
             .include_y(self.data.max_y())
             .show(ui, |plot_ui| {
-                plot_ui.box_plot(BoxPlot::new(self.val.clone()).vertical());
+                plot_ui.box_plot(
+                    BoxPlot::new(self.val.clone())
+                        .element_formatter(Box::new(|el, _| -> String {
+                            format!(
+                                "open: {:.8}\nclose: {:.8}\nhigh: {:.8}\nlow: {:.8}\n{}",
+                                el.spread.quartile1,
+                                el.spread.quartile3,
+                                el.spread.upper_whisker,
+                                el.spread.lower_whisker,
+                                format_ts(el.argument),
+                            )
+                        }))
+                        .vertical(),
+                );
             })
             .response
     }
