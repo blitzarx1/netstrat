@@ -1,5 +1,7 @@
 use std::cmp::Ordering;
 
+use tracing::debug;
+
 use crate::sources::binance::client::Kline;
 
 #[derive(Default, Clone)]
@@ -14,16 +16,18 @@ impl Data {
         let max_y = vals
             .iter()
             .max_by(|l, r| {
-                if l.close > r.close {
+                if l.high > r.high {
                     return Ordering::Greater;
                 }
 
                 Ordering::Less
             })
             .unwrap()
-            .close as f64;
+            .high as f64;
 
         let max_x = vals[vals.len() - 1].t_close as f64;
+
+        debug!("computed max_x: {} and max_y: {}", max_x, max_y);
 
         Self { vals, max_x, max_y }
     }

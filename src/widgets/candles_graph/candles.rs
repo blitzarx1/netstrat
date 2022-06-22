@@ -3,6 +3,9 @@ use egui::{
     plot::{BoxElem, BoxPlot, BoxSpread, LinkedAxisGroup, Plot},
     Color32, Response, Stroke, Widget,
 };
+use futures::SinkExt;
+
+use crate::sources::binance::client::Kline;
 
 use super::data::Data;
 
@@ -50,20 +53,8 @@ impl Candles {
                     ),
                 )
                 .name(format_ts(k.t_close as f64))
-                .stroke(Stroke::new(1.0, {
-                    if k.open < k.close {
-                        Color32::LIGHT_GREEN
-                    } else {
-                        Color32::LIGHT_RED
-                    }
-                }))
-                .fill({
-                    if k.open < k.close {
-                        Color32::LIGHT_GREEN.linear_multiply(0.5)
-                    } else {
-                        Color32::LIGHT_RED.linear_multiply(0.5)
-                    }
-                })
+                .stroke(Stroke::new(1.0, k_color(k)))
+                .fill(k_color(k))
                 .whisker_width(0.0)
                 .box_width((k.t_open - k.t_close) as f64 * 0.9)
             })
@@ -88,11 +79,21 @@ impl Widget for &Candles {
             .show(ui, |plot_ui| {
                 plot_ui.box_plot(
                     BoxPlot::new(self.val.clone())
-                        .element_formatter(Box::new(|el, _| -> String {
+                        .element_formatter(Box::new(|el, p| -> String {
                             format!(
                                 "open: {:.8}\nclose: {:.8}\nhigh: {:.8}\nlow: {:.8}\n{}",
-                                el.spread.quartile1,
-                                el.spread.quartile3,
+                                {
+                                    match el.fill == Color32::LIGHT_RED {
+                                        true => el.spread.quartile3,
+                                        false => el.spread.quartile1,
+                                    }
+                                },
+                                {
+                                    match el.fill == Color32::LIGHT_RED {
+                                        true => el.spread.quartile1,
+                                        false => el.spread.quartile3,
+                                    }
+                                },
                                 el.spread.upper_whisker,
                                 el.spread.lower_whisker,
                                 format_ts(el.argument),
@@ -111,4 +112,11 @@ fn format_ts(ts: f64) -> String {
     let datetime: DateTime<Utc> = DateTime::from_utc(naive, Utc);
 
     datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+fn k_color(k: &Kline) -> Color32 {
+    match k.open > k.close {
+        true => Color32::LIGHT_RED,
+        false => Color32::LIGHT_GREEN,
+    }
 }
