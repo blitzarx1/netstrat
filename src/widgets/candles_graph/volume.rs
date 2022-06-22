@@ -37,7 +37,13 @@ impl Widget for &Volume {
             .include_x(self.data.max_x())
             .include_y(self.data.max_y())
             .show(ui, |plot_ui| {
-                plot_ui.bar_chart(BarChart::new(self.val.clone()).vertical());
+                plot_ui.bar_chart(
+                    BarChart::new(self.val.clone())
+                        .element_formatter(Box::new(|b, _| {
+                            format!("{}\n{}", format_ts(b.argument), b.value)
+                        }))
+                        .vertical(),
+                );
             })
             .response
     }

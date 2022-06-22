@@ -1,12 +1,7 @@
 use crossbeam::channel::{unbounded, Receiver};
-use std::cmp::Ordering;
-use tracing_subscriber::field::debug;
 
 use chrono::{prelude::*, Duration};
-use egui::{
-    plot::{Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Plot},
-    Color32, ProgressBar, Response, Stroke, Ui, Widget, Window,
-};
+use egui::{ProgressBar, Response, Ui, Widget, Window};
 use poll_promise::Promise;
 
 use crate::sources::binance::{
