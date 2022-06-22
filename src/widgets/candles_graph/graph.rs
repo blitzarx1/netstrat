@@ -1,7 +1,10 @@
 use crossbeam::channel::{unbounded, Receiver};
 
 use chrono::{prelude::*, Duration};
-use egui::{ProgressBar, Response, Ui, Widget, Window};
+use egui::{
+    plot::LinkedAxisGroup, Align, CentralPanel, Layout, ProgressBar, Response, Ui, Widget, Window,
+};
+use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
 
 use crate::sources::binance::{
@@ -201,8 +204,9 @@ impl Widget for &mut Graph {
                 match self.graph_loading_state.is_finished() {
                     true => {
                         let data = Data::new(self.klines.clone());
-                        self.volume = Volume::new(data.clone());
-                        self.candles = Candles::new(data);
+                        let axes_group = LinkedAxisGroup::new(true, false);
+                        self.volume = Volume::new(data.clone(), axes_group.clone());
+                        self.candles = Candles::new(data, axes_group);
                     }
                     false => {
                         let start = self
@@ -314,14 +318,16 @@ impl Widget for &mut Graph {
             }
         });
 
-        ui.add(&self.volume)
-        // ui.add(&self.candles)
+        StripBuilder::new(ui)
+            .size(Size::relative(0.8))
+            .size(Size::relative(0.2))
+            .vertical(|mut strip| {
+                strip.cell(|ui| {
+                    ui.add(&self.candles);
+                });
+                strip.cell(|ui| {
+                    ui.add(&self.volume);
+                });
+            })
     }
-}
-
-fn format_datetime(ts: i64) -> String {
-    let naive = NaiveDateTime::from_timestamp(ts, 0);
-    let datetime: DateTime<Utc> = DateTime::from_utc(naive, Utc);
-
-    datetime.format("%Y-%m-%d %H:%M:%S").to_string()
 }

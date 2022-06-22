@@ -1,20 +1,31 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use egui::{
-    plot::{BoxElem, BoxPlot, BoxSpread, Plot},
-    Color32, Response, Stroke, Widget,
+    plot::{BoxElem, BoxPlot, BoxSpread, LinkedAxisGroup, Plot},
+    Color32, Link, Response, Stroke, Widget,
 };
 
 use super::data::Data;
 use crate::sources::binance::client::Kline;
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct Candles {
     data: Data,
     val: Vec<BoxElem>,
+    axes_group: LinkedAxisGroup,
+}
+
+impl Default for Candles {
+    fn default() -> Self {
+        Self {
+            data: Default::default(),
+            val: Default::default(),
+            axes_group: LinkedAxisGroup::new(false, false),
+        }
+    }
 }
 
 impl Candles {
-    pub fn new(data: Data) -> Self {
+    pub fn new(data: Data, axes_group: LinkedAxisGroup) -> Self {
         let val: Vec<BoxElem> = data
             .vals
             .iter()
@@ -59,13 +70,19 @@ impl Candles {
             })
             .collect();
 
-        Self { data, val }
+        Self {
+            data,
+            val,
+            axes_group,
+        }
     }
 }
 
 impl Widget for &Candles {
     fn ui(self, ui: &mut egui::Ui) -> Response {
-        Plot::new("box plot")
+        Plot::new("candles")
+            .link_axis(self.axes_group.clone())
+            .label_formatter(|_, v| format!("{}\n{}", format_ts(v.x), v.y))
             .x_axis_formatter(|v, _range| format_ts(v))
             .include_x(self.data.max_x())
             .include_y(self.data.max_y())
