@@ -52,9 +52,9 @@ impl Candles {
                         k.high as f64,
                     ),
                 )
-                .name(format_ts(k.t_close as f64))
-                .stroke(Stroke::new(1.0, k_color(k)))
-                .fill(k_color(k))
+                .name(Data::format_ts(k.t_close as f64))
+                .stroke(Stroke::new(1.0, Data::k_color(k)))
+                .fill(Data::k_color(k))
                 .whisker_width(0.0)
                 .box_width((k.t_open - k.t_close) as f64 * 0.9)
             })
@@ -72,8 +72,8 @@ impl Widget for &Candles {
     fn ui(self, ui: &mut egui::Ui) -> Response {
         Plot::new("candles")
             .link_axis(self.axes_group.clone())
-            .label_formatter(|_, v| format!("{}", format_ts(v.x)))
-            .x_axis_formatter(|v, _range| format_ts(v))
+            .label_formatter(|_, v| -> String { format!("{}", Data::format_ts(v.x)) })
+            .x_axis_formatter(|v, _range| Data::format_ts(v))
             .include_x(self.data.max_x())
             .include_y(self.data.max_y())
             .show(ui, |plot_ui| {
@@ -96,27 +96,12 @@ impl Widget for &Candles {
                                 },
                                 el.spread.upper_whisker,
                                 el.spread.lower_whisker,
-                                format_ts(el.argument),
+                                Data::format_ts(el.argument),
                             )
                         }))
                         .vertical(),
                 );
             })
             .response
-    }
-}
-
-fn format_ts(ts: f64) -> String {
-    let secs = (ts / 1000f64) as i64;
-    let naive = NaiveDateTime::from_timestamp(secs, 0);
-    let datetime: DateTime<Utc> = DateTime::from_utc(naive, Utc);
-
-    datetime.format("%Y-%m-%d %H:%M:%S").to_string()
-}
-
-fn k_color(k: &Kline) -> Color32 {
-    match k.open > k.close {
-        true => Color32::LIGHT_RED,
-        false => Color32::LIGHT_GREEN,
     }
 }

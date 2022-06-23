@@ -1,8 +1,9 @@
 use crossbeam::channel::unbounded;
 
-use eframe;
+use eframe::{run_native, NativeOptions};
 
 use egui::{CentralPanel, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visuals, Window};
+use tracing::subscriber::set_global_default;
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 use widgets::candles_graph::graph::Graph;
@@ -98,24 +99,21 @@ impl eframe::App for TemplateApp {
     }
 }
 
+fn init_tracing() {
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::DEBUG)
+        .finish();
+
+    set_global_default(subscriber).expect("failed to set default tracing subscriber");
+}
+
 #[tokio::main]
 async fn main() {
-    let native_options = eframe::NativeOptions::default();
-    eframe::run_native(
+    init_tracing();
+
+    run_native(
         "hedgegraph",
-        native_options,
-        Box::new(|cc| {
-            let a = TemplateApp::new(cc);
-
-            let subscriber = FmtSubscriber::builder()
-                .with_max_level(Level::DEBUG)
-                .finish();
-
-            tracing::subscriber::set_global_default(subscriber)
-                .expect("setting default subscriber failed");
-
-            info!("tracing inited");
-            Box::new(a)
-        }),
+        NativeOptions::default(),
+        Box::new(|cc| Box::new(TemplateApp::new(cc))),
     );
 }

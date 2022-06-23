@@ -1,5 +1,7 @@
 use std::cmp::Ordering;
 
+use chrono::{DateTime, NaiveDateTime, Utc};
+use egui::Color32;
 use tracing::debug;
 
 use crate::sources::binance::client::Kline;
@@ -63,5 +65,20 @@ impl Data {
 
     pub fn max_vol(&self) -> f64 {
         self.max_vol
+    }
+
+    pub fn format_ts(ts: f64) -> String {
+        let secs = (ts / 1000f64) as i64;
+        let naive = NaiveDateTime::from_timestamp(secs, 0);
+        let datetime: DateTime<Utc> = DateTime::from_utc(naive, Utc);
+
+        datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+    }
+
+    pub fn k_color(k: &Kline) -> Color32 {
+        match k.open > k.close {
+            true => Color32::LIGHT_RED,
+            false => Color32::LIGHT_GREEN,
+        }
     }
 }
