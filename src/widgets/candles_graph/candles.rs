@@ -1,11 +1,9 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
+use std::rc::Rc;
+
 use egui::{
     plot::{BoxElem, BoxPlot, BoxSpread, LinkedAxisGroup, Plot},
     Color32, Response, Stroke, Widget,
 };
-use futures::SinkExt;
-
-use crate::sources::binance::client::Kline;
 
 use super::data::Data;
 

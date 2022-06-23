@@ -1,11 +1,11 @@
+use std::time::SystemTime;
+
 use crossbeam::channel::unbounded;
 
-use eframe::{run_native, NativeOptions};
+use eframe::{run_native, App, NativeOptions};
 
 use egui::{CentralPanel, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visuals, Window};
-use tracing::subscriber::set_global_default;
-use tracing::{debug, info, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing::{info, trace};
 use widgets::candles_graph::graph::Graph;
 use widgets::symbols::Symbols;
 
@@ -23,6 +23,8 @@ struct TemplateApp {
 
 impl TemplateApp {
     fn new(_ctx: &eframe::CreationContext<'_>) -> Self {
+        info!("creating app");
+
         let (s, r) = unbounded();
         let plot = Graph::new(r);
         Self {
@@ -68,8 +70,10 @@ impl TemplateApp {
     }
 }
 
-impl eframe::App for TemplateApp {
+impl App for TemplateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let start = SystemTime::now();
+
         if self.dark_mode {
             ctx.set_visuals(Visuals::dark())
         } else {
@@ -91,6 +95,11 @@ impl eframe::App for TemplateApp {
         self.render_bottom_panel(ctx);
         self.render_side_panel(ctx);
         self.render_center_panel(ctx);
+
+        let elapsed = SystemTime::now()
+            .duration_since(start)
+            .expect("failed to compute duration_since");
+        trace!("elapsed for update frame: {elapsed:?}");
     }
 
     /// Called by the frame work to save state before shutdown.
@@ -99,17 +108,9 @@ impl eframe::App for TemplateApp {
     }
 }
 
-fn init_tracing() {
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
-        .finish();
-
-    set_global_default(subscriber).expect("failed to set default tracing subscriber");
-}
-
 #[tokio::main]
 async fn main() {
-    init_tracing();
+    tracing_subscriber::fmt::init();
 
     run_native(
         "hedgegraph",
