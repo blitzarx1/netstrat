@@ -6,7 +6,7 @@ use eframe::{run_native, App, NativeOptions};
 
 use egui::{CentralPanel, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visuals, Window};
 use tracing::{info, trace};
-use widgets::candles_graph::graph::Graph;
+use widgets::graph::graph::Graph;
 use widgets::symbols::Symbols;
 
 mod network;

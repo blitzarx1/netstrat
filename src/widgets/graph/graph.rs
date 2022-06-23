@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use crossbeam::channel::{unbounded, Receiver};
 
 use chrono::{prelude::*, Duration};
@@ -12,132 +10,15 @@ use crate::sources::binance::{
     interval::Interval,
 };
 
-use super::{candles::Candles, data::Data, volume::Volume};
-
-static MAX_LIMIT: u32 = 1000;
-
-#[derive(Debug, Clone, Copy)]
-struct GraphProps {
-    date_start: chrono::Date<Utc>,
-    date_end: chrono::Date<Utc>,
-    interval: Interval,
-    limit: usize,
-}
-
-impl Default for GraphProps {
-    fn default() -> Self {
-        Self {
-            date_start: Date::from(Utc::now().date()) - Duration::days(1),
-            date_end: Date::from(Utc::now().date()),
-            interval: Interval::Minute,
-            limit: 1000,
-        }
-    }
-}
-
-#[derive(Default, Debug, Clone, Copy)]
-struct GraphLoadingState {
-    triggered: bool,
-    initial: GraphProps,
-    received: u32,
-    pages: u32,
-    last_page_limit: usize,
-}
-
-impl GraphLoadingState {
-    fn from_graph_props(props: &GraphProps) -> Self {
-        let diff_days = props.date_end - props.date_start;
-
-        // debug!("start: {:?}, end: {:?}", props.date_start, props.date_end);
-
-        match props.interval {
-            Interval::Minute => {
-                let pages_proto = Duration::num_minutes(&diff_days) as f32 / MAX_LIMIT as f32;
-                let pages = pages_proto.ceil() as u32;
-                let last_page_limit = (pages_proto.fract() * MAX_LIMIT as f32) as usize;
-
-                GraphLoadingState {
-                    triggered: false,
-                    initial: props.clone(),
-                    pages,
-                    received: 0,
-                    last_page_limit,
-                }
-            }
-            Interval::Hour => {
-                let pages_proto = Duration::num_hours(&diff_days) as f32 / MAX_LIMIT as f32;
-                let pages = pages_proto.ceil() as u32;
-                let last_page_limit = (pages_proto.fract() * MAX_LIMIT as f32) as usize;
-
-                GraphLoadingState {
-                    triggered: false,
-                    initial: props.clone(),
-                    pages,
-                    received: 0,
-                    last_page_limit,
-                }
-            }
-            Interval::Day => {
-                let pages_proto = Duration::num_days(&diff_days) as f32 / MAX_LIMIT as f32;
-                let pages = pages_proto.ceil() as u32;
-                let last_page_limit = (pages_proto.fract() * MAX_LIMIT as f32) as usize;
-
-                GraphLoadingState {
-                    triggered: false,
-                    initial: props.clone(),
-                    pages,
-                    received: 0,
-                    last_page_limit,
-                }
-            }
-        }
-    }
-
-    fn left_edge(&self) -> DateTime<Utc> {
-        let covered: Duration;
-
-        match self.initial.interval {
-            Interval::Minute => {
-                covered = Duration::minutes((self.received * self.initial.limit as u32) as i64)
-            }
-            Interval::Hour => {
-                covered = Duration::hours((self.received * self.initial.limit as u32) as i64)
-            }
-            Interval::Day => {
-                covered = Duration::days((self.received * self.initial.limit as u32) as i64)
-            }
-        };
-
-        self.initial.date_start.and_hms(0, 0, 0) + covered
-    }
-
-    fn inc_received(&mut self) {
-        self.received += 1;
-    }
-
-    fn is_finished(&self) -> bool {
-        return self.progress() == 1f32;
-    }
-
-    fn progress(&self) -> f32 {
-        if self.pages == 0 {
-            return 1f32;
-        }
-        self.received as f32 / self.pages as f32
-    }
-
-    fn is_last_page(&self) -> bool {
-        return self.pages - self.received == 1;
-    }
-}
+use super::{candles::Candles, data::Data, loading_state::LoadingState, volume::Volume, props::Props};
 
 pub struct Graph {
     candles: Candles,
     volume: Volume,
     symbol: String,
     klines: Vec<Kline>,
-    graph_props: GraphProps,
-    graph_loading_state: GraphLoadingState,
+    graph_props: Props,
+    graph_loading_state: LoadingState,
     klines_promise: Option<Promise<Vec<Kline>>>,
     symbol_chan: Receiver<String>,
 }
@@ -229,7 +110,7 @@ impl Widget for &mut Graph {
                 }
             }
         } else if !self.graph_loading_state.triggered {
-            self.graph_loading_state = GraphLoadingState::from_graph_props(&self.graph_props);
+            self.graph_loading_state = LoadingState::from_graph_props(&self.graph_props);
             self.graph_loading_state.triggered = true;
 
             let interval = self.graph_props.interval.clone();
@@ -295,7 +176,7 @@ impl Widget for &mut Graph {
             });
             ui.add_space(5f32);
             if ui.button("apply").clicked() {
-                self.graph_loading_state = GraphLoadingState::from_graph_props(&self.graph_props);
+                self.graph_loading_state = LoadingState::from_graph_props(&self.graph_props);
                 self.graph_loading_state.triggered = true;
 
                 let start = self
