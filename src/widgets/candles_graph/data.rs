@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, cell::RefCell, rc::Rc};
+use std::cmp::Ordering;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use egui::Color32;
@@ -8,7 +8,7 @@ use crate::sources::binance::client::Kline;
 
 #[derive(Default, Clone)]
 pub struct Data {
-    pub vals:Vec<Kline>,
+    pub vals: Vec<Kline>,
     max_x: f64,
     max_y: f64,
     max_vol: f64,
