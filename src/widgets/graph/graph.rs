@@ -10,7 +10,9 @@ use crate::sources::binance::{
     interval::Interval,
 };
 
-use super::{candles::Candles, data::Data, loading_state::LoadingState, volume::Volume, props::Props};
+use super::{
+    candles::Candles, data::Data, loading_state::LoadingState, props::Props, volume::Volume,
+};
 
 pub struct Graph {
     candles: Candles,

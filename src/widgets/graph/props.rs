@@ -1,4 +1,4 @@
-use chrono::{Date, Utc, Duration};
+use chrono::{Date, Duration, Utc};
 
 use crate::sources::binance::interval::Interval;
 
