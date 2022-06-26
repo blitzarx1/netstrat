@@ -1,4 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
+use tracing::debug;
 
 use crate::sources::binance::interval::Interval;
 
@@ -19,7 +20,7 @@ impl LoadingState {
     pub fn from_graph_props(props: &Props) -> Self {
         let diff_days = props.date_end - props.date_start;
 
-        // debug!("start: {:?}, end: {:?}", props.date_start, props.date_end);
+        // debug!("props: start{:?}, end: {:?}", props.date_start, props.date_end);
 
         match props.interval {
             Interval::Minute => {

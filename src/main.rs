@@ -8,6 +8,7 @@ use egui::{CentralPanel, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visual
 use tracing::{info, trace};
 use widgets::graph::graph::Graph;
 use widgets::symbols::Symbols;
+use widgets::theme::Theme;
 
 mod network;
 mod sources;
@@ -17,8 +18,8 @@ use tokio;
 struct TemplateApp {
     candle_plot: Graph,
     symbols: Symbols,
+    theme: Theme,
     debug_visible: bool,
-    dark_mode: bool,
 }
 
 impl TemplateApp {
@@ -28,8 +29,8 @@ impl TemplateApp {
         let (s, r) = unbounded();
         let plot = Graph::new(r);
         Self {
-            dark_mode: true,
             candle_plot: plot,
+            theme: Theme::new(),
             symbols: Symbols::new(s),
             debug_visible: false,
         }
@@ -43,22 +44,8 @@ impl TemplateApp {
 
     fn render_top_panel(&mut self, ctx: &egui::Context) {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            if ui
-                .button({
-                    match self.dark_mode {
-                        true => "🔆",
-                        false => "🌙",
-                    }
-                })
-                .clicked()
-            {
-                self.dark_mode = !self.dark_mode
-            }
-        });
-    }
+            ui.add(&mut self.theme);
 
-    fn render_bottom_panel(&mut self, ctx: &egui::Context) {
-        TopBottomPanel::bottom("bot panel").show(ctx, |ui| {
             if ui.button("debug").clicked() {
                 self.debug_visible = !self.debug_visible;
             }
@@ -74,14 +61,9 @@ impl App for TemplateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let start = SystemTime::now();
 
-        if self.dark_mode {
-            ctx.set_visuals(Visuals::dark())
-        } else {
-            ctx.set_visuals(Visuals::light())
-        }
-
-        if self.debug_visible {
-            Window::new("debug").show(ctx, |ui| {
+        Window::new("debug")
+            .open(&mut self.debug_visible)
+            .show(ctx, |ui| {
                 ScrollArea::both()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
@@ -89,10 +71,8 @@ impl App for TemplateApp {
                         TextEdit::multiline(&mut text).desired_rows(10).show(ui);
                     });
             });
-        }
 
         self.render_top_panel(ctx);
-        self.render_bottom_panel(ctx);
         self.render_side_panel(ctx);
         self.render_center_panel(ctx);
 
