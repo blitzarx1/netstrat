@@ -1,10 +1,13 @@
+use std::collections::HashMap;
 use std::time::SystemTime;
 
 use crossbeam::channel::unbounded;
 
-use eframe::{run_native, App, NativeOptions};
+use eframe::{run_native, App, CreationContext, NativeOptions};
 
-use egui::{CentralPanel, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Visuals, Window};
+use egui::{
+    CentralPanel, Context, Layout, ScrollArea, SidePanel, TextEdit, TopBottomPanel, Window,
+};
 use tracing::{info, trace};
 use widgets::graph::graph::Graph;
 use widgets::symbols::Symbols;
@@ -16,63 +19,66 @@ mod widgets;
 use tokio;
 
 struct TemplateApp {
+    visibility: HashMap<String, bool>,
     candle_plot: Graph,
     symbols: Symbols,
     theme: Theme,
-    debug_visible: bool,
 }
 
 impl TemplateApp {
-    fn new(_ctx: &eframe::CreationContext<'_>) -> Self {
+    fn new(_ctx: &CreationContext<'_>) -> Self {
         info!("creating app");
 
         let (s, r) = unbounded();
-        let plot = Graph::new(r);
+
+        // TODO: create register function
+        let mut visibility_map = HashMap::new();
+        visibility_map.insert("debug".to_string(), false);
+
         Self {
-            candle_plot: plot,
+            visibility: visibility_map,
+            candle_plot: Graph::new(r),
             theme: Theme::new(),
             symbols: Symbols::new(s),
             debug_visible: false,
         }
     }
 
-    fn render_center_panel(&mut self, ctx: &egui::Context) {
-        CentralPanel::default().show(ctx, |ui| {
-            ui.add(&mut self.candle_plot);
-        });
-    }
-
-    fn render_top_panel(&mut self, ctx: &egui::Context) {
-        TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            ui.add(&mut self.theme);
-
-            if ui.button("debug").clicked() {
-                self.debug_visible = !self.debug_visible;
-            }
-        });
-    }
-
-    fn render_side_panel(&mut self, ctx: &egui::Context) {
+    fn render_side_panel(&mut self, ctx: &Context) {
         SidePanel::left("side_panel").show(ctx, |ui| ui.add(&mut self.symbols));
     }
 }
 
 impl App for TemplateApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         let start = SystemTime::now();
 
-        Window::new("debug")
-            .open(&mut self.debug_visible)
-            .show(ctx, |ui| {
-                ScrollArea::both()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        let mut text = "text";
-                        TextEdit::multiline(&mut text).desired_rows(10).show(ui);
-                    });
-            });
+        TopBottomPanel::top("header").show(ctx, |ui| {
+            ui.with_layout(Layout::left_to_right(), |ui| {
+                ui.add(&mut self.theme);
 
-        self.render_top_panel(ctx);
+                if ui.button("debug").clicked() {
+                    let debug_visible = *self.visibility.get_mut("debug").unwrap();
+                    self.visibility.insert("debug".to_string(), !debug_visible);
+                }
+            });
+        });
+
+        CentralPanel::default().show(ctx, |ui| {
+            Window::new("debug")
+                .open(self.visibility.get_mut("debug").unwrap())
+                .show(ctx, |ui| {
+                    ScrollArea::both()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            let mut text = "text";
+                            TextEdit::multiline(&mut text).desired_rows(10).show(ui);
+                        });
+                });
+
+            ui.add(&mut self.candle_plot);
+        });
+
         self.render_side_panel(ctx);
         self.render_center_panel(ctx);
 
