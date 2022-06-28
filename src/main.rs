@@ -14,7 +14,7 @@ mod sources;
 mod widgets;
 mod windows;
 use tokio;
-use windows::{symbols_graph::SymbolsGraph, window::AppWindow};
+use windows::{graph::SymbolsGraph, window::AppWindow};
 
 struct TemplateApp {
     visibility: HashMap<String, bool>,

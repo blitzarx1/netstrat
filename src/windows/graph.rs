@@ -13,7 +13,7 @@ pub struct SymbolsGraph {
 
 impl AppWindow for SymbolsGraph {
     fn toggle_btn(&mut self, ui: &mut Ui) {
-        if ui.button("symbols graph").clicked() {
+        if ui.button("graph").clicked() {
             self.visible = !self.visible
         }
     }
