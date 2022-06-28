@@ -862,25 +862,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
 
 [[package]]
-name = "hedgegraph"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "crossbeam",
- "eframe",
- "egui",
- "egui_extras",
- "futures",
- "poll-promise",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "hermit-abi"
 version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1267,6 +1248,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e5a6ae77c8ee183dcbbba6150e2e6b9f3f4196a7666c02a715a95692ec1fa97"
 dependencies = [
  "jni-sys",
+]
+
+[[package]]
+name = "netstrat"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "crossbeam",
+ "eframe",
+ "egui",
+ "egui_extras",
+ "futures",
+ "poll-promise",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
