@@ -1,5 +1,5 @@
 use crossbeam::channel::{Receiver, Sender};
-use egui::{Area, CentralPanel, Context, Layout, Rect, Response, SidePanel, Ui, Widget, Window};
+use egui::{Layout, Ui, Window};
 use egui_extras::{Size, StripBuilder};
 
 use super::window::AppWindow;
