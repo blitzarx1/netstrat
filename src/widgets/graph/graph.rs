@@ -145,7 +145,11 @@ impl Widget for &mut Graph {
                 .response;
         }
 
-        Window::new(self.symbol.to_string()).show(ui.ctx(), |ui| {
+        // TODO: extract to window and set open parameter
+        Window::new(self.symbol.to_string())
+        .drag_bounds(ui.max_rect())
+        .resizable(false)
+        .show(ui.ctx(), |ui| {
             ui.collapsing("time period", |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.add(
@@ -202,7 +206,7 @@ impl Widget for &mut Graph {
 
         StripBuilder::new(ui)
             .size(Size::relative(0.8))
-            .size(Size::relative(0.2))
+            .size(Size::remainder())
             .vertical(|mut strip| {
                 strip.cell(|ui| {
                     ui.add(&self.candles);

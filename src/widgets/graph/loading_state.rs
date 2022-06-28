@@ -1,5 +1,4 @@
 use chrono::{DateTime, Duration, Utc};
-use tracing::debug;
 
 use crate::sources::binance::interval::Interval;
 

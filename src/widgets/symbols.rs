@@ -67,17 +67,11 @@ impl Widget for &mut Symbols {
         }
 
         ui.with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
-            ui.add_space(5f32);
-            ui.separator();
-            ui.add_space(5f32);
-
-            // render filter
             ui.add(
                 TextEdit::singleline(&mut self.filter.value)
                     .hint_text(WidgetText::from("filter symbols").italics()),
             );
 
-            // aply filter
             let filtered: Vec<&Symbol> = self
                 .symbols
                 .iter()
@@ -102,7 +96,8 @@ impl Widget for &mut Symbols {
             ui.add_space(5f32);
 
             ScrollArea::vertical()
-                .auto_shrink([false, false])
+                .auto_shrink([false; 2])
+                .max_height(ui.available_height())
                 .show(ui, |ui| {
                     ui.with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
                         filtered.iter().for_each(|s| {
