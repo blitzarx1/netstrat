@@ -147,62 +147,70 @@ impl Widget for &mut Graph {
 
         // TODO: extract to window and set open parameter
         Window::new(self.symbol.to_string())
-        .drag_bounds(ui.max_rect())
-        .resizable(false)
-        .show(ui.ctx(), |ui| {
-            ui.collapsing("time period", |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.add(
-                        egui_extras::DatePickerButton::new(&mut self.graph_props.date_start)
-                            .id_source("datepicker_start"),
-                    );
-                    ui.label("date start");
-                });
-                ui.horizontal_wrapped(|ui| {
-                    ui.add(
-                        egui_extras::DatePickerButton::new(&mut self.graph_props.date_end)
-                            .id_source("datepicker_end"),
-                    );
-                    ui.label("date end");
-                });
-            });
-            ui.collapsing("interval", |ui| {
-                egui::ComboBox::from_label("pick data interval")
-                    .selected_text(format!("{:?}", self.graph_props.interval))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.graph_props.interval, Interval::Day, "Day");
-                        ui.selectable_value(&mut self.graph_props.interval, Interval::Hour, "Hour");
-                        ui.selectable_value(
-                            &mut self.graph_props.interval,
-                            Interval::Minute,
-                            "Minute",
+            .drag_bounds(ui.max_rect())
+            .resizable(false)
+            .show(ui.ctx(), |ui| {
+                ui.collapsing("time period", |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add(
+                            egui_extras::DatePickerButton::new(&mut self.graph_props.date_start)
+                                .id_source("datepicker_start"),
                         );
+                        ui.label("date start");
                     });
-            });
-            ui.add_space(5f32);
-            if ui.button("apply").clicked() {
-                self.graph_loading_state = LoadingState::from_graph_props(&self.graph_props);
-                self.graph_loading_state.triggered = true;
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add(
+                            egui_extras::DatePickerButton::new(&mut self.graph_props.date_end)
+                                .id_source("datepicker_end"),
+                        );
+                        ui.label("date end");
+                    });
+                });
+                ui.collapsing("interval", |ui| {
+                    egui::ComboBox::from_label("pick data interval")
+                        .selected_text(format!("{:?}", self.graph_props.interval))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.graph_props.interval,
+                                Interval::Day,
+                                "Day",
+                            );
+                            ui.selectable_value(
+                                &mut self.graph_props.interval,
+                                Interval::Hour,
+                                "Hour",
+                            );
+                            ui.selectable_value(
+                                &mut self.graph_props.interval,
+                                Interval::Minute,
+                                "Minute",
+                            );
+                        });
+                });
+                ui.add_space(5f32);
+                if ui.button("apply").clicked() {
+                    self.graph_loading_state = LoadingState::from_graph_props(&self.graph_props);
+                    self.graph_loading_state.triggered = true;
 
-                let start = self
-                    .graph_props
-                    .date_start
-                    .and_hms(0, 0, 0)
-                    .timestamp_millis()
-                    .clone();
-                let pair = self.symbol.to_string();
-                let interval = self.graph_props.interval.clone();
-                let mut limit = self.graph_props.limit.clone();
+                    let start = self
+                        .graph_props
+                        .date_start
+                        .and_hms(0, 0, 0)
+                        .timestamp_millis()
+                        .clone();
+                    let pair = self.symbol.to_string();
+                    let interval = self.graph_props.interval.clone();
+                    let mut limit = self.graph_props.limit.clone();
 
-                if self.graph_loading_state.is_last_page() {
-                    limit = self.graph_loading_state.last_page_limit
+                    if self.graph_loading_state.is_last_page() {
+                        limit = self.graph_loading_state.last_page_limit
+                    }
+
+                    self.klines_promise = Some(Promise::spawn_async(async move {
+                        Client::kline(pair, interval, start, limit).await
+                    }));
                 }
-
-                self.klines_promise = Some(Promise::spawn_async(async move {
-                    Client::kline(pair, interval, start, limit).await
-                }));
-            }
-        });
+            });
 
         StripBuilder::new(ui)
             .size(Size::relative(0.8))
