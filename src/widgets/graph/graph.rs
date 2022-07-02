@@ -1,6 +1,10 @@
+use chrono::Timelike;
 use crossbeam::channel::{unbounded, Receiver};
 
-use egui::{plot::LinkedAxisGroup, ProgressBar, Response, Ui, Widget, Window};
+use egui::{
+    plot::{LinkedAxisGroup, Text, Value},
+    Color32, Label, ProgressBar, Response, TextBuffer, Ui, Widget, Window,
+};
 use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
 
@@ -10,32 +14,45 @@ use crate::sources::binance::{
 };
 
 use super::{
-    candles::Candles, data::Data, loading_state::LoadingState, props::Props, volume::Volume,
+    candles::Candles, data::Data, loading_state::LoadingState, props::Props, time_input::TimeInput,
+    volume::Volume,
 };
 
 pub struct Graph {
     candles: Candles,
     volume: Volume,
     symbol: String,
+    time_start: TimeInput,
+    time_end: TimeInput,
+
     klines: Vec<Kline>,
     graph_props: Props,
     graph_loading_state: LoadingState,
     klines_promise: Option<Promise<Vec<Kline>>>,
     symbol_chan: Receiver<String>,
+    valid: bool,
 }
 
 impl Default for Graph {
     fn default() -> Self {
+        let graph_props = Props::default();
+        let start_time = graph_props.time_start;
+        let end_time = graph_props.time_end;
         let (_, r) = unbounded();
+
         Self {
             candles: Default::default(),
             volume: Default::default(),
             symbol: Default::default(),
+            time_start: TimeInput::new(start_time.hour(), start_time.minute(), start_time.second()),
+            time_end: TimeInput::new(end_time.hour(), end_time.minute(), end_time.second()),
+
             klines: Default::default(),
-            graph_props: Default::default(),
+            graph_props,
             graph_loading_state: Default::default(),
             klines_promise: Default::default(),
             symbol_chan: r,
+            valid: true,
         }
     }
 }
@@ -165,6 +182,14 @@ impl Widget for &mut Graph {
                         );
                         ui.label("date end");
                     });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add(&mut self.time_start);
+                        ui.label("time start");
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add(&mut self.time_end);
+                        ui.label("time end");
+                    });
                 });
                 ui.collapsing("interval", |ui| {
                     egui::ComboBox::from_label("pick data interval")
@@ -187,28 +212,39 @@ impl Widget for &mut Graph {
                             );
                         });
                 });
+
                 ui.add_space(5f32);
+
                 if ui.button("apply").clicked() {
-                    self.graph_loading_state = LoadingState::from_graph_props(&self.graph_props);
-                    self.graph_loading_state.triggered = true;
+                    let time_start = self.time_start.get_time();
+                    match time_start {
+                        Some(time) => {
+                            self.valid = true;
+                            self.graph_loading_state = LoadingState::from_graph_props(&self.graph_props);                    
+                            self.graph_loading_state.triggered = true;
 
-                    let start = self
-                        .graph_props
-                        .date_start
-                        .and_hms(0, 0, 0)
-                        .timestamp_millis()
-                        .clone();
-                    let pair = self.symbol.to_string();
-                    let interval = self.graph_props.interval.clone();
-                    let mut limit = self.graph_props.limit.clone();
+                            self.graph_props.time_start = time;
+                            let start = self.graph_props.start_time().timestamp_millis().clone();
+                            let pair = self.symbol.to_string();
+                            let interval = self.graph_props.interval.clone();
+                            let mut limit = self.graph_props.limit.clone();
 
-                    if self.graph_loading_state.is_last_page() {
-                        limit = self.graph_loading_state.last_page_limit
+                            if self.graph_loading_state.is_last_page() {
+                                limit = self.graph_loading_state.last_page_limit
+                            }
+
+                            self.klines_promise = Some(Promise::spawn_async(async move {
+                                Client::kline(pair, interval, start, limit).await
+                            }));
+                        }
+                        None => {
+                            self.valid = false;
+                        }
                     }
+                }
 
-                    self.klines_promise = Some(Promise::spawn_async(async move {
-                        Client::kline(pair, interval, start, limit).await
-                    }));
+                if !self.valid {
+                    ui.label("invalid time range");
                 }
             });
 
