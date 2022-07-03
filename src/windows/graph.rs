@@ -3,7 +3,7 @@ use egui::{Layout, Ui, Window};
 use egui_extras::{Size, StripBuilder};
 
 use super::window::AppWindow;
-use crate::widgets::{graph::graph::Graph, symbols::Symbols};
+use crate::widgets::{Graph, Symbols};
 
 pub struct SymbolsGraph {
     graph: Graph,

@@ -4,7 +4,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use egui::Color32;
 use tracing::debug;
 
-use crate::sources::binance::client::Kline;
+use crate::sources::binance::Kline;
 
 #[derive(Default, Clone)]
 pub struct Data {

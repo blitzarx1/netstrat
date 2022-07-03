@@ -1,7 +1,7 @@
-use chrono::{DateTime, Duration, NaiveDateTime, Utc};
-use tracing::{debug, info};
+use chrono::{DateTime, Duration, Utc};
+use tracing::info;
 
-use crate::sources::binance::interval::Interval;
+use crate::sources::binance::Interval;
 
 use super::props::Props;
 

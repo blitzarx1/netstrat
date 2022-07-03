@@ -7,7 +7,7 @@ use eframe::{run_native, App, CreationContext, NativeOptions};
 
 use egui::{CentralPanel, Context, Layout, ScrollArea, TextEdit, TopBottomPanel, Window};
 use tracing::{info, trace};
-use widgets::theme::Theme;
+use widgets::Theme;
 
 mod network;
 mod sources;

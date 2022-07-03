@@ -1,17 +1,11 @@
 use chrono::Timelike;
 use crossbeam::channel::{unbounded, Receiver};
 
-use egui::{
-    plot::{LinkedAxisGroup, Text, Value},
-    Color32, Label, ProgressBar, Response, TextBuffer, Ui, Widget, Window,
-};
+use egui::{plot::LinkedAxisGroup, ProgressBar, Response, Ui, Widget, Window};
 use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
 
-use crate::sources::binance::{
-    client::{Client, Kline},
-    interval::Interval,
-};
+use crate::sources::binance::{Client, Interval, Kline};
 
 use super::{
     candles::Candles, data::Data, loading_state::LoadingState, props::Props, time_input::TimeInput,
@@ -220,7 +214,8 @@ impl Widget for &mut Graph {
                     match time_start {
                         Some(time) => {
                             self.valid = true;
-                            self.graph_loading_state = LoadingState::from_graph_props(&self.graph_props);                    
+                            self.graph_loading_state =
+                                LoadingState::from_graph_props(&self.graph_props);
                             self.graph_loading_state.triggered = true;
 
                             self.graph_props.time_start = time;

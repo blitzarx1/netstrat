@@ -2,7 +2,7 @@ use crossbeam::channel::{unbounded, Sender};
 use egui::{Label, Layout, Response, ScrollArea, TextEdit, Widget, WidgetText};
 use poll_promise::Promise;
 
-use crate::sources::binance::client::{Client, Info, Symbol};
+use crate::sources::binance::{Client, Info, Symbol};
 
 #[derive(Default)]
 struct FilterProps {

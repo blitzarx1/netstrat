@@ -1,6 +1,6 @@
-use chrono::{Date, DateTime, Duration, NaiveDateTime, NaiveTime, Timelike, Utc};
+use chrono::{Date, DateTime, Duration, NaiveTime, Timelike, Utc};
 
-use crate::sources::binance::interval::Interval;
+use crate::sources::binance::Interval;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Props {

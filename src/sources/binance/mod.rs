@@ -1,2 +1,5 @@
-pub mod client;
-pub mod interval;
+mod client;
+mod interval;
+
+pub use self::client::*;
+pub use self::interval::*;
