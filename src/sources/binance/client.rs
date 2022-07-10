@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json;
 
 use crate::network::rest::Rest;
@@ -84,7 +84,7 @@ impl Symbol {
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Copy, Default)]
+#[derive(PartialEq, Debug, Clone, Copy, Default, Serialize)]
 pub struct Kline {
     pub t_open: i64,
     pub open: f32,

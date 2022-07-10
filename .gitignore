@@ -2,3 +2,5 @@
 .vscode
 .idea
 .DS_Store
+
+*.csv
