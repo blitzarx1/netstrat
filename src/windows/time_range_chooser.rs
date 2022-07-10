@@ -1,12 +1,20 @@
+use super::AppWindow;
 use egui::{Response, Ui, Widget, Window};
 
-struct TimeRange {
+pub struct TimeRangeChooser {
     title: String,
     valid: bool,
+    visible: bool,
 }
 
-impl Widget for &mut TimeRange {
-    fn ui(self, ui: &mut Ui) -> Response {
+impl AppWindow for TimeRangeChooser {
+    fn toggle_btn(&mut self, ui: &mut Ui) {
+        if ui.button("graph").clicked() {
+            self.visible = !self.visible
+        }
+    }
+
+    fn show(&mut self, ui: &mut Ui) {
         Window::new(self.title.to_string())
             .drag_bounds(ui.max_rect())
             .resizable(false)
@@ -91,6 +99,6 @@ impl Widget for &mut TimeRange {
                 if !self.valid {
                     ui.label("invalid time range");
                 }
-            })
+            });
     }
 }
