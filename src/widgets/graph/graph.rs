@@ -1,11 +1,19 @@
-use chrono::Timelike;
-use crossbeam::channel::{unbounded, Receiver};
+use std::fs::File;
 
-use egui::{plot::LinkedAxisGroup, ProgressBar, Response, Ui, Widget, Window};
+use chrono::Timelike;
+use crossbeam::channel::{unbounded, Receiver, Sender};
+
+use egui::{
+    panel::TopBottomSide, plot::LinkedAxisGroup, CentralPanel, ProgressBar, Response,
+    TopBottomPanel, Ui, Widget, Window,
+};
 use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
 
-use crate::sources::binance::{Client, Interval, Kline};
+use crate::{
+    sources::binance::{Client, Interval, Kline},
+    windows::{AppWindow, TimeRangeChooser},
+};
 
 use super::{
     candles::Candles, data::Data, loading_state::LoadingState, props::Props, time_input::TimeInput,
@@ -16,8 +24,11 @@ pub struct Graph {
     candles: Candles,
     volume: Volume,
     symbol: String,
+    symbol_pub: Sender<String>,
     time_start: TimeInput,
     time_end: TimeInput,
+
+    time_range_window: Box<dyn AppWindow>,
 
     klines: Vec<Kline>,
     graph_props: Props,
@@ -32,14 +43,17 @@ impl Default for Graph {
         let graph_props = Props::default();
         let start_time = graph_props.time_start;
         let end_time = graph_props.time_end;
-        let (_, r) = unbounded();
+        let (s, r) = unbounded();
 
         Self {
             candles: Default::default(),
             volume: Default::default(),
             symbol: Default::default(),
+            symbol_pub: s,
             time_start: TimeInput::new(start_time.hour(), start_time.minute(), start_time.second()),
             time_end: TimeInput::new(end_time.hour(), end_time.minute(), end_time.second()),
+
+            time_range_window: Box::new(TimeRangeChooser::new(false, r.clone())),
 
             klines: Default::default(),
             graph_props,
@@ -53,8 +67,11 @@ impl Default for Graph {
 
 impl Graph {
     pub fn new(symbol_chan: Receiver<String>) -> Self {
+        let (s, r) = unbounded();
         Self {
-            symbol_chan,
+            symbol_chan: symbol_chan,
+            symbol_pub: s,
+            time_range_window: Box::new(TimeRangeChooser::new(false, r)),
             ..Default::default()
         }
     }
@@ -68,12 +85,14 @@ impl Widget for &mut Graph {
 
         match symbol_wrapped {
             Ok(symbol) => {
-                self.symbol = symbol;
+                self.symbol = symbol.clone();
+                self.symbol_pub.send(symbol).unwrap();
                 self.graph_loading_state = Default::default();
             }
             Err(_) => {}
         }
 
+        // TODO: think of placeholder
         if self.symbol == "" {
             return ui.label("select symbol");
         }
@@ -156,18 +175,25 @@ impl Widget for &mut Graph {
                 .response;
         }
 
-        // TODO: insert time_range widget here
+        TopBottomPanel::top("graph toolbar")
+            .show_inside(ui, |ui| self.time_range_window.toggle_btn(ui));
 
-        StripBuilder::new(ui)
-            .size(Size::relative(0.8))
-            .size(Size::remainder())
-            .vertical(|mut strip| {
-                strip.cell(|ui| {
-                    ui.add(&self.candles);
-                });
-                strip.cell(|ui| {
-                    ui.add(&self.volume);
-                });
+        CentralPanel::default()
+            .show_inside(ui, |ui| {
+                self.time_range_window.show(ui);
+
+                StripBuilder::new(ui)
+                    .size(Size::relative(0.8))
+                    .size(Size::remainder())
+                    .vertical(|mut strip| {
+                        strip.cell(|ui| {
+                            ui.add(&self.candles);
+                        });
+                        strip.cell(|ui| {
+                            ui.add(&self.volume);
+                        });
+                    })
             })
+            .response
     }
 }

@@ -20,6 +20,14 @@ impl Props {
             self.time_start.second(),
         )
     }
+
+    pub fn end_time(&self) -> DateTime<Utc> {
+        self.date_end.and_hms(
+            self.time_end.hour(),
+            self.time_end.minute(),
+            self.time_end.second(),
+        )
+    }
 }
 
 impl Default for Props {

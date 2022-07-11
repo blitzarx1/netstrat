@@ -17,7 +17,6 @@ use tokio;
 use windows::{AppWindow, SymbolsGraph};
 
 struct TemplateApp {
-    visibility: HashMap<String, bool>,
     windows: Vec<Box<dyn AppWindow>>,
     theme: Theme,
 }
@@ -32,7 +31,6 @@ impl TemplateApp {
         visibility_map.insert("debug".to_string(), false);
 
         Self {
-            visibility: visibility_map,
             windows: vec![Box::new(SymbolsGraph::new(s, r, true))],
             theme: Theme::new(),
         }
@@ -50,27 +48,11 @@ impl App for TemplateApp {
                 self.windows.iter_mut().for_each(|w| {
                     w.as_mut().toggle_btn(ui);
                 });
-
-                if ui.button("debug").clicked() {
-                    let debug_visible = *self.visibility.get_mut("debug").unwrap();
-                    self.visibility.insert("debug".to_string(), !debug_visible);
-                }
             });
         });
 
         CentralPanel::default().show(ctx, |ui| {
             self.windows.iter_mut().for_each(|w| w.show(ui));
-
-            Window::new("debug")
-                .open(self.visibility.get_mut("debug").unwrap())
-                .show(ctx, |ui| {
-                    ScrollArea::both()
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            let mut text = "text";
-                            TextEdit::multiline(&mut text).desired_rows(10).show(ui);
-                        });
-                });
         });
 
         trace!(
