@@ -56,7 +56,7 @@ impl Default for Graph {
 impl Graph {
     pub fn new(symbol_chan: Receiver<String>) -> Self {
         Self {
-            symbol_chan: symbol_chan,
+            symbol_chan,
             ..Default::default()
         }
     }
