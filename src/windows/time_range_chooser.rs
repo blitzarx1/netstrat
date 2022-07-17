@@ -1,21 +1,45 @@
+use std::fs::File;
+
 use super::AppWindow;
-use crossbeam::channel::{unbounded, Receiver};
+use chrono::{Date, Utc};
+use crossbeam::channel::{unbounded, Receiver, Sender};
 use egui::{Response, Ui, Widget, Window};
+use tracing::{error, info};
+
+use crate::{
+    sources::binance::Interval,
+    widgets::{Props, TimeInput},
+};
 
 pub struct TimeRangeChooser {
     symbol: String,
-    symbol_chan: Receiver<String>,
+    symbol_sub: Receiver<String>,
+    props: Props,
+    time_start_input: TimeInput,
+    time_end_input: TimeInput,
     valid: bool,
     visible: bool,
+    props_pub: Sender<Props>,
+    export_pub: Sender<()>,
 }
 
 impl TimeRangeChooser {
-    pub fn new(visible: bool, r: Receiver<String>) -> Self {
+    pub fn new(
+        visible: bool,
+        symbol_sub: Receiver<String>,
+        props_pub: Sender<Props>,
+        export_pub: Sender<()>,
+    ) -> Self {
         Self {
             symbol: String::new(),
-            symbol_chan: r,
+            symbol_sub,
             valid: true,
             visible,
+            props: Props::default(),
+            props_pub,
+            export_pub,
+            time_start_input: TimeInput::new(0, 0, 0),
+            time_end_input: TimeInput::new(23, 59, 59),
         }
     }
 }
@@ -29,8 +53,8 @@ impl AppWindow for TimeRangeChooser {
 
     fn show(&mut self, ui: &mut Ui) {
         let symbol_wrapped = self
-            .symbol_chan
-            .recv_timeout(std::time::Duration::from_millis(10));
+            .symbol_sub
+            .recv_timeout(std::time::Duration::from_millis(1));
 
         match symbol_wrapped {
             Ok(symbol) => {
@@ -38,114 +62,110 @@ impl AppWindow for TimeRangeChooser {
             }
             Err(_) => {}
         }
-        
+
         // TODO: make window always on top; this is not implemented in egui yet
         Window::new(self.symbol.to_string())
             .open(&mut self.visible)
             .drag_bounds(ui.max_rect())
             .resizable(false)
             .show(ui.ctx(), |ui| {
+                ui.collapsing("time period", |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add(
+                            egui_extras::DatePickerButton::new(&mut self.props.date_start)
+                                .id_source("datepicker_start"),
+                        );
+                        ui.label("date start");
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add(
+                            egui_extras::DatePickerButton::new(&mut self.props.date_end)
+                                .id_source("datepicker_end"),
+                        );
+                        ui.label("date end");
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add(&mut self.time_start_input);
+                        ui.label("time start");
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add(&mut self.time_end_input);
+                        ui.label("time end");
+                    });
+                });
+                ui.collapsing("interval", |ui| {
+                    egui::ComboBox::from_label("pick data interval")
+                        .selected_text(format!("{:?}", self.props.interval))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.props.interval, Interval::Day, "Day");
+                            ui.selectable_value(&mut self.props.interval, Interval::Hour, "Hour");
+                            ui.selectable_value(
+                                &mut self.props.interval,
+                                Interval::Minute,
+                                "Minute",
+                            );
+                        });
+                });
 
-                // ui.collapsing("time period", |ui| {
-                //     ui.horizontal_wrapped(|ui| {
-                //         ui.add(
-                //             egui_extras::DatePickerButton::new(&mut self.graph_props.date_start)
-                //                 .id_source("datepicker_start"),
-                //         );
-                //         ui.label("date start");
-                //     });
-                //     ui.horizontal_wrapped(|ui| {
-                //         ui.add(
-                //             egui_extras::DatePickerButton::new(&mut self.graph_props.date_end)
-                //                 .id_source("datepicker_end"),
-                //         );
-                //         ui.label("date end");
-                //     });
-                //     ui.horizontal_wrapped(|ui| {
-                //         ui.add(&mut self.time_start);
-                //         ui.label("time start");
-                //     });
-                //     ui.horizontal_wrapped(|ui| {
-                //         ui.add(&mut self.time_end);
-                //         ui.label("time end");
-                //     });
-                // });
-                // ui.collapsing("interval", |ui| {
-                //     egui::ComboBox::from_label("pick data interval")
-                //         .selected_text(format!("{:?}", self.graph_props.interval))
-                //         .show_ui(ui, |ui| {
-                //             ui.selectable_value(
-                //                 &mut self.graph_props.interval,
-                //                 Interval::Day,
-                //                 "Day",
-                //             );
-                //             ui.selectable_value(
-                //                 &mut self.graph_props.interval,
-                //                 Interval::Hour,
-                //                 "Hour",
-                //             );
-                //             ui.selectable_value(
-                //                 &mut self.graph_props.interval,
-                //                 Interval::Minute,
-                //                 "Minute",
-                //             );
-                //         });
-                // });
+                ui.add_space(5f32);
 
-                // ui.add_space(5f32);
+                ui.horizontal(|ui| {
+                    if ui.button("show").clicked() {
+                        let time_start = self.time_start_input.get_time();
+                        let start_valid: bool;
+                        match time_start {
+                            Some(time) => {
+                                self.props.time_start = time;
+                                start_valid = true;
+                            }
+                            None => {
+                                start_valid = false;
+                            }
+                        }
 
-                // ui.horizontal(|ui| {
-                //     if ui.button("show").clicked() {
-                //         let time_start = self.time_start.get_time();
-                //         match time_start {
-                //             Some(time) => {
-                //                 self.valid = true;
-                //                 self.graph_loading_state =
-                //                     LoadingState::from_graph_props(&self.graph_props);
-                //                 self.graph_loading_state.triggered = true;
+                        let time_end = self.time_end_input.get_time();
+                        let end_valid: bool;
+                        match time_end {
+                            Some(time) => {
+                                self.props.time_end = time;
+                                end_valid = true;
+                            }
+                            None => {
+                                end_valid = false;
+                            }
+                        }
 
-                //                 self.graph_props.time_start = time;
-                //                 let start =
-                //                     self.graph_props.start_time().timestamp_millis().clone();
-                //                 let pair = self.symbol.to_string();
-                //                 let interval = self.graph_props.interval.clone();
-                //                 let mut limit = self.graph_props.limit.clone();
+                        if !start_valid && !end_valid {
+                            self.valid = false;
+                            return;
+                        }
 
-                //                 if self.graph_loading_state.is_last_page() {
-                //                     limit = self.graph_loading_state.last_page_limit
-                //                 }
+                        let send_result = self.props_pub.send(self.props);
+                        match send_result {
+                            Ok(_) => {
+                                info!("sent props: {:?}", self.props);
+                            }
+                            Err(err) => {
+                                error!("failed to send props: {err}");
+                            }
+                        }
+                    }
+                });
+                if !self.valid {
+                    ui.label("invalid time range");
+                }
 
-                //                 self.klines_promise = Some(Promise::spawn_async(async move {
-                //                     Client::kline(pair, interval, start, limit).await
-                //                 }));
-                //             }
-                //             None => {
-                //                 self.valid = false;
-                //             }
-                //         }
-                //     }
-
-                //     if !self.valid {
-                //         ui.label("invalid time range");
-                //     }
-
-                //     if ui.button("export").clicked() {
-                //         let name = format!(
-                //             "{}-{}-{}-{:?}",
-                //             self.symbol,
-                //             self.graph_props.start_time(),
-                //             self.graph_props.end_time(),
-                //             self.graph_props.interval,
-                //         );
-                //         let f = File::create(format!("{}.csv", name)).unwrap();
-
-                //         let mut wtr = csv::Writer::from_writer(f);
-                //         self.klines.iter().for_each(|el| {
-                //             wtr.serialize(el).unwrap();
-                //         });
-                //         wtr.flush().unwrap();
-                //     };
-                // });
+                if ui.button("export").clicked() {
+                    let send_result = self.export_pub.send(());
+                    match send_result {
+                        Ok(_) => {
+                            info!("sent export command");
+                        }
+                        Err(err) => {
+                            error!("failed to send export command: {err}");
+                        }
+                    }
+                };
             });
     }
 }

@@ -1,6 +1,7 @@
 use crossbeam::channel::{unbounded, Sender};
 use egui::{Label, Layout, Response, ScrollArea, TextEdit, Widget, WidgetText};
 use poll_promise::Promise;
+use tracing::{error, info};
 
 use crate::sources::binance::{Client, Info, Symbol};
 
@@ -16,7 +17,7 @@ pub struct Symbols {
     loading: bool,
     selected_symbol: String,
     symbols_promise: Option<Promise<Info>>,
-    symbol_chan: Sender<String>,
+    symbol_pub: Sender<String>,
 }
 
 impl Default for Symbols {
@@ -28,17 +29,17 @@ impl Default for Symbols {
             loading: Default::default(),
             selected_symbol: Default::default(),
             symbols_promise: Default::default(),
-            symbol_chan: s,
+            symbol_pub: s,
         }
     }
 }
 
 impl Symbols {
-    pub fn new(symbol_chan: Sender<String>) -> Self {
+    pub fn new(symbol_pub: Sender<String>) -> Self {
         Self {
             loading: true,
             symbols_promise: Some(Promise::spawn_async(async { Client::info().await })),
-            symbol_chan,
+            symbol_pub,
             ..Default::default()
         }
     }
@@ -110,7 +111,16 @@ impl Widget for &mut Symbols {
                             );
 
                             if label.clicked() {
-                                self.symbol_chan.send(s.symbol.clone()).unwrap();
+                                let send_result = self.symbol_pub.send(s.symbol.clone());
+                                match send_result {
+                                    Ok(_) => {
+                                        info!("sent symbol: {}", s.symbol);
+                                    }
+                                    Err(err) => {
+                                        error!("failed to send symbol: {err}");
+                                    }
+                                }
+
                                 self.selected_symbol = s.symbol.clone();
                             };
                         });

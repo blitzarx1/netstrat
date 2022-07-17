@@ -1,23 +1,21 @@
 use std::fs::File;
 
-use chrono::Timelike;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 
 use egui::{
-    panel::TopBottomSide, plot::LinkedAxisGroup, CentralPanel, ProgressBar, Response,
-    TopBottomPanel, Ui, Widget, Window,
+    plot::LinkedAxisGroup, CentralPanel, ProgressBar, Response, TopBottomPanel, Ui, Widget,
 };
 use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
+use tracing::{error, info};
 
 use crate::{
-    sources::binance::{Client, Interval, Kline},
+    sources::binance::{Client, Kline},
     windows::{AppWindow, TimeRangeChooser},
 };
 
 use super::{
-    candles::Candles, data::Data, loading_state::LoadingState, props::Props, time_input::TimeInput,
-    volume::Volume,
+    candles::Candles, data::Data, loading_state::LoadingState, props::Props, volume::Volume,
 };
 
 pub struct Graph {
@@ -25,53 +23,61 @@ pub struct Graph {
     volume: Volume,
     symbol: String,
     symbol_pub: Sender<String>,
-    time_start: TimeInput,
-    time_end: TimeInput,
 
-    time_range_window: Box<dyn AppWindow>,
+    pub time_range_window: Box<dyn AppWindow>,
 
     klines: Vec<Kline>,
     graph_props: Props,
     graph_loading_state: LoadingState,
     klines_promise: Option<Promise<Vec<Kline>>>,
-    symbol_chan: Receiver<String>,
-    valid: bool,
+    symbol_sub: Receiver<String>,
+    props_sub: Receiver<Props>,
+    export_sub: Receiver<()>,
 }
 
 impl Default for Graph {
     fn default() -> Self {
         let graph_props = Props::default();
-        let start_time = graph_props.time_start;
-        let end_time = graph_props.time_end;
-        let (s, r) = unbounded();
+        let (s_symbols, r_symbols) = unbounded();
+        let (s_props, r_props) = unbounded();
+        let (s_export, r_export) = unbounded();
 
         Self {
             candles: Default::default(),
             volume: Default::default(),
             symbol: Default::default(),
-            symbol_pub: s,
-            time_start: TimeInput::new(start_time.hour(), start_time.minute(), start_time.second()),
-            time_end: TimeInput::new(end_time.hour(), end_time.minute(), end_time.second()),
+            symbol_pub: s_symbols,
 
-            time_range_window: Box::new(TimeRangeChooser::new(false, r.clone())),
+            time_range_window: Box::new(TimeRangeChooser::new(
+                false,
+                r_symbols.clone(),
+                s_props,
+                s_export,
+            )),
 
             klines: Default::default(),
             graph_props,
             graph_loading_state: Default::default(),
             klines_promise: Default::default(),
-            symbol_chan: r,
-            valid: true,
+            symbol_sub: r_symbols,
+            props_sub: r_props,
+            export_sub: r_export,
         }
     }
 }
 
 impl Graph {
     pub fn new(symbol_chan: Receiver<String>) -> Self {
-        let (s, r) = unbounded();
+        let (s_symbols, r_symbols) = unbounded();
+        let (s_props, r_props) = unbounded();
+        let (s_export, r_export) = unbounded();
+
         Self {
-            symbol_chan: symbol_chan,
-            symbol_pub: s,
-            time_range_window: Box::new(TimeRangeChooser::new(false, r)),
+            symbol_sub: symbol_chan,
+            symbol_pub: s_symbols,
+            props_sub: r_props,
+            export_sub: r_export,
+            time_range_window: Box::new(TimeRangeChooser::new(false, r_symbols, s_props, s_export)),
             ..Default::default()
         }
     }
@@ -79,12 +85,39 @@ impl Graph {
 
 impl Widget for &mut Graph {
     fn ui(self, ui: &mut Ui) -> Response {
+        let export_wrapped = self
+            .export_sub
+            .recv_timeout(std::time::Duration::from_millis(1));
+
+        match export_wrapped {
+            Ok(_) => {
+                info!("got export command");
+                let name = format!(
+                    "{}-{}-{}-{:?}",
+                    self.symbol,
+                    self.graph_props.start_time(),
+                    self.graph_props.end_time(),
+                    self.graph_props.interval,
+                );
+                let f = File::create(format!("{}.csv", name)).unwrap();
+
+                let mut wtr = csv::Writer::from_writer(f);
+                self.klines.iter().for_each(|el| {
+                    wtr.serialize(el).unwrap();
+                });
+                wtr.flush().unwrap();
+            }
+            Err(_) => {}
+        }
+
         let symbol_wrapped = self
-            .symbol_chan
-            .recv_timeout(std::time::Duration::from_millis(10));
+            .symbol_sub
+            .recv_timeout(std::time::Duration::from_millis(1));
 
         match symbol_wrapped {
             Ok(symbol) => {
+                info!("got symbol: {symbol}");
+
                 self.symbol = symbol.clone();
                 self.symbol_pub.send(symbol).unwrap();
                 self.graph_loading_state = Default::default();
@@ -92,9 +125,35 @@ impl Widget for &mut Graph {
             Err(_) => {}
         }
 
-        // TODO: think of placeholder
+        let props_wrapped = self
+            .props_sub
+            .recv_timeout(std::time::Duration::from_millis(1));
+
+        match props_wrapped {
+            Ok(props) => {
+                info!("got props: {props:?}");
+                self.graph_props = props;
+                self.graph_loading_state = LoadingState::from_graph_props(&self.graph_props);
+                self.graph_loading_state.triggered = true;
+
+                let start = self.graph_props.start_time().timestamp_millis().clone();
+                let pair = self.symbol.to_string();
+                let interval = self.graph_props.interval.clone();
+                let mut limit = self.graph_props.limit.clone();
+
+                if self.graph_loading_state.is_last_page() {
+                    limit = self.graph_loading_state.last_page_limit
+                }
+
+                self.klines_promise = Some(Promise::spawn_async(async move {
+                    Client::kline(pair, interval, start, limit).await
+                }));
+            }
+            Err(_) => {}
+        }
+
         if self.symbol == "" {
-            return ui.label("select symbol");
+            return ui.label("select a symbol");
         }
 
         if let Some(promise) = &self.klines_promise {
