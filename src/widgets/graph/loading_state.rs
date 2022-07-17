@@ -18,12 +18,10 @@ pub struct LoadingState {
 
 impl LoadingState {
     pub fn from_graph_props(props: &Props) -> Self {
+        info!("got props: {props:?}");
+        
         let diff_days = props.date_end - props.date_start;
 
-        info!(
-            "props: start: {:?}, end: {:?}",
-            props.date_start, props.date_end
-        );
 
         match props.interval {
             Interval::Minute => {

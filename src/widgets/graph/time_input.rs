@@ -3,6 +3,7 @@ use std::fmt::Display;
 use chrono::{NaiveTime, Utc};
 use egui::widgets::{TextEdit, Widget};
 use egui::Color32;
+use tracing::info;
 
 /// Time hold value for hours, minutes and seconds validating them.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -62,10 +63,12 @@ impl TimeInput {
     /// Returns chrono::NaiveTime from the time input.
     pub fn get_time(&self) -> Option<NaiveTime> {
         if !self.valid {
+            info!("faield to parse time from val: {}", self.val);
             return None;
         }
 
         let time = self.time;
+        info!("parsed time: {time}");
         Some(NaiveTime::from_hms(time.hours, time.minutes, time.seconds))
     }
 
