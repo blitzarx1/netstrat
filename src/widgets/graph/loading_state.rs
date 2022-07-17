@@ -5,12 +5,10 @@ use crate::sources::binance::Interval;
 
 use super::props::Props;
 
-static MAX_LIMIT: u32 = 1000;
-
 #[derive(Default, Debug, Clone, Copy)]
 pub struct LoadingState {
     pub triggered: bool,
-    pub initial: Props,
+    pub props: Props,
     pub received: u32,
     pub pages: u32,
     pub last_page_limit: usize,
@@ -22,66 +20,71 @@ impl LoadingState {
         
         let diff_days = props.date_end - props.date_start;
 
+        let loading_state: LoadingState;
 
         match props.interval {
             Interval::Minute => {
-                let pages_proto = Duration::num_minutes(&diff_days) as f32 / MAX_LIMIT as f32;
+                let pages_proto = Duration::num_minutes(&diff_days) as f32 / props.limit as f32;
                 let pages = pages_proto.ceil() as u32;
-                let last_page_limit = (pages_proto.fract() * MAX_LIMIT as f32) as usize;
+                let last_page_limit = (pages_proto.fract() * props.limit as f32) as usize;
 
-                LoadingState {
+                loading_state = LoadingState {
                     triggered: false,
-                    initial: props.clone(),
+                    props: props.clone(),
                     pages,
                     received: 0,
                     last_page_limit,
-                }
+                };
             }
             Interval::Hour => {
-                let pages_proto = Duration::num_hours(&diff_days) as f32 / MAX_LIMIT as f32;
+                let pages_proto = Duration::num_hours(&diff_days) as f32 / props.limit as f32;
                 let pages = pages_proto.ceil() as u32;
-                let last_page_limit = (pages_proto.fract() * MAX_LIMIT as f32) as usize;
+                let last_page_limit = (pages_proto.fract() * props.limit as f32) as usize;
 
-                LoadingState {
+                loading_state = LoadingState {
                     triggered: false,
-                    initial: props.clone(),
+                    props: props.clone(),
                     pages,
                     received: 0,
                     last_page_limit,
-                }
+                };
             }
             Interval::Day => {
-                let pages_proto = Duration::num_days(&diff_days) as f32 / MAX_LIMIT as f32;
+                let pages_proto = Duration::num_days(&diff_days) as f32 / props.limit as f32;
                 let pages = pages_proto.ceil() as u32;
-                let last_page_limit = (pages_proto.fract() * MAX_LIMIT as f32) as usize;
+                let last_page_limit = (pages_proto.fract() * props.limit as f32) as usize;
 
-                LoadingState {
+                loading_state = LoadingState {
                     triggered: false,
-                    initial: props.clone(),
+                    props: props.clone(),
                     pages,
                     received: 0,
                     last_page_limit,
-                }
+                };
             }
-        }
+        };
+
+        info!("created loading state from props: {loading_state:?}");
+
+        loading_state
     }
 
     pub fn left_edge(&self) -> DateTime<Utc> {
         let covered: Duration;
 
-        match self.initial.interval {
+        match self.props.interval {
             Interval::Minute => {
-                covered = Duration::minutes((self.received * self.initial.limit as u32) as i64)
+                covered = Duration::minutes((self.received * self.props.limit as u32) as i64)
             }
             Interval::Hour => {
-                covered = Duration::hours((self.received * self.initial.limit as u32) as i64)
+                covered = Duration::hours((self.received * self.props.limit as u32) as i64)
             }
             Interval::Day => {
-                covered = Duration::days((self.received * self.initial.limit as u32) as i64)
+                covered = Duration::days((self.received * self.props.limit as u32) as i64)
             }
         };
 
-        self.initial.date_start.and_hms(0, 0, 0) + covered
+        self.props.date_start.and_hms(0, 0, 0) + covered
     }
 
     pub fn inc_received(&mut self) {

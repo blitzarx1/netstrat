@@ -81,6 +81,12 @@ impl Graph {
             ..Default::default()
         }
     }
+
+    fn set_data(&mut self, data: Data) {
+        let axes_group = LinkedAxisGroup::new(true, false);
+        self.volume = Volume::new(data.clone(), axes_group.clone());
+        self.candles = Candles::new(data, axes_group);
+    }
 }
 
 impl Widget for &mut Graph {
@@ -173,12 +179,7 @@ impl Widget for &mut Graph {
                 self.klines_promise = None;
 
                 match self.graph_loading_state.is_finished() {
-                    true => {
-                        let data = Data::new(self.klines.clone());
-                        let axes_group = LinkedAxisGroup::new(true, false);
-                        self.volume = Volume::new(data.clone(), axes_group.clone());
-                        self.candles = Candles::new(data, axes_group);
-                    }
+                    true => self.set_data(Data::new(self.klines.clone())),
                     false => {
                         let start = self
                             .graph_loading_state
