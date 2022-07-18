@@ -4,7 +4,7 @@ use super::AppWindow;
 use chrono::{Date, NaiveTime, Timelike, Utc};
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use egui::{Color32, Frame, Response, Stroke, Ui, Widget, Window};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
     sources::binance::Interval,
@@ -180,7 +180,7 @@ impl AppWindow for TimeRangeChooser {
                                         }
                                     }
                                 } else {
-                                    error!("invalid props");
+                                    warn!("invalid props");
                                     self.valid = false;
                                 }
 
@@ -213,7 +213,7 @@ impl AppWindow for TimeRangeChooser {
                                         }
                                     }
                                 } else {
-                                    error!("invalid props");
+                                    warn!("invalid props");
                                     self.valid = false;
                                 }
                             }
