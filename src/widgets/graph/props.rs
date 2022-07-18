@@ -2,7 +2,7 @@ use chrono::{Date, DateTime, Duration, NaiveTime, Timelike, Utc};
 
 use crate::sources::binance::Interval;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Props {
     pub date_start: Date<Utc>,
     pub date_end: Date<Utc>,

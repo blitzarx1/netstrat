@@ -94,7 +94,11 @@ impl LoadingState {
     }
 
     pub fn is_finished(&self) -> bool {
-        return self.progress() == 1f32;
+        return self.triggered && self.progress() == 1f32;
+    }
+
+    pub fn in_progress(&self) -> bool {
+        return self.triggered && self.progress() != 1f32;
     }
 
     pub fn progress(&self) -> f32 {
