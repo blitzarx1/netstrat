@@ -36,7 +36,7 @@ pub struct Graph {
     export_state: ExportState,
     klines_promise: Option<Promise<Vec<Kline>>>,
     symbol_sub: Receiver<String>,
-    props_sub: Receiver<Props>,
+    show_sub: Receiver<Props>,
     export_sub: Receiver<Props>,
 }
 
@@ -53,10 +53,11 @@ impl Default for Graph {
                 r_symbols.clone(),
                 s_props,
                 s_export,
+                Props::default(),
             )),
 
             symbol_sub: r_symbols,
-            props_sub: r_props,
+            show_sub: r_props,
             export_sub: r_export,
 
             symbol: Default::default(),
@@ -80,15 +81,23 @@ impl Graph {
         Self {
             symbol_sub: symbol_chan,
             symbol_pub: s_symbols,
-            props_sub: r_props,
+            show_sub: r_props,
             export_sub: r_export,
-            time_range_window: Box::new(TimeRangeChooser::new(false, r_symbols, s_props, s_export)),
+            time_range_window: Box::new(TimeRangeChooser::new(false, r_symbols, s_props, s_export, Props::default())),
             ..Default::default()
         }
     }
 
-    fn start_download(&mut self, props: Props) {
+    fn start_download(&mut self, props: Props, export: bool) {
+        self.export_state.triggered = export;
+
+        if self.graph_loading_state.props == props {
+            info!("data already downloaded, skipping download");
+            return;
+        }
+
         info!("starting data download...");
+        
 
         self.klines = vec![];
 
@@ -122,9 +131,7 @@ impl Widget for &mut Graph {
             Ok(props) => {
                 info!("got props for export: {props:?}");
 
-                self.export_state.triggered = true;
-                
-                self.start_download(props);
+                self.start_download(props, true);
             }
             Err(_) => {}
         }
@@ -168,15 +175,15 @@ impl Widget for &mut Graph {
             return ui.label("select a symbol");
         }
 
-        let props_wrapped = self
-            .props_sub
+        let show_wrapped = self
+            .show_sub
             .recv_timeout(std::time::Duration::from_millis(1));
 
-        match props_wrapped {
+        match show_wrapped {
             Ok(props) => {
                 info!("got props: {props:?}");
 
-                self.start_download(props);
+                self.start_download(props, false);
             }
             Err(_) => {}
         }
@@ -217,35 +224,12 @@ impl Widget for &mut Graph {
                         let axes_group = LinkedAxisGroup::new(true, false);
                         self.volume = Volume::new(data.clone(), axes_group.clone());
                         self.candles = Candles::new(data, axes_group);
-
-                        if self.export_state.triggered {
-                            info!("exporting to data...");
-
-                            let name = format!(
-                                "{}-{}-{}-{:?}",
-                                self.symbol,
-                                self.graph_loading_state.props.start_time(),
-                                self.graph_loading_state.props.end_time(),
-                                self.graph_loading_state.props.interval,
-                            );
-                            let f = File::create(format!("{}.csv", name)).unwrap();
-
-                            let mut wtr = csv::Writer::from_writer(f);
-                            self.klines.iter().for_each(|el| {
-                                wtr.serialize(el).unwrap();
-                            });
-                            wtr.flush().unwrap();
-
-                            self.export_state.triggered = false;
-
-                            info!("exported to data: {}.csv", name);
-                        }
                     }
                 }
             }
         }
 
-        if !self.graph_loading_state.is_finished() {
+        if self.graph_loading_state.in_progress() {
             return ui
                 .centered_and_justified(|ui| {
                     ui.add(
@@ -255,6 +239,29 @@ impl Widget for &mut Graph {
                     )
                 })
                 .response;
+        }
+
+        if self.graph_loading_state.is_finished() && self.export_state.triggered {
+            info!("exporting to data...");
+
+            let name = format!(
+                "{}-{}-{}-{:?}",
+                self.symbol,
+                self.graph_loading_state.props.start_time(),
+                self.graph_loading_state.props.end_time(),
+                self.graph_loading_state.props.interval,
+            );
+            let f = File::create(format!("{}.csv", name)).unwrap();
+
+            let mut wtr = csv::Writer::from_writer(f);
+            self.klines.iter().for_each(|el| {
+                wtr.serialize(el).unwrap();
+            });
+            wtr.flush().unwrap();
+
+            self.export_state.triggered = false;
+
+            info!("exported to data: {}.csv", name);
         }
 
         TopBottomPanel::top("graph toolbar")
