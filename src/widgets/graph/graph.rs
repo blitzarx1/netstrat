@@ -36,7 +36,7 @@ pub struct Graph {
     export_state: ExportState,
     klines_promise: Option<Promise<Vec<Kline>>>,
     symbol_sub: Receiver<String>,
-    props_sub: Receiver<Props>,
+    show_sub: Receiver<Props>,
     export_sub: Receiver<Props>,
 }
 
@@ -56,7 +56,7 @@ impl Default for Graph {
             )),
 
             symbol_sub: r_symbols,
-            props_sub: r_props,
+            show_sub: r_props,
             export_sub: r_export,
 
             symbol: Default::default(),
@@ -80,15 +80,17 @@ impl Graph {
         Self {
             symbol_sub: symbol_chan,
             symbol_pub: s_symbols,
-            props_sub: r_props,
+            show_sub: r_props,
             export_sub: r_export,
             time_range_window: Box::new(TimeRangeChooser::new(false, r_symbols, s_props, s_export)),
             ..Default::default()
         }
     }
 
-    fn start_download(&mut self, props: Props) {
+    fn start_download(&mut self, props: Props, export: bool) {
         info!("starting data download...");
+
+        self.export_state.triggered = export;
 
         self.klines = vec![];
 
@@ -122,9 +124,7 @@ impl Widget for &mut Graph {
             Ok(props) => {
                 info!("got props for export: {props:?}");
 
-                self.export_state.triggered = true;
-                
-                self.start_download(props);
+                self.start_download(props, true);
             }
             Err(_) => {}
         }
@@ -168,15 +168,15 @@ impl Widget for &mut Graph {
             return ui.label("select a symbol");
         }
 
-        let props_wrapped = self
-            .props_sub
+        let show_wrapped = self
+            .show_sub
             .recv_timeout(std::time::Duration::from_millis(1));
 
-        match props_wrapped {
+        match show_wrapped {
             Ok(props) => {
                 info!("got props: {props:?}");
 
-                self.start_download(props);
+                self.start_download(props, false);
             }
             Err(_) => {}
         }
