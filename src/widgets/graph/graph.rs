@@ -89,6 +89,7 @@ impl Widget for &mut Graph {
         match export_wrapped {
             Ok(_) => {
                 info!("got export command");
+                
                 let name = format!(
                     "{}-{}-{}-{:?}",
                     self.symbol,
@@ -103,6 +104,8 @@ impl Widget for &mut Graph {
                     wtr.serialize(el).unwrap();
                 });
                 wtr.flush().unwrap();
+
+                info!("exported to {}.csv", name);
             }
             Err(_) => {}
         }
