@@ -28,6 +28,10 @@ impl Props {
             self.time_end.second(),
         )
     }
+
+    pub fn is_valid(&self) -> bool {
+        self.start_time() < self.end_time()
+    }
 }
 
 impl Default for Props {

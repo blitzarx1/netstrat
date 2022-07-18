@@ -3,7 +3,7 @@ use std::fs::File;
 use super::AppWindow;
 use chrono::{Date, Utc};
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use egui::{Response, Ui, Widget, Window};
+use egui::{Color32, Frame, Response, Stroke, Ui, Widget, Window};
 use tracing::{error, info};
 
 use crate::{
@@ -135,7 +135,12 @@ impl AppWindow for TimeRangeChooser {
                             }
                         }
 
-                        if !start_valid && !end_valid {
+                        if !start_valid || !end_valid {
+                            self.valid = false;
+                            return;
+                        }
+
+                        if start_valid && start_valid && !self.props.is_valid() {
                             self.valid = false;
                             return;
                         }
@@ -150,22 +155,23 @@ impl AppWindow for TimeRangeChooser {
                             }
                         }
                     }
-                });
-                if !self.valid {
-                    ui.label("invalid time range");
-                }
 
-                if ui.button("export").clicked() {
-                    let send_result = self.export_pub.send(());
-                    match send_result {
-                        Ok(_) => {
-                            info!("sent export command");
+                    if ui.button("export").clicked() {
+                        let send_result = self.export_pub.send(());
+                        match send_result {
+                            Ok(_) => {
+                                info!("sent export command");
+                            }
+                            Err(err) => {
+                                error!("failed to send export command: {err}");
+                            }
                         }
-                        Err(err) => {
-                            error!("failed to send export command: {err}");
-                        }
-                    }
-                };
+                    };
+                });
+
+                if !self.valid {
+                    ui.label("invalid time format or start > end");
+                }
             });
     }
 }

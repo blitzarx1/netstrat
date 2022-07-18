@@ -7,7 +7,7 @@ use egui::{
 };
 use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::{
     sources::binance::{Client, Kline},
@@ -27,7 +27,6 @@ pub struct Graph {
     pub time_range_window: Box<dyn AppWindow>,
 
     klines: Vec<Kline>,
-    graph_props: Props,
     graph_loading_state: LoadingState,
     klines_promise: Option<Promise<Vec<Kline>>>,
     symbol_sub: Receiver<String>,
@@ -37,7 +36,6 @@ pub struct Graph {
 
 impl Default for Graph {
     fn default() -> Self {
-        let graph_props = Props::default();
         let (s_symbols, r_symbols) = unbounded();
         let (s_props, r_props) = unbounded();
         let (s_export, r_export) = unbounded();
@@ -56,7 +54,6 @@ impl Default for Graph {
             )),
 
             klines: Default::default(),
-            graph_props,
             graph_loading_state: Default::default(),
             klines_promise: Default::default(),
             symbol_sub: r_symbols,
@@ -81,12 +78,6 @@ impl Graph {
             ..Default::default()
         }
     }
-
-    fn set_data(&mut self, data: Data) {
-        let axes_group = LinkedAxisGroup::new(true, false);
-        self.volume = Volume::new(data.clone(), axes_group.clone());
-        self.candles = Candles::new(data, axes_group);
-    }
 }
 
 impl Widget for &mut Graph {
@@ -101,9 +92,9 @@ impl Widget for &mut Graph {
                 let name = format!(
                     "{}-{}-{}-{:?}",
                     self.symbol,
-                    self.graph_props.start_time(),
-                    self.graph_props.end_time(),
-                    self.graph_props.interval,
+                    self.graph_loading_state.props.start_time(),
+                    self.graph_loading_state.props.end_time(),
+                    self.graph_loading_state.props.interval,
                 );
                 let f = File::create(format!("{}.csv", name)).unwrap();
 
@@ -124,35 +115,28 @@ impl Widget for &mut Graph {
             Ok(symbol) => {
                 info!("got symbol: {symbol}");
 
+                self.klines = vec![];
+
                 self.symbol = symbol.clone();
+
                 self.symbol_pub.send(symbol).unwrap();
-                self.graph_loading_state = Default::default();
-            }
-            Err(_) => {}
-        }
 
-        let props_wrapped = self
-            .props_sub
-            .recv_timeout(std::time::Duration::from_millis(1));
-
-        match props_wrapped {
-            Ok(props) => {
-                info!("got props: {props:?}");
-                self.graph_props = props;
-                self.graph_loading_state = LoadingState::from_graph_props(&self.graph_props);
+                self.graph_loading_state = LoadingState::from_graph_props(&Props::default());
                 self.graph_loading_state.triggered = true;
-
-                let start = self.graph_props.start_time().timestamp_millis().clone();
-                let pair = self.symbol.to_string();
-                let interval = self.graph_props.interval.clone();
-                let mut limit = self.graph_props.limit.clone();
-
+                let interval = self.graph_loading_state.props.interval.clone();
+                let start = self
+                    .graph_loading_state
+                    .left_edge()
+                    .timestamp_millis()
+                    .clone();
+                let mut limit = self.graph_loading_state.props.limit.clone();
                 if self.graph_loading_state.is_last_page() {
-                    limit = self.graph_loading_state.last_page_limit
+                    limit = self.graph_loading_state.last_page_limit;
                 }
 
+                let symbol = self.symbol.clone();
                 self.klines_promise = Some(Promise::spawn_async(async move {
-                    Client::kline(pair, interval, start, limit).await
+                    Client::kline(symbol, interval, start, limit).await
                 }));
             }
             Err(_) => {}
@@ -162,12 +146,39 @@ impl Widget for &mut Graph {
             return ui.label("select a symbol");
         }
 
-        if let Some(promise) = &self.klines_promise {
-            if let Some(result) = promise.ready() {
-                if self.graph_loading_state.received == 0 {
-                    self.klines = vec![];
+        let props_wrapped = self
+            .props_sub
+            .recv_timeout(std::time::Duration::from_millis(1));
+
+        match props_wrapped {
+            Ok(props) => {
+                info!("got props: {props:?}");
+
+                self.klines = vec![];
+
+                self.graph_loading_state = LoadingState::from_graph_props(&props);
+                self.graph_loading_state.triggered = true;
+
+                let start_time = props.start_time().timestamp_millis().clone();
+                let pair = self.symbol.to_string();
+                let interval = props.interval.clone();
+                let mut limit = props.limit.clone();
+
+                if self.graph_loading_state.is_last_page() {
+                    limit = self.graph_loading_state.last_page_limit
                 }
 
+                debug!("setting left edge to: {start_time}");
+
+                self.klines_promise = Some(Promise::spawn_async(async move {
+                    Client::kline(pair, interval, start_time, limit).await
+                }));
+            }
+            Err(_) => {}
+        }
+
+        if let Some(promise) = &self.klines_promise {
+            if let Some(result) = promise.ready() {
                 self.graph_loading_state.inc_received();
 
                 if self.graph_loading_state.received > 0 {
@@ -179,7 +190,6 @@ impl Widget for &mut Graph {
                 self.klines_promise = None;
 
                 match self.graph_loading_state.is_finished() {
-                    true => self.set_data(Data::new(self.klines.clone())),
                     false => {
                         let start = self
                             .graph_loading_state
@@ -188,8 +198,8 @@ impl Widget for &mut Graph {
                             .clone();
 
                         let symbol = self.symbol.to_string();
-                        let interval = self.graph_props.interval.clone();
-                        let mut limit = self.graph_props.limit.clone();
+                        let interval = self.graph_loading_state.props.interval.clone();
+                        let mut limit = self.graph_loading_state.props.limit.clone();
                         if self.graph_loading_state.is_last_page() {
                             limit = self.graph_loading_state.last_page_limit
                         }
@@ -198,29 +208,14 @@ impl Widget for &mut Graph {
                             Client::kline(symbol, interval, start, limit).await
                         }));
                     }
+                    true => {
+                        let data = Data::new(self.klines.clone());
+                        let axes_group = LinkedAxisGroup::new(true, false);
+                        self.volume = Volume::new(data.clone(), axes_group.clone());
+                        self.candles = Candles::new(data, axes_group);
+                    }
                 }
             }
-        } else if !self.graph_loading_state.triggered {
-            self.graph_loading_state = LoadingState::from_graph_props(&self.graph_props);
-            self.graph_loading_state.triggered = true;
-
-            let interval = self.graph_props.interval.clone();
-            let start = self
-                .graph_loading_state
-                .left_edge()
-                .timestamp_millis()
-                .clone();
-
-            let mut limit = self.graph_props.limit.clone();
-            if self.graph_loading_state.is_last_page() {
-                limit = self.graph_loading_state.last_page_limit;
-            }
-
-            let symbol = self.symbol.to_string();
-
-            self.klines_promise = Some(Promise::spawn_async(async move {
-                Client::kline(symbol, interval, start, limit).await
-            }));
         }
 
         if !self.graph_loading_state.is_finished() {

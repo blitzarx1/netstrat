@@ -17,14 +17,16 @@ pub struct LoadingState {
 impl LoadingState {
     pub fn from_graph_props(props: &Props) -> Self {
         info!("got props: {props:?}");
-        
-        let diff_days = props.date_end - props.date_start;
+
+        let diff = props.end_time() - props.start_time();
+
+        info!("loading graph for duration: {diff:?}");
 
         let loading_state: LoadingState;
 
         match props.interval {
             Interval::Minute => {
-                let pages_proto = Duration::num_minutes(&diff_days) as f32 / props.limit as f32;
+                let pages_proto = Duration::num_minutes(&diff) as f32 / props.limit as f32;
                 let pages = pages_proto.ceil() as u32;
                 let last_page_limit = (pages_proto.fract() * props.limit as f32) as usize;
 
@@ -37,7 +39,7 @@ impl LoadingState {
                 };
             }
             Interval::Hour => {
-                let pages_proto = Duration::num_hours(&diff_days) as f32 / props.limit as f32;
+                let pages_proto = Duration::num_hours(&diff) as f32 / props.limit as f32;
                 let pages = pages_proto.ceil() as u32;
                 let last_page_limit = (pages_proto.fract() * props.limit as f32) as usize;
 
@@ -50,7 +52,7 @@ impl LoadingState {
                 };
             }
             Interval::Day => {
-                let pages_proto = Duration::num_days(&diff_days) as f32 / props.limit as f32;
+                let pages_proto = Duration::num_days(&diff) as f32 / props.limit as f32;
                 let pages = pages_proto.ceil() as u32;
                 let last_page_limit = (pages_proto.fract() * props.limit as f32) as usize;
 
@@ -64,7 +66,7 @@ impl LoadingState {
             }
         };
 
-        info!("created loading state from props: {loading_state:?}");
+        info!("created loading state for total duration {diff}: {loading_state:?}");
 
         loading_state
     }
