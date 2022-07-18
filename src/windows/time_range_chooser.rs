@@ -20,7 +20,7 @@ pub struct TimeRangeChooser {
     valid: bool,
     visible: bool,
     props_pub: Sender<Props>,
-    export_pub: Sender<()>,
+    export_pub: Sender<Props>,
 }
 
 impl TimeRangeChooser {
@@ -28,7 +28,7 @@ impl TimeRangeChooser {
         visible: bool,
         symbol_sub: Receiver<String>,
         props_pub: Sender<Props>,
-        export_pub: Sender<()>,
+        export_pub: Sender<Props>,
     ) -> Self {
         Self {
             symbol: String::new(),
@@ -148,22 +148,22 @@ impl AppWindow for TimeRangeChooser {
                         let send_result = self.props_pub.send(self.props);
                         match send_result {
                             Ok(_) => {
-                                info!("sent props: {:?}", self.props);
+                                info!("sent props for show: {:?}", self.props);
                             }
                             Err(err) => {
-                                error!("failed to send props: {err}");
+                                error!("failed to send props for show: {err}");
                             }
                         }
                     }
 
                     if ui.button("export").clicked() {
-                        let send_result = self.export_pub.send(());
+                        let send_result = self.export_pub.send(self.props);
                         match send_result {
                             Ok(_) => {
-                                info!("sent export command");
+                                info!("sent props to export: {:?}", self.props);
                             }
                             Err(err) => {
-                                error!("failed to send export command: {err}");
+                                error!("failed to send props for export: {err}");
                             }
                         }
                     };
