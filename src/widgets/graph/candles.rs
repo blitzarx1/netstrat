@@ -1,7 +1,9 @@
+use crossbeam::channel::{unbounded, Sender};
 use egui::{
     plot::{BoxElem, BoxPlot, BoxSpread, LinkedAxisGroup, Plot},
     Color32, Response, Stroke, Widget,
 };
+use tracing::{debug, error, info, trace};
 
 use super::data::Data;
 
@@ -10,57 +12,66 @@ pub struct Candles {
     data: Data,
     val: Vec<BoxElem>,
     axes_group: LinkedAxisGroup,
+    bounds_pub: Sender<(f64, f64)>,
 }
 
 impl Default for Candles {
     fn default() -> Self {
+        let (s_bounds, _) = unbounded();
+
         Self {
             data: Default::default(),
             val: Default::default(),
             axes_group: LinkedAxisGroup::new(false, false),
+            bounds_pub: s_bounds,
         }
     }
 }
 
 impl Candles {
-    pub fn new(data: Data, axes_group: LinkedAxisGroup) -> Self {
-        let val: Vec<BoxElem> = data
-            .vals
-            .iter()
-            .map(|k| -> BoxElem {
-                BoxElem::new(
-                    (k.t_open + k.t_close) as f64 / 2.0,
-                    BoxSpread::new(
-                        k.low as f64,
-                        {
-                            match k.open > k.close {
-                                true => k.close as f64,
-                                false => k.open as f64,
-                            }
-                        },
-                        k.open as f64, // we don't need to see median for candle
-                        {
-                            match k.open > k.close {
-                                true => k.open as f64,
-                                false => k.close as f64,
-                            }
-                        },
-                        k.high as f64,
-                    ),
-                )
-                .name(Data::format_ts(k.t_close as f64))
-                .stroke(Stroke::new(1.0, Data::k_color(k)))
-                .fill(Data::k_color(k))
-                .whisker_width(0.0)
-                .box_width((k.t_open - k.t_close) as f64 * 0.9)
-            })
-            .collect();
-
+    pub fn new(axes_group: LinkedAxisGroup, bounds_pub: Sender<(f64, f64)>) -> Self {
         Self {
-            data,
-            val,
             axes_group,
+            bounds_pub,
+            ..Default::default()
         }
+    }
+
+    pub fn set_data(&mut self, data: Data) {
+        let val: Vec<BoxElem> = data
+        .vals
+        .iter()
+        .map(|k| -> BoxElem {
+            BoxElem::new(
+                (k.t_open + k.t_close) as f64 / 2.0,
+                BoxSpread::new(
+                    k.low as f64,
+                    {
+                        match k.open > k.close {
+                            true => k.close as f64,
+                            false => k.open as f64,
+                        }
+                    },
+                    k.open as f64, // we don't need to see median for candle
+                    {
+                        match k.open > k.close {
+                            true => k.open as f64,
+                            false => k.close as f64,
+                        }
+                    },
+                    k.high as f64,
+                ),
+            )
+            .name(Data::format_ts(k.t_close as f64))
+            .stroke(Stroke::new(1.0, Data::k_color(k)))
+            .fill(Data::k_color(k))
+            .whisker_width(0.0)
+            .box_width((k.t_open - k.t_close) as f64 * 0.9)
+        })
+        .collect();
+
+        self.data = data;
+        self.val = val;
     }
 }
 
@@ -97,6 +108,14 @@ impl Widget for &Candles {
                         }))
                         .vertical(),
                 );
+
+                let bounds = plot_ui.plot_bounds();
+                let msg = (bounds.min()[0], bounds.max()[0]);
+                let send_res = self.bounds_pub.send(msg);
+                match send_res {
+                    Ok(_) => trace!("sent bounds to bounds_pub"),
+                    Err(err) => error!("failed to send bounds: {err}"),
+                }
             })
             .response
     }

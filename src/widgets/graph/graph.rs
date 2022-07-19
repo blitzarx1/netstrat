@@ -7,7 +7,7 @@ use egui::{
 };
 use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 use crate::{
     sources::binance::{Client, Kline},
@@ -38,6 +38,7 @@ pub struct Graph {
     symbol_sub: Receiver<String>,
     show_sub: Receiver<Props>,
     export_sub: Receiver<Props>,
+    bounds_sub: Receiver<(f64, f64)>,
 }
 
 impl Default for Graph {
@@ -45,6 +46,7 @@ impl Default for Graph {
         let (s_symbols, r_symbols) = unbounded();
         let (s_props, r_props) = unbounded();
         let (s_export, r_export) = unbounded();
+        let (_, r_bounds) = unbounded();
 
         Self {
             symbol_pub: s_symbols,
@@ -59,6 +61,7 @@ impl Default for Graph {
             symbol_sub: r_symbols,
             show_sub: r_props,
             export_sub: r_export,
+            bounds_sub: r_bounds,
 
             symbol: Default::default(),
             candles: Default::default(),
@@ -77,13 +80,25 @@ impl Graph {
         let (s_symbols, r_symbols) = unbounded();
         let (s_props, r_props) = unbounded();
         let (s_export, r_export) = unbounded();
+        let (s_bounds, r_bounds) = unbounded();
+
+        let axes_group = LinkedAxisGroup::new(true, false);
 
         Self {
             symbol_sub: symbol_chan,
             symbol_pub: s_symbols,
             show_sub: r_props,
             export_sub: r_export,
-            time_range_window: Box::new(TimeRangeChooser::new(false, r_symbols, s_props, s_export, Props::default())),
+            bounds_sub: r_bounds,
+            time_range_window: Box::new(TimeRangeChooser::new(
+                false,
+                r_symbols,
+                s_props,
+                s_export,
+                Props::default(),
+            )),
+            candles: Candles::new(axes_group.clone(), s_bounds),
+            volume: Volume::new(axes_group),
             ..Default::default()
         }
     }
@@ -97,7 +112,6 @@ impl Graph {
         }
 
         info!("starting data download...");
-        
 
         self.klines = vec![];
 
@@ -123,6 +137,17 @@ impl Graph {
 
 impl Widget for &mut Graph {
     fn ui(self, ui: &mut Ui) -> Response {
+        let bounds_wrapped = self
+            .bounds_sub
+            .recv_timeout(std::time::Duration::from_millis(1));
+
+        match bounds_wrapped {
+            Ok(bounds) => {
+                trace!("got bounds: {bounds:?}");
+            }
+            Err(_) => {}
+        }
+
         let export_wrapped = self
             .export_sub
             .recv_timeout(std::time::Duration::from_millis(1));
@@ -221,9 +246,8 @@ impl Widget for &mut Graph {
                     }
                     true => {
                         let data = Data::new(self.klines.clone());
-                        let axes_group = LinkedAxisGroup::new(true, false);
-                        self.volume = Volume::new(data.clone(), axes_group.clone());
-                        self.candles = Candles::new(data, axes_group);
+                        self.volume.set_data(data.clone());
+                        self.candles.set_data(data);
                     }
                 }
             }
