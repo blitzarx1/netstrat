@@ -6,7 +6,7 @@ use crate::sources::binance::Interval;
 use super::props::Props;
 
 #[derive(Default, Debug, Clone, Copy)]
-pub struct LoadingState {
+pub struct State {
     pub triggered: bool,
     pub props: Props,
     pub received: u32,
@@ -14,7 +14,7 @@ pub struct LoadingState {
     pub last_page_limit: usize,
 }
 
-impl LoadingState {
+impl State {
     pub fn from_graph_props(props: &Props) -> Self {
         info!("got props: {props:?}");
 
@@ -22,7 +22,7 @@ impl LoadingState {
 
         info!("loading graph for duration: {diff:?}");
 
-        let loading_state: LoadingState;
+        let loading_state: State;
 
         match props.interval {
             Interval::Minute => {
@@ -30,7 +30,7 @@ impl LoadingState {
                 let pages = pages_proto.ceil() as u32;
                 let last_page_limit = (pages_proto.fract() * props.limit as f32) as usize;
 
-                loading_state = LoadingState {
+                loading_state = State {
                     triggered: false,
                     props: props.clone(),
                     pages,
@@ -43,7 +43,7 @@ impl LoadingState {
                 let pages = pages_proto.ceil() as u32;
                 let last_page_limit = (pages_proto.fract() * props.limit as f32) as usize;
 
-                loading_state = LoadingState {
+                loading_state = State {
                     triggered: false,
                     props: props.clone(),
                     pages,
@@ -56,7 +56,7 @@ impl LoadingState {
                 let pages = pages_proto.ceil() as u32;
                 let last_page_limit = (pages_proto.fract() * props.limit as f32) as usize;
 
-                loading_state = LoadingState {
+                loading_state = State {
                     triggered: false,
                     props: props.clone(),
                     pages,

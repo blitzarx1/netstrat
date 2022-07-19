@@ -1,5 +1,6 @@
 use std::fs::File;
 
+use chrono::{Date, NaiveDateTime, NaiveTime, Utc};
 use crossbeam::channel::{unbounded, Receiver, Sender};
 
 use egui::{
@@ -15,7 +16,7 @@ use crate::{
 };
 
 use super::{
-    candles::Candles, data::Data, loading_state::LoadingState, props::Props, volume::Volume,
+    candles::Candles, data::Data, loading_state::State, props::Props, volume::Volume,
 };
 
 #[derive(Default)]
@@ -32,7 +33,7 @@ pub struct Graph {
     pub time_range_window: Box<dyn AppWindow>,
 
     klines: Vec<Kline>,
-    graph_loading_state: LoadingState,
+    state: State,
     export_state: ExportState,
     klines_promise: Option<Promise<Vec<Kline>>>,
     symbol_sub: Receiver<String>,
@@ -68,7 +69,7 @@ impl Default for Graph {
             volume: Default::default(),
 
             klines: Default::default(),
-            graph_loading_state: Default::default(),
+            state: Default::default(),
             klines_promise: Default::default(),
             export_state: Default::default(),
         }
@@ -106,7 +107,7 @@ impl Graph {
     fn start_download(&mut self, props: Props, export: bool) {
         self.export_state.triggered = export;
 
-        if self.graph_loading_state.props == props {
+        if self.state.props == props {
             info!("data already downloaded, skipping download");
             return;
         }
@@ -115,16 +116,16 @@ impl Graph {
 
         self.klines = vec![];
 
-        self.graph_loading_state = LoadingState::from_graph_props(&props);
-        self.graph_loading_state.triggered = true;
+        self.state = State::from_graph_props(&props);
+        self.state.triggered = true;
 
         let start_time = props.start_time().timestamp_millis().clone();
         let pair = self.symbol.to_string();
         let interval = props.interval.clone();
         let mut limit = props.limit.clone();
 
-        if self.graph_loading_state.is_last_page() {
-            limit = self.graph_loading_state.last_page_limit
+        if self.state.is_last_page() {
+            limit = self.state.last_page_limit
         }
 
         debug!("setting left edge to: {start_time}");
@@ -143,7 +144,17 @@ impl Widget for &mut Graph {
 
         match bounds_wrapped {
             Ok(bounds) => {
-                trace!("got bounds: {bounds:?}");
+                info!("got bounds: {bounds:?}");
+
+                if self.klines.len() > 0 && self.klines[0].t_close > bounds.0 as i64 {
+                    info!("uploading new data");
+
+                    let dt = NaiveDateTime::from_timestamp((bounds.0 / 1000.0) as i64, 0);
+                    let mut props = self.state.props.clone();
+                    props.date_start = Date::from_utc(dt.date(), Utc);
+                    props.time_start = dt.time();
+                    self.start_download(props, false);
+                }
             }
             Err(_) => {}
         }
@@ -175,17 +186,17 @@ impl Widget for &mut Graph {
 
                 self.symbol_pub.send(symbol).unwrap();
 
-                self.graph_loading_state = LoadingState::from_graph_props(&Props::default());
-                self.graph_loading_state.triggered = true;
-                let interval = self.graph_loading_state.props.interval.clone();
+                self.state = State::from_graph_props(&Props::default());
+                self.state.triggered = true;
+                let interval = self.state.props.interval.clone();
                 let start = self
-                    .graph_loading_state
+                    .state
                     .left_edge()
                     .timestamp_millis()
                     .clone();
-                let mut limit = self.graph_loading_state.props.limit.clone();
-                if self.graph_loading_state.is_last_page() {
-                    limit = self.graph_loading_state.last_page_limit;
+                let mut limit = self.state.props.limit.clone();
+                if self.state.is_last_page() {
+                    limit = self.state.last_page_limit;
                 }
 
                 let symbol = self.symbol.clone();
@@ -215,9 +226,9 @@ impl Widget for &mut Graph {
 
         if let Some(promise) = &self.klines_promise {
             if let Some(result) = promise.ready() {
-                self.graph_loading_state.inc_received();
+                self.state.inc_received();
 
-                if self.graph_loading_state.received > 0 {
+                if self.state.received > 0 {
                     result.iter().for_each(|k| {
                         self.klines.push(*k);
                     });
@@ -225,19 +236,19 @@ impl Widget for &mut Graph {
 
                 self.klines_promise = None;
 
-                match self.graph_loading_state.is_finished() {
+                match self.state.is_finished() {
                     false => {
                         let start = self
-                            .graph_loading_state
+                            .state
                             .left_edge()
                             .timestamp_millis()
                             .clone();
 
                         let symbol = self.symbol.to_string();
-                        let interval = self.graph_loading_state.props.interval.clone();
-                        let mut limit = self.graph_loading_state.props.limit.clone();
-                        if self.graph_loading_state.is_last_page() {
-                            limit = self.graph_loading_state.last_page_limit
+                        let interval = self.state.props.interval.clone();
+                        let mut limit = self.state.props.limit.clone();
+                        if self.state.is_last_page() {
+                            limit = self.state.last_page_limit
                         }
 
                         self.klines_promise = Some(Promise::spawn_async(async move {
@@ -253,11 +264,11 @@ impl Widget for &mut Graph {
             }
         }
 
-        if self.graph_loading_state.in_progress() {
+        if self.state.in_progress() {
             return ui
                 .centered_and_justified(|ui| {
                     ui.add(
-                        ProgressBar::new(self.graph_loading_state.progress())
+                        ProgressBar::new(self.state.progress())
                             .show_percentage()
                             .animate(true),
                     )
@@ -265,15 +276,15 @@ impl Widget for &mut Graph {
                 .response;
         }
 
-        if self.graph_loading_state.is_finished() && self.export_state.triggered {
+        if self.state.is_finished() && self.export_state.triggered {
             info!("exporting to data...");
 
             let name = format!(
                 "{}-{}-{}-{:?}",
                 self.symbol,
-                self.graph_loading_state.props.start_time(),
-                self.graph_loading_state.props.end_time(),
-                self.graph_loading_state.props.interval,
+                self.state.props.start_time(),
+                self.state.props.end_time(),
+                self.state.props.interval,
             );
             let f = File::create(format!("{}.csv", name)).unwrap();
 

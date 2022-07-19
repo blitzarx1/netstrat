@@ -8,7 +8,7 @@ use tracing::{debug, error, info, trace};
 
 use super::data::Data;
 
-const bounds_send_delay_sec: i64 = 1;
+const BOUNDS_SEND_DELAY_MILLIS: i64 = 300;
 
 #[derive(Clone)]
 pub struct Candles {
@@ -16,8 +16,9 @@ pub struct Candles {
     val: Vec<BoxElem>,
     axes_group: LinkedAxisGroup,
     bounds_pub: Sender<(f64, f64)>,
-    last_time_sent: DateTime<Utc>,
+    last_time_drag_happened: DateTime<Utc>,
     last_bounds_sent: (f64, f64),
+    drag_happened: bool,
 }
 
 impl Default for Candles {
@@ -29,8 +30,9 @@ impl Default for Candles {
             val: Default::default(),
             axes_group: LinkedAxisGroup::new(false, false),
             bounds_pub: s_bounds,
-            last_time_sent: Utc::now(),
+            last_time_drag_happened: Utc::now(),
             last_bounds_sent: Default::default(),
+            drag_happened: Default::default(),
         }
     }
 }
@@ -119,9 +121,10 @@ impl Widget for &mut Candles {
                 let bounds = plot_ui.plot_bounds();
                 let msg = (bounds.min()[0], bounds.max()[0]);
                 let now = Utc::now();
-                if msg != self.last_bounds_sent
-                    && now.signed_duration_since(self.last_time_sent).num_seconds()
-                        > bounds_send_delay_sec
+                if self.drag_happened
+                    && msg != self.last_bounds_sent
+                    && now.signed_duration_since(self.last_time_drag_happened).num_milliseconds()
+                        > BOUNDS_SEND_DELAY_MILLIS
                 {
                     let send_res = self.bounds_pub.send(msg);
                     match send_res {
@@ -129,8 +132,13 @@ impl Widget for &mut Candles {
                         Err(err) => error!("failed to send bounds: {err}"),
                     }
 
-                    self.last_time_sent = now;
                     self.last_bounds_sent = msg;
+                    self.drag_happened = false;
+                }
+                
+                if plot_ui.pointer_coordinate_drag_delta().x > 0.0 {
+                    self.drag_happened = true;
+                    self.last_time_drag_happened = now;
                 }
             })
             .response
