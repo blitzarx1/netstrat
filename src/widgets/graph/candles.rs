@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use crossbeam::channel::{unbounded, Sender};
 use egui::{
     plot::{BoxElem, BoxPlot, BoxSpread, LinkedAxisGroup, Plot},
@@ -7,12 +8,16 @@ use tracing::{debug, error, info, trace};
 
 use super::data::Data;
 
+const bounds_send_delay_sec: i64 = 1;
+
 #[derive(Clone)]
 pub struct Candles {
     data: Data,
     val: Vec<BoxElem>,
     axes_group: LinkedAxisGroup,
     bounds_pub: Sender<(f64, f64)>,
+    last_time_sent: DateTime<Utc>,
+    last_bounds_sent: (f64, f64),
 }
 
 impl Default for Candles {
@@ -24,6 +29,8 @@ impl Default for Candles {
             val: Default::default(),
             axes_group: LinkedAxisGroup::new(false, false),
             bounds_pub: s_bounds,
+            last_time_sent: Utc::now(),
+            last_bounds_sent: Default::default(),
         }
     }
 }
@@ -39,43 +46,43 @@ impl Candles {
 
     pub fn set_data(&mut self, data: Data) {
         let val: Vec<BoxElem> = data
-        .vals
-        .iter()
-        .map(|k| -> BoxElem {
-            BoxElem::new(
-                (k.t_open + k.t_close) as f64 / 2.0,
-                BoxSpread::new(
-                    k.low as f64,
-                    {
-                        match k.open > k.close {
-                            true => k.close as f64,
-                            false => k.open as f64,
-                        }
-                    },
-                    k.open as f64, // we don't need to see median for candle
-                    {
-                        match k.open > k.close {
-                            true => k.open as f64,
-                            false => k.close as f64,
-                        }
-                    },
-                    k.high as f64,
-                ),
-            )
-            .name(Data::format_ts(k.t_close as f64))
-            .stroke(Stroke::new(1.0, Data::k_color(k)))
-            .fill(Data::k_color(k))
-            .whisker_width(0.0)
-            .box_width((k.t_open - k.t_close) as f64 * 0.9)
-        })
-        .collect();
+            .vals
+            .iter()
+            .map(|k| -> BoxElem {
+                BoxElem::new(
+                    (k.t_open + k.t_close) as f64 / 2.0,
+                    BoxSpread::new(
+                        k.low as f64,
+                        {
+                            match k.open > k.close {
+                                true => k.close as f64,
+                                false => k.open as f64,
+                            }
+                        },
+                        k.open as f64, // we don't need to see median for candle
+                        {
+                            match k.open > k.close {
+                                true => k.open as f64,
+                                false => k.close as f64,
+                            }
+                        },
+                        k.high as f64,
+                    ),
+                )
+                .name(Data::format_ts(k.t_close as f64))
+                .stroke(Stroke::new(1.0, Data::k_color(k)))
+                .fill(Data::k_color(k))
+                .whisker_width(0.0)
+                .box_width((k.t_open - k.t_close) as f64 * 0.9)
+            })
+            .collect();
 
         self.data = data;
         self.val = val;
     }
 }
 
-impl Widget for &Candles {
+impl Widget for &mut Candles {
     fn ui(self, ui: &mut egui::Ui) -> Response {
         Plot::new("candles")
             .link_axis(self.axes_group.clone())
@@ -111,10 +118,19 @@ impl Widget for &Candles {
 
                 let bounds = plot_ui.plot_bounds();
                 let msg = (bounds.min()[0], bounds.max()[0]);
-                let send_res = self.bounds_pub.send(msg);
-                match send_res {
-                    Ok(_) => trace!("sent bounds to bounds_pub"),
-                    Err(err) => error!("failed to send bounds: {err}"),
+                let now = Utc::now();
+                if msg != self.last_bounds_sent
+                    && now.signed_duration_since(self.last_time_sent).num_seconds()
+                        > bounds_send_delay_sec
+                {
+                    let send_res = self.bounds_pub.send(msg);
+                    match send_res {
+                        Ok(_) => info!("sent bounds: {msg:?}"),
+                        Err(err) => error!("failed to send bounds: {err}"),
+                    }
+
+                    self.last_time_sent = now;
+                    self.last_bounds_sent = msg;
                 }
             })
             .response

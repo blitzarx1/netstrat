@@ -300,7 +300,7 @@ impl Widget for &mut Graph {
                     .size(Size::remainder())
                     .vertical(|mut strip| {
                         strip.cell(|ui| {
-                            ui.add(&self.candles);
+                            ui.add(&mut self.candles);
                         });
                         strip.cell(|ui| {
                             ui.add(&self.volume);
