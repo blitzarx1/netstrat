@@ -15,9 +15,7 @@ use crate::{
     windows::{AppWindow, TimeRangeChooser},
 };
 
-use super::{
-    candles::Candles, data::Data, loading_state::State, props::Props, volume::Volume,
-};
+use super::{candles::Candles, data::Data, props::Props, state::State, volume::Volume};
 
 #[derive(Default)]
 struct ExportState {
@@ -189,11 +187,7 @@ impl Widget for &mut Graph {
                 self.state = State::from_graph_props(&Props::default());
                 self.state.triggered = true;
                 let interval = self.state.props.interval.clone();
-                let start = self
-                    .state
-                    .left_edge()
-                    .timestamp_millis()
-                    .clone();
+                let start = self.state.left_edge().timestamp_millis().clone();
                 let mut limit = self.state.props.limit.clone();
                 if self.state.is_last_page() {
                     limit = self.state.last_page_limit;
@@ -238,11 +232,7 @@ impl Widget for &mut Graph {
 
                 match self.state.is_finished() {
                     false => {
-                        let start = self
-                            .state
-                            .left_edge()
-                            .timestamp_millis()
-                            .clone();
+                        let start = self.state.left_edge().timestamp_millis().clone();
 
                         let symbol = self.symbol.to_string();
                         let interval = self.state.props.interval.clone();

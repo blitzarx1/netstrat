@@ -5,4 +5,4 @@ pub mod props;
 pub mod time_input;
 pub mod volume;
 
-mod loading_state;
+mod state;

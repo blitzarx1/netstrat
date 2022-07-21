@@ -1,17 +1,18 @@
 use chrono::{DateTime, Duration, Utc};
 use tracing::info;
 
-use crate::sources::binance::Interval;
+use crate::{netstrat::bounds::BoundsSet, sources::binance::Interval};
 
 use super::props::Props;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone)]
 pub struct State {
     pub triggered: bool,
     pub props: Props,
     pub received: u32,
     pub pages: u32,
     pub last_page_limit: usize,
+    bounds: BoundsSet,
 }
 
 impl State {
@@ -22,7 +23,7 @@ impl State {
 
         info!("loading graph for duration: {diff:?}");
 
-        let loading_state: State;
+        let state: State;
 
         match props.interval {
             Interval::Minute => {
@@ -30,12 +31,13 @@ impl State {
                 let pages = pages_proto.ceil() as u32;
                 let last_page_limit = (pages_proto.fract() * props.limit as f32) as usize;
 
-                loading_state = State {
+                state = State {
                     triggered: false,
                     props: props.clone(),
                     pages,
                     received: 0,
                     last_page_limit,
+                    bounds: BoundsSet::new(vec![]),
                 };
             }
             Interval::Hour => {
@@ -43,12 +45,13 @@ impl State {
                 let pages = pages_proto.ceil() as u32;
                 let last_page_limit = (pages_proto.fract() * props.limit as f32) as usize;
 
-                loading_state = State {
+                state = State {
                     triggered: false,
                     props: props.clone(),
                     pages,
                     received: 0,
                     last_page_limit,
+                    bounds: BoundsSet::new(vec![]),
                 };
             }
             Interval::Day => {
@@ -56,19 +59,20 @@ impl State {
                 let pages = pages_proto.ceil() as u32;
                 let last_page_limit = (pages_proto.fract() * props.limit as f32) as usize;
 
-                loading_state = State {
+                state = State {
                     triggered: false,
                     props: props.clone(),
                     pages,
                     received: 0,
                     last_page_limit,
+                    bounds: BoundsSet::new(vec![]),
                 };
             }
         };
 
-        info!("created loading state for total duration {diff}: {loading_state:?}");
+        info!("created state for total duration {diff}: {state:?}");
 
-        loading_state
+        state
     }
 
     pub fn left_edge(&self) -> DateTime<Utc> {
@@ -92,6 +96,11 @@ impl State {
     pub fn inc_received(&mut self) {
         self.received += 1;
     }
+
+    // TODO:
+    // pub fn register_received_data(&mut self, b: BoundsSequence) -> BoundsSequence{
+    //     self.bounds.add_with_diff(b)
+    // }
 
     pub fn is_finished(&self) -> bool {
         return self.triggered && self.progress() == 1f32;

@@ -13,6 +13,7 @@ mod network;
 mod sources;
 mod widgets;
 mod windows;
+mod netstrat;
 use tokio;
 use windows::{AppWindow, SymbolsGraph};
 
