@@ -12,7 +12,7 @@ use tracing::{debug, error, info, trace};
 
 use crate::{
     sources::binance::{Client, Kline},
-    windows::{AppWindow, TimeRangeChooser},
+    windows::{AppWindow, TimeRangeChooser}, netstrat::bounds::Bounds,
 };
 
 use super::{candles::Candles, data::Data, props::Props, state::State, volume::Volume};
@@ -37,7 +37,7 @@ pub struct Graph {
     symbol_sub: Receiver<String>,
     show_sub: Receiver<Props>,
     export_sub: Receiver<Props>,
-    bounds_sub: Receiver<(f64, f64)>,
+    bounds_sub: Receiver<Bounds>,
 }
 
 impl Default for Graph {
@@ -147,7 +147,7 @@ impl Widget for &mut Graph {
                 if self.klines.len() > 0 && self.klines[0].t_close > bounds.0 as i64 {
                     info!("uploading new data");
 
-                    let dt = NaiveDateTime::from_timestamp((bounds.0 / 1000.0) as i64, 0);
+                    let dt = NaiveDateTime::from_timestamp((bounds.0 as f64 / 1000.0) as i64, 0);
                     let mut props = self.state.props.clone();
                     props.date_start = Date::from_utc(dt.date(), Utc);
                     props.time_start = dt.time();

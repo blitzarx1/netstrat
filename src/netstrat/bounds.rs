@@ -1,7 +1,7 @@
 use std::cmp::{max, min, Ordering};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Ord)]
-pub struct Bounds(i64, i64);
+pub struct Bounds(pub i64, pub i64);
 
 impl Bounds {
     /// merges 2 bounds into 1 bound if merge is possible
@@ -31,18 +31,20 @@ impl Bounds {
     }
 
     pub fn subtract(&self, other: &Bounds) -> Option<BoundsSet> {
+        if !self.intersects(other) {
+            return Some(BoundsSet::new(vec![self.clone()]));
+        }
+
         if other.contains(self) {
             return None;
         }
 
         if self < other {
-            let b = Bounds(self.0, other.0 - 1);
-            return Some(BoundsSet::new(vec![b]));
+            return Some(BoundsSet::new(vec![Bounds(self.0, other.0 - 1)]));
         }
 
         if self > other {
-            let b = Bounds(other.1 + 1, self.1);
-            return Some(BoundsSet::new(vec![b]));
+            return Some(BoundsSet::new(vec![Bounds(other.1 + 1, self.1)]));
         }
 
         if self.contains(other) {
@@ -70,7 +72,9 @@ impl Bounds {
     }
 
     fn intersects(&self, other: &Bounds) -> bool {
-        self.0 <= other.0 && other.0 <= self.1 || self.0 <= other.1 && other.1 <= self.1
+        other.contains(self)
+            || self.0 <= other.0 && other.0 <= self.1
+            || self.0 <= other.1 && other.1 <= self.1
     }
 
     fn neighbours(&self, other: &Bounds) -> bool {
@@ -134,6 +138,29 @@ mod bounds_tests {
     }
 
     #[test]
+    fn test_intersects() {
+        // containment
+        assert_eq!(Bounds(3, 5).intersects(&Bounds(3, 4)), true);
+        assert_eq!(Bounds(3, 5).intersects(&Bounds(2, 6)), true);
+
+        // overlap
+        assert_eq!(Bounds(3, 5).intersects(&Bounds(4, 6)), true);
+        assert_eq!(Bounds(3, 5).intersects(&Bounds(2, 4)), true);
+
+        // following
+        assert_eq!(Bounds(3, 5).intersects(&Bounds(6, 7)), false);
+        assert_eq!(Bounds(3, 5).intersects(&Bounds(1, 2)), false);
+
+        // len = 1
+        assert_eq!(Bounds(2, 2).intersects(&Bounds(3, 7)), false);
+        assert_eq!(Bounds(2, 2).intersects(&Bounds(4, 7)), false);
+
+        // no merge
+        assert_eq!(Bounds(3, 5).intersects(&Bounds(8, 10)), false);
+        assert_eq!(Bounds(3, 5).intersects(&Bounds(0, 1)), false);
+    }
+
+    #[test]
     fn test_intersect() {
         // containment
         assert_eq!(Bounds(3, 5).intersect(&Bounds(3, 4)), Some(Bounds(3, 4)));
@@ -192,9 +219,8 @@ mod bounds_tests {
             Bounds(2, 7).subtract(&Bounds(4, 5)),
             Some(BoundsSet::new(vec![Bounds(2, 3), Bounds(6, 7)]))
         );
-        let res = Bounds(0, 20).subtract(&Bounds(1, 10));
         assert_eq!(
-            res,
+            Bounds(0, 20).subtract(&Bounds(1, 10)),
             Some(BoundsSet::new(vec![Bounds(0, 0), Bounds(11, 20)]))
         );
     }
@@ -220,8 +246,15 @@ impl BoundsSet {
         Self { vals }
     }
 
-    /// concats, sorts and unions 2 bounds sequences
-    pub fn union(&self, other: &BoundsSet) -> Self {
+    pub fn sort(&self) -> Self {
+        let mut new_vals = self.vals.clone();
+        new_vals.sort();
+
+        Self { vals: new_vals }
+    }
+
+    /// Concats, sorts and unions 2 bounds sequences.
+    pub fn merge(&self, other: &BoundsSet) -> Self {
         let mut new_vals = self.concat(other).vals;
 
         new_vals.sort();
@@ -246,46 +279,28 @@ impl BoundsSet {
         }
     }
 
-    /// concats and intersects 2 bounds sequences
-    pub fn diff(&self, other: &BoundsSet) -> Option<BoundsSet> {
+    /// Computes self - other difference.
+    pub fn subtract(&self, other: &BoundsSet) -> Option<BoundsSet> {
         if other.len() == 0 {
             return Some(self.clone());
         }
 
-        let mut differences = BoundsSet::new(vec![]);
-        self.vals.iter().for_each(|s| {
-            other.vals.iter().for_each(|o| {
-                if let Some(diff) = s.subtract(o) {
-                    differences = differences.concat(&diff);
-                };
-            });
+        let mut res = BoundsSet::new(self.vals.clone());
+        other.vals.iter().for_each(|o| {
+            let mut curr_vals = BoundsSet::new(vec![]);
+            for i in 0..res.len() {
+                if let Some(diff) = res.vals[i].subtract(o) {
+                    curr_vals = curr_vals.concat(&diff);
+                }
+            }
+            res = curr_vals;
         });
 
-        if differences.len() == 0 {
+        if res.len() == 0 {
             return None;
         }
 
-        let mut res = BoundsSet::new(vec![]);
-        for i in 0..differences.len() {
-            for j in i + 1..differences.len() {
-                if let Some(intersection) = differences.vals[i].intersect(&differences.vals[j]) {
-                    res = res.concat(&BoundsSet::new(vec![intersection]));
-                }
-            }
-        }
-
-        if res.len() == 0 {
-            return Some(res.concat(&differences))
-        }
-
         Some(res)
-    }
-
-    pub fn sort(&self) -> Self {
-        let mut new_vals = self.vals.clone();
-        new_vals.sort();
-
-        Self { vals: new_vals }
     }
 }
 
@@ -307,61 +322,81 @@ mod bounds_sequence_tests {
     }
 
     #[test]
-    fn test_union() {
+    fn test_merge() {
         assert_eq!(
             BoundsSet::new(vec![Bounds(6, 10)])
-                .union(&BoundsSet::new(vec![Bounds(3, 5), Bounds(1, 2)])),
+                .merge(&BoundsSet::new(vec![Bounds(3, 5), Bounds(1, 2)])),
             BoundsSet::new(vec![Bounds(1, 10)])
         );
 
         assert_eq!(
             BoundsSet::new(vec![Bounds(6, 10)])
-                .union(&BoundsSet::new(vec![Bounds(2, 5), Bounds(1, 2)])),
+                .merge(&BoundsSet::new(vec![Bounds(2, 5), Bounds(1, 2)])),
             BoundsSet::new(vec![Bounds(1, 10)])
         );
 
         assert_eq!(
             BoundsSet::new(vec![Bounds(0, 1)])
-                .union(&BoundsSet::new(vec![Bounds(3, 6), Bounds(4, 5)])),
+                .merge(&BoundsSet::new(vec![Bounds(3, 6), Bounds(4, 5)])),
             BoundsSet::new(vec![Bounds(0, 1), Bounds(3, 6)])
         );
 
         assert_eq!(
             BoundsSet::new(vec![Bounds(4, 5)])
-                .union(&BoundsSet::new(vec![Bounds(0, 1), Bounds(3, 6)])),
+                .merge(&BoundsSet::new(vec![Bounds(0, 1), Bounds(3, 6)])),
             BoundsSet::new(vec![Bounds(0, 1), Bounds(3, 6)])
+        );
+
+        assert_eq!(
+            BoundsSet::new(vec![Bounds(0, 0)])
+                .merge(&BoundsSet::new(vec![Bounds(1, 1), Bounds(2, 2)])),
+            BoundsSet::new(vec![Bounds(0, 2)])
         );
     }
 
-    // TODO: add test cases
     #[test]
     fn test_diff() {
-        // zero
+        // other is empty
         assert_eq!(
-            BoundsSet::new(vec![Bounds(1, 10)]).diff(&BoundsSet::new(vec![])),
+            BoundsSet::new(vec![Bounds(1, 10)]).subtract(&BoundsSet::new(vec![])),
             Some(BoundsSet::new(vec![Bounds(1, 10)])),
         );
 
-        // same
+        // other and self are equal
         assert_eq!(
-            BoundsSet::new(vec![Bounds(1, 10)]).diff(&BoundsSet::new(vec![Bounds(1, 10)])),
+            BoundsSet::new(vec![Bounds(1, 10)]).subtract(&BoundsSet::new(vec![Bounds(1, 10)])),
             None,
         );
 
         // standart
         assert_eq!(
-            BoundsSet::new(vec![Bounds(0, 20)]).diff(&BoundsSet::new(vec![Bounds(1, 10)])),
+            BoundsSet::new(vec![Bounds(0, 20)]).subtract(&BoundsSet::new(vec![Bounds(1, 10)])),
             Some(BoundsSet::new(vec![Bounds(0, 0), Bounds(11, 20)])),
         );
 
         // standart2
         assert_eq!(
             BoundsSet::new(vec![Bounds(0, 20)])
-                .diff(&BoundsSet::new(vec![Bounds(1, 10), Bounds(13, 15)])),
+                .subtract(&BoundsSet::new(vec![Bounds(1, 10), Bounds(13, 15)])),
             Some(BoundsSet::new(vec![
                 Bounds(0, 0),
                 Bounds(11, 12),
                 Bounds(16, 20)
+            ])),
+        );
+
+        // standart3
+        assert_eq!(
+            BoundsSet::new(vec![Bounds(0, 20)]).subtract(&BoundsSet::new(vec![
+                Bounds(1, 10),
+                Bounds(13, 15),
+                Bounds(18, 19)
+            ])),
+            Some(BoundsSet::new(vec![
+                Bounds(0, 0),
+                Bounds(11, 12),
+                Bounds(16, 17),
+                Bounds(20, 20)
             ])),
         );
     }

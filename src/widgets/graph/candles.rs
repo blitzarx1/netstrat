@@ -6,6 +6,8 @@ use egui::{
 };
 use tracing::{debug, error, info, trace};
 
+use crate::netstrat::bounds::Bounds;
+
 use super::data::Data;
 
 const BOUNDS_SEND_DELAY_MILLIS: i64 = 300;
@@ -15,9 +17,9 @@ pub struct Candles {
     data: Data,
     val: Vec<BoxElem>,
     axes_group: LinkedAxisGroup,
-    bounds_pub: Sender<(f64, f64)>,
+    bounds_pub: Sender<Bounds>,
     last_time_drag_happened: DateTime<Utc>,
-    last_bounds_sent: (f64, f64),
+    last_bounds_sent: Bounds,
     drag_happened: bool,
 }
 
@@ -38,7 +40,7 @@ impl Default for Candles {
 }
 
 impl Candles {
-    pub fn new(axes_group: LinkedAxisGroup, bounds_pub: Sender<(f64, f64)>) -> Self {
+    pub fn new(axes_group: LinkedAxisGroup, bounds_pub: Sender<Bounds>) -> Self {
         Self {
             axes_group,
             bounds_pub,
@@ -119,14 +121,16 @@ impl Widget for &mut Candles {
                 );
 
                 let bounds = plot_ui.plot_bounds();
-                let msg = (bounds.min()[0], bounds.max()[0]);
+                let msg = Bounds(bounds.min()[0] as i64, bounds.max()[0] as i64);
                 let now = Utc::now();
                 if self.drag_happened
                     && msg != self.last_bounds_sent
-                    && now.signed_duration_since(self.last_time_drag_happened).num_milliseconds()
+                    && now
+                        .signed_duration_since(self.last_time_drag_happened)
+                        .num_milliseconds()
                         > BOUNDS_SEND_DELAY_MILLIS
                 {
-                    let send_res = self.bounds_pub.send(msg);
+                    let send_res = self.bounds_pub.send(msg.clone());
                     match send_res {
                         Ok(_) => info!("sent bounds: {msg:?}"),
                         Err(err) => error!("failed to send bounds: {err}"),
@@ -135,7 +139,7 @@ impl Widget for &mut Candles {
                     self.last_bounds_sent = msg;
                     self.drag_happened = false;
                 }
-                
+
                 if plot_ui.pointer_coordinate_drag_delta().x > 0.0 {
                     self.drag_happened = true;
                     self.last_time_drag_happened = now;
