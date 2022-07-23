@@ -26,7 +26,14 @@ impl Default for Volume {
 }
 
 impl Volume {
-    pub fn new(data: Data, axes_group: LinkedAxisGroup) -> Self {
+    pub fn new(axes_group: LinkedAxisGroup) -> Self {
+        Self {
+            axes_group,
+            ..Default::default()
+        }
+    }
+
+    pub fn set_data(&mut self, data: Data) {
         let val = data
             .vals
             .iter()
@@ -37,11 +44,8 @@ impl Volume {
             })
             .collect();
 
-        Self {
-            data,
-            val,
-            axes_group,
-        }
+        self.data = data;
+        self.val = val;
     }
 }
 

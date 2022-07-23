@@ -1,14 +1,18 @@
-use std::fs::File;
+use chrono::prelude::*;
 
 use super::AppWindow;
-use chrono::{Date, NaiveTime, Timelike, Utc};
-use crossbeam::channel::{unbounded, Receiver, Sender};
-use egui::{Color32, Frame, Response, Stroke, Ui, Widget, Window};
+use chrono::{Date, NaiveTime, Utc};
+use crossbeam::channel::{Receiver, Sender};
+use egui::{Ui, Window};
 use tracing::{error, info, warn};
 
 use crate::{
+    netstrat::{
+        bounds::{Bounds, BoundsSet},
+        graph::props::Props,
+    },
     sources::binance::Interval,
-    widgets::{Props, TimeInput},
+    widgets::TimeInput,
 };
 
 pub struct TimeRangeChooser {
@@ -58,7 +62,6 @@ impl TimeRangeChooser {
 }
 
 impl TimeRangeChooser {
-    // TODO: test
     fn parse_props(
         time_start_opt: Option<NaiveTime>,
         time_end_opt: Option<NaiveTime>,
@@ -85,15 +88,21 @@ impl TimeRangeChooser {
                 return None;
             }
         }
-
-        Some(Props {
+        let mut p = Props {
             date_start,
             date_end,
             time_start,
             time_end,
             interval,
-            limit: 1000, // TODO: do we need to have such param?
-        })
+            bounds: BoundsSet::new(vec![]),
+            limit: 1000,
+        };
+        p.bounds = BoundsSet::new(vec![Bounds(
+            p.start_time().timestamp_millis(),
+            p.end_time().timestamp_millis(),
+        )]);
+
+        Some(p)
     }
 }
 
@@ -170,7 +179,7 @@ impl AppWindow for TimeRangeChooser {
                         match props {
                             Some(props) => {
                                 if props.is_valid() {
-                                    let send_result = self.props_pub.send(props);
+                                    let send_result = self.props_pub.send(props.clone());
                                     match send_result {
                                         Ok(_) => {
                                             info!("sent props for show: {props:?}");
@@ -183,7 +192,6 @@ impl AppWindow for TimeRangeChooser {
                                     warn!("invalid props");
                                     self.valid = false;
                                 }
-
                             }
                             None => {
                                 error!("failed to parse props");
@@ -203,7 +211,7 @@ impl AppWindow for TimeRangeChooser {
                         match props {
                             Some(props) => {
                                 if props.is_valid() {
-                                    let send_result = self.export_pub.send(props);
+                                    let send_result = self.export_pub.send(props.clone());
                                     match send_result {
                                         Ok(_) => {
                                             info!("sent props for export: {props:?}");

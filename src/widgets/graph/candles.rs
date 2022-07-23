@@ -1,29 +1,54 @@
+use chrono::{DateTime, Utc};
+use crossbeam::channel::{unbounded, Sender};
 use egui::{
     plot::{BoxElem, BoxPlot, BoxSpread, LinkedAxisGroup, Plot},
     Color32, Response, Stroke, Widget,
 };
+use tracing::{error, info};
+
+use crate::netstrat::bounds::Bounds;
 
 use super::data::Data;
+
+const BOUNDS_SEND_DELAY_MILLIS: i64 = 300;
 
 #[derive(Clone)]
 pub struct Candles {
     data: Data,
     val: Vec<BoxElem>,
     axes_group: LinkedAxisGroup,
+    bounds_pub: Sender<Bounds>,
+    last_time_drag_happened: DateTime<Utc>,
+    drag_happened: bool,
+    bounds: Bounds,
 }
 
 impl Default for Candles {
     fn default() -> Self {
+        let (s_bounds, _) = unbounded();
+
         Self {
             data: Default::default(),
             val: Default::default(),
             axes_group: LinkedAxisGroup::new(false, false),
+            bounds_pub: s_bounds,
+            last_time_drag_happened: Utc::now(),
+            drag_happened: Default::default(),
+            bounds: Bounds(0, 0),
         }
     }
 }
 
 impl Candles {
-    pub fn new(data: Data, axes_group: LinkedAxisGroup) -> Self {
+    pub fn new(axes_group: LinkedAxisGroup, bounds_pub: Sender<Bounds>) -> Self {
+        Self {
+            axes_group,
+            bounds_pub,
+            ..Default::default()
+        }
+    }
+
+    pub fn set_data(&mut self, data: Data) {
         let val: Vec<BoxElem> = data
             .vals
             .iter()
@@ -56,16 +81,31 @@ impl Candles {
             })
             .collect();
 
-        Self {
-            data,
-            val,
-            axes_group,
-        }
+        self.data = data;
+        self.val = val;
     }
 }
 
-impl Widget for &Candles {
+impl Widget for &mut Candles {
     fn ui(self, ui: &mut egui::Ui) -> Response {
+        ui.ctx().request_repaint(); // FIXME: not to call on every frame; only when bounds changed
+
+        if self.drag_happened
+            && Utc::now()
+                .signed_duration_since(self.last_time_drag_happened)
+                .num_milliseconds()
+                > BOUNDS_SEND_DELAY_MILLIS
+        {
+            let msg = self.bounds.clone();
+            let send_res = self.bounds_pub.send(msg.clone());
+            match send_res {
+                Ok(_) => info!("Sent bounds: {msg:?}."),
+                Err(err) => error!("Failed to send bounds: {err}."),
+            }
+
+            self.drag_happened = false;
+        }
+
         Plot::new("candles")
             .link_axis(self.axes_group.clone())
             .label_formatter(|_, v| -> String { format!("{}", Data::format_ts(v.x)) })
@@ -97,6 +137,14 @@ impl Widget for &Candles {
                         }))
                         .vertical(),
                 );
+
+                let plot_bounds = plot_ui.plot_bounds();
+                self.bounds = Bounds(plot_bounds.min()[0] as i64, plot_bounds.max()[0] as i64);
+
+                if plot_ui.pointer_coordinate_drag_delta().x.abs() > 0.0 {
+                    self.drag_happened = true;
+                    self.last_time_drag_happened = Utc::now();
+                }
             })
             .response
     }

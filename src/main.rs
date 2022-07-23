@@ -5,10 +5,11 @@ use crossbeam::channel::unbounded;
 
 use eframe::{run_native, App, CreationContext, NativeOptions};
 
-use egui::{CentralPanel, Context, Layout, ScrollArea, TextEdit, TopBottomPanel, Window};
+use egui::{CentralPanel, Context, Layout, TopBottomPanel};
 use tracing::{info, trace};
 use widgets::Theme;
 
+mod netstrat;
 mod network;
 mod sources;
 mod widgets;

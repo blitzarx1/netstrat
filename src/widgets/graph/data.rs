@@ -43,7 +43,7 @@ impl Data {
         let max_x = vals[vals.len() - 1].t_close as f64;
 
         debug!(
-            "computed max_x: {},  max_y: {},  max_vol: {}",
+            "Computed data props: max_x: {},  max_y: {},  max_vol: {}.",
             max_x, max_y, max_vol
         );
 
