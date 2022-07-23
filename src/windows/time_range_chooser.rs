@@ -98,8 +98,8 @@ impl TimeRangeChooser {
             limit: 1000,
         };
         p.bounds = BoundsSet::new(vec![Bounds(
-            p.start_time().timestamp(),
-            p.end_time().timestamp(),
+            p.start_time().timestamp_millis(),
+            p.end_time().timestamp_millis(),
         )]);
 
         Some(p)

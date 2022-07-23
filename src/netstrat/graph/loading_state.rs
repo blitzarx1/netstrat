@@ -34,6 +34,10 @@ impl LoadingState {
     }
 
     pub fn progress(&mut self) -> f32 {
-        self.pages.curr_page_idx as f32 / (self.pages.len() - 1) as f32
+        if self.pages.len() == 0 {
+            return 1.0;
+        }
+
+        self.pages.turned_pages as f32 / self.pages.len() as f32
     }
 }

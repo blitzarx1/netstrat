@@ -8,6 +8,7 @@ pub struct Page(pub i64, pub i64);
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Pages {
     pub curr_page_idx: usize,
+    pub turned_pages: usize,
     vals: Vec<Page>,
     step: usize,
 }
@@ -64,9 +65,9 @@ impl Pages {
     }
 
     pub fn next(&mut self) -> Option<Page> {
-        let next_page_idx = self.curr_page_idx + 1;
-        if let Some(page) = self.vals.get(next_page_idx) {
-            self.curr_page_idx = next_page_idx;
+        self.turned_pages += 1;
+        if let Some(page) = self.vals.get(self.turned_pages) {
+            self.curr_page_idx += 1;
             return Some(page.clone());
         }
 
@@ -98,7 +99,7 @@ mod pages_tests {
             Pages {
                 vals: vec![Page(0, 50), Page(60, 110), Page(110, 150)],
                 step: 1,
-                curr_page_idx: 0,
+                ..Default::default()
             }
         );
 
@@ -109,7 +110,7 @@ mod pages_tests {
             Pages {
                 vals: vec![Page(0, 50), Page(60, 110), Page(110, 150)],
                 step: 2,
-                curr_page_idx: 0,
+                ..Default::default()
             }
         );
     }

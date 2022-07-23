@@ -41,7 +41,7 @@ pub struct Graph {
     symbol_sub: Receiver<String>,
     show_sub: Receiver<Props>,
     export_sub: Receiver<Props>,
-    bounds_sub: Receiver<Bounds>,
+    drag_sub: Receiver<Bounds>,
 }
 
 impl Default for Graph {
@@ -64,7 +64,7 @@ impl Default for Graph {
             symbol_sub: r_symbols,
             show_sub: r_props,
             export_sub: r_export,
-            bounds_sub: r_bounds,
+            drag_sub: r_bounds,
 
             symbol: Default::default(),
             candles: Default::default(),
@@ -92,7 +92,7 @@ impl Graph {
             symbol_pub: s_symbols,
             show_sub: r_props,
             export_sub: r_export,
-            bounds_sub: r_bounds,
+            drag_sub: r_bounds,
             time_range_window: Box::new(TimeRangeChooser::new(
                 false,
                 r_symbols,
@@ -123,7 +123,7 @@ impl Graph {
         let interval = props.interval.clone();
         let limit = self.state.loading.pages.page_size();
 
-        debug!("setting left edge to: {start_time}");
+        debug!("Setting left edge to: {start_time}.");
 
         self.klines_promise = Some(Promise::spawn_async(async move {
             Client::kline(symbol, interval, start_time, limit).await
@@ -133,13 +133,13 @@ impl Graph {
 
 impl Widget for &mut Graph {
     fn ui(self, ui: &mut Ui) -> Response {
-        let bounds_wrapped = self
-            .bounds_sub
+        let drag_wrapped = self
+            .drag_sub
             .recv_timeout(std::time::Duration::from_millis(1));
 
-        match bounds_wrapped {
+        match drag_wrapped {
             Ok(bounds) => {
-                info!("Got bounds: {bounds:?}.");
+                info!("Got drag event. New bounds: {bounds:?}.");
 
                 let dt = NaiveDateTime::from_timestamp((bounds.0 as f64 / 1000.0) as i64, 0);
                 let mut props = self.state.props.clone();
@@ -159,6 +159,8 @@ impl Widget for &mut Graph {
             Ok(props) => {
                 info!("Got props for export: {props:?}.");
 
+                self.klines = vec![];
+                self.state = State::default();
                 self.start_download(props, true);
             }
             Err(_) => {}
@@ -199,8 +201,10 @@ impl Widget for &mut Graph {
 
         match show_wrapped {
             Ok(props) => {
-                info!("got props: {props:?}");
+                info!("Got show button pressed: {props:?}");
 
+                self.klines = vec![];
+                self.state = State::default();
                 self.start_download(props, false);
             }
             Err(_) => {}
@@ -226,11 +230,12 @@ impl Widget for &mut Graph {
                     let data = Data::new(self.klines.clone());
                     self.volume.set_data(data.clone());
                     self.candles.set_data(data);
+                    ui.ctx().request_repaint();
                 }
             }
         }
 
-        if self.state.loading.pages.len() > 0 && self.state.loading.progress() < 1.0 {
+        if self.state.loading.progress() < 1.0 {
             return ui
                 .centered_and_justified(|ui| {
                     ui.add(
