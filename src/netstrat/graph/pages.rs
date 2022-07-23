@@ -97,7 +97,8 @@ mod pages_tests {
             pages_res.unwrap(),
             Pages {
                 vals: vec![Page(0, 50), Page(60, 110), Page(110, 150)],
-                ..Default::default()
+                step: 1,
+                curr_page_idx: 0,
             }
         );
 
@@ -107,7 +108,8 @@ mod pages_tests {
             pages_res.unwrap(),
             Pages {
                 vals: vec![Page(0, 50), Page(60, 110), Page(110, 150)],
-                ..Default::default()
+                step: 2,
+                curr_page_idx: 0,
             }
         );
     }
