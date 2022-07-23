@@ -15,9 +15,12 @@ impl State {
     pub fn apply_props(&mut self, props: &Props) {
         info!("Applying props: {props:?}.");
 
+        self.props = props.clone();
+
         let subtract_res = props.bounds.subtract(&self.bounds);
         if subtract_res.is_none() {
             info!("Found nothing to load.");
+            self.loading = LoadingState::default();
             return;
         }
         let to_load = subtract_res.unwrap();
@@ -25,7 +28,7 @@ impl State {
 
         let loading_res = LoadingState::new(&to_load, State::step(props.interval), props.limit);
         if loading_res.is_none() {
-            info!("Could not initialize loading state.");
+            info!("Failed to initialize loading state.");
             return;
         }
         let loading = loading_res.unwrap();
@@ -41,9 +44,9 @@ impl State {
 
     fn step(i: Interval) -> usize {
         match i {
-            Interval::Minute => 60,
-            Interval::Hour => 60 * 60,
-            Interval::Day => 60 * 60 * 24,
+            Interval::Minute => 60 * 1000,
+            Interval::Hour => 60 * 60 * 1000,
+            Interval::Day => 60 * 60 * 24 * 1000,
         }
     }
 }

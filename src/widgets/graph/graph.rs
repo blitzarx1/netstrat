@@ -12,7 +12,7 @@ use tracing::{debug, error, info, trace};
 
 use crate::{
     netstrat::{
-        bounds::Bounds,
+        bounds::{Bounds, BoundsSet},
         graph::{props::Props, state::State},
     },
     sources::binance::{Client, Kline},
@@ -118,8 +118,6 @@ impl Graph {
 
         info!("Starting data download...");
 
-        self.klines = vec![];
-
         let start_time = props.start_time().timestamp_millis().clone();
         let symbol = self.symbol.to_string();
         let interval = props.interval.clone();
@@ -141,17 +139,14 @@ impl Widget for &mut Graph {
 
         match bounds_wrapped {
             Ok(bounds) => {
-                info!("got bounds: {bounds:?}");
+                info!("Got bounds: {bounds:?}.");
 
-                if self.klines.len() > 0 && self.klines[0].t_close > bounds.0 as i64 {
-                    info!("uploading new data");
-
-                    let dt = NaiveDateTime::from_timestamp((bounds.0 as f64 / 1000.0) as i64, 0);
-                    let mut props = self.state.props.clone();
-                    props.date_start = Date::from_utc(dt.date(), Utc);
-                    props.time_start = dt.time();
-                    self.start_download(props, false);
-                }
+                let dt = NaiveDateTime::from_timestamp((bounds.0 as f64 / 1000.0) as i64, 0);
+                let mut props = self.state.props.clone();
+                props.bounds = BoundsSet::new(vec![bounds]);
+                props.date_start = Date::from_utc(dt.date(), Utc);
+                props.time_start = dt.time();
+                self.start_download(props, false);
             }
             Err(_) => {}
         }
@@ -162,7 +157,7 @@ impl Widget for &mut Graph {
 
         match export_wrapped {
             Ok(props) => {
-                info!("got props for export: {props:?}");
+                info!("Got props for export: {props:?}.");
 
                 self.start_download(props, true);
             }
@@ -175,13 +170,14 @@ impl Widget for &mut Graph {
 
         match symbol_wrapped {
             Ok(symbol) => {
-                info!("got symbol: {symbol}");
+                info!("Got symbol: {symbol}.");
 
                 self.klines = vec![];
                 self.symbol = symbol.clone();
                 self.symbol_pub.send(symbol).unwrap();
 
                 self.state = State::default();
+                self.state.apply_props(&Props::default());
                 let start_time = self.state.props.start_time().timestamp_millis().clone();
                 let interval = self.state.props.interval.clone();
                 let limit = self.state.loading.pages.page_size();
@@ -194,7 +190,7 @@ impl Widget for &mut Graph {
         }
 
         if self.symbol == "" {
-            return ui.label("select a symbol");
+            return ui.label("Select a symbol.");
         }
 
         let show_wrapped = self
@@ -217,8 +213,8 @@ impl Widget for &mut Graph {
                 });
 
                 self.klines_promise = None;
-                if let Some(page) = self.state.loading.turn_page() {
-                    let start = self.state.loading.start_time;
+                if let Some(_) = self.state.loading.turn_page() {
+                    let start = self.state.loading.left_edge();
                     let symbol = self.symbol.clone();
                     let interval = self.state.props.interval.clone();
                     let limit = self.state.loading.pages.page_size();
@@ -234,7 +230,7 @@ impl Widget for &mut Graph {
             }
         }
 
-        if self.state.loading.progress() < 1.0 {
+        if self.state.loading.pages.len() > 0 && self.state.loading.progress() < 1.0 {
             return ui
                 .centered_and_justified(|ui| {
                     ui.add(

@@ -132,8 +132,8 @@ impl Widget for &mut Candles {
                 {
                     let send_res = self.bounds_pub.send(msg.clone());
                     match send_res {
-                        Ok(_) => info!("sent bounds: {msg:?}"),
-                        Err(err) => error!("failed to send bounds: {err}"),
+                        Ok(_) => info!("Sent bounds: {msg:?}."),
+                        Err(err) => error!("Failed to send bounds: {err}."),
                     }
 
                     self.last_bounds_sent = msg;

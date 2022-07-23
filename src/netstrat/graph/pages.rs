@@ -3,7 +3,7 @@ use tracing::{debug, error, info};
 use crate::netstrat::bounds::BoundsSet;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Page(i64, i64);
+pub struct Page(pub i64, pub i64);
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Pages {
@@ -54,6 +54,7 @@ impl Pages {
 
         Some(Self {
             vals,
+            step,
             ..Default::default()
         })
     }
@@ -72,12 +73,12 @@ impl Pages {
         None
     }
 
-    pub fn page(self) -> Page {
+    pub fn page(&self) -> Page {
         self.vals[self.curr_page_idx].clone()
     }
 
     pub fn page_size(&self) -> usize {
-        let page = self.clone().page();
+        let page = self.page();
         ((page.1 - page.0) / self.step as i64) as usize
     }
 }

@@ -13,7 +13,6 @@ use super::{
 
 #[derive(Default, Debug, Clone)]
 pub struct LoadingState {
-    pub start_time: i64,
     pub pages: Pages,
 }
 
@@ -22,16 +21,19 @@ impl LoadingState {
         info!("Initializing LoadingState. Bounds: {bounds:?}. Step: {step}. Per page limit: {per_page_limit}.");
 
         Some(Self {
-            start_time: bounds.left_edge()?,
             pages: Pages::new(bounds.clone(), step, per_page_limit)?,
         })
     }
 
-    pub fn turn_page(&self) -> Option<Page> {
-        self.clone().pages.next()
+    pub fn left_edge(&self) -> i64 {
+        self.pages.page().0
     }
 
-    pub fn progress(&self) -> f32 {
-        self.pages.curr_page_idx as f32 / self.pages.page_size() as f32 
+    pub fn turn_page(&mut self) -> Option<Page> {
+        self.pages.next()
+    }
+
+    pub fn progress(&mut self) -> f32 {
+        self.pages.curr_page_idx as f32 / (self.pages.len() - 1) as f32
     }
 }
