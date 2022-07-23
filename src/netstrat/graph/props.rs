@@ -1,13 +1,17 @@
 use chrono::{Date, DateTime, Duration, NaiveTime, Timelike, Utc};
 
-use crate::sources::binance::Interval;
+use crate::{
+    netstrat::bounds::{Bounds, BoundsSet},
+    sources::binance::Interval,
+};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Props {
     pub date_start: Date<Utc>,
     pub date_end: Date<Utc>,
     pub time_start: NaiveTime,
     pub time_end: NaiveTime,
+    pub bounds: BoundsSet,
     pub interval: Interval,
     pub limit: usize,
 }
@@ -43,6 +47,7 @@ impl Default for Props {
             time_start: NaiveTime::from_hms(0, 0, 0),
             time_end: NaiveTime::from_hms(now.hour(), now.minute(), now.second()),
             interval: Interval::Minute,
+            bounds: BoundsSet::new(vec![]),
             limit: 1000,
         }
     }

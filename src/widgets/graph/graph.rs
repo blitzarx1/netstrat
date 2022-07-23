@@ -11,11 +11,15 @@ use poll_promise::Promise;
 use tracing::{debug, error, info, trace};
 
 use crate::{
+    netstrat::{
+        bounds::Bounds,
+        graph::{props::Props, state::State},
+    },
     sources::binance::{Client, Kline},
-    windows::{AppWindow, TimeRangeChooser}, netstrat::bounds::Bounds,
+    windows::{AppWindow, TimeRangeChooser},
 };
 
-use super::{candles::Candles, data::Data, props::Props, state::State, volume::Volume};
+use super::{candles::Candles, data::Data, volume::Volume};
 
 #[derive(Default)]
 struct ExportState {
@@ -105,31 +109,26 @@ impl Graph {
     fn start_download(&mut self, props: Props, export: bool) {
         self.export_state.triggered = export;
 
-        if self.state.props == props {
-            info!("data already downloaded, skipping download");
+        self.state.apply_props(&props);
+
+        if self.state.loading.pages.len() == 0 {
+            info!("Data already downloaded, skipping download.");
             return;
         }
 
-        info!("starting data download...");
+        info!("Starting data download...");
 
         self.klines = vec![];
 
-        self.state = State::from_graph_props(&props);
-        self.state.triggered = true;
-
         let start_time = props.start_time().timestamp_millis().clone();
-        let pair = self.symbol.to_string();
+        let symbol = self.symbol.to_string();
         let interval = props.interval.clone();
-        let mut limit = props.limit.clone();
-
-        if self.state.is_last_page() {
-            limit = self.state.last_page_limit
-        }
+        let limit = self.state.loading.pages.page_size();
 
         debug!("setting left edge to: {start_time}");
 
         self.klines_promise = Some(Promise::spawn_async(async move {
-            Client::kline(pair, interval, start_time, limit).await
+            Client::kline(symbol, interval, start_time, limit).await
         }));
     }
 }
@@ -179,23 +178,16 @@ impl Widget for &mut Graph {
                 info!("got symbol: {symbol}");
 
                 self.klines = vec![];
-
                 self.symbol = symbol.clone();
-
                 self.symbol_pub.send(symbol).unwrap();
 
-                self.state = State::from_graph_props(&Props::default());
-                self.state.triggered = true;
+                self.state = State::default();
+                let start_time = self.state.props.start_time().timestamp_millis().clone();
                 let interval = self.state.props.interval.clone();
-                let start = self.state.left_edge().timestamp_millis().clone();
-                let mut limit = self.state.props.limit.clone();
-                if self.state.is_last_page() {
-                    limit = self.state.last_page_limit;
-                }
-
+                let limit = self.state.loading.pages.page_size();
                 let symbol = self.symbol.clone();
                 self.klines_promise = Some(Promise::spawn_async(async move {
-                    Client::kline(symbol, interval, start, limit).await
+                    Client::kline(symbol, interval, start_time, limit).await
                 }));
             }
             Err(_) => {}
@@ -220,45 +212,33 @@ impl Widget for &mut Graph {
 
         if let Some(promise) = &self.klines_promise {
             if let Some(result) = promise.ready() {
-                self.state.inc_received();
-
-                if self.state.received > 0 {
-                    result.iter().for_each(|k| {
-                        self.klines.push(*k);
-                    });
-                }
+                result.iter().for_each(|k| {
+                    self.klines.push(k.clone());
+                });
 
                 self.klines_promise = None;
+                if let Some(page) = self.state.loading.turn_page() {
+                    let start = self.state.loading.start_time;
+                    let symbol = self.symbol.clone();
+                    let interval = self.state.props.interval.clone();
+                    let limit = self.state.loading.pages.page_size();
 
-                match self.state.is_finished() {
-                    false => {
-                        let start = self.state.left_edge().timestamp_millis().clone();
-
-                        let symbol = self.symbol.to_string();
-                        let interval = self.state.props.interval.clone();
-                        let mut limit = self.state.props.limit.clone();
-                        if self.state.is_last_page() {
-                            limit = self.state.last_page_limit
-                        }
-
-                        self.klines_promise = Some(Promise::spawn_async(async move {
-                            Client::kline(symbol, interval, start, limit).await
-                        }));
-                    }
-                    true => {
-                        let data = Data::new(self.klines.clone());
-                        self.volume.set_data(data.clone());
-                        self.candles.set_data(data);
-                    }
+                    self.klines_promise = Some(Promise::spawn_async(async move {
+                        Client::kline(symbol, interval, start, limit).await
+                    }));
+                } else {
+                    let data = Data::new(self.klines.clone());
+                    self.volume.set_data(data.clone());
+                    self.candles.set_data(data);
                 }
             }
         }
 
-        if self.state.in_progress() {
+        if self.state.loading.progress() < 1.0 {
             return ui
                 .centered_and_justified(|ui| {
                     ui.add(
-                        ProgressBar::new(self.state.progress())
+                        ProgressBar::new(self.state.loading.progress())
                             .show_percentage()
                             .animate(true),
                     )
@@ -266,8 +246,8 @@ impl Widget for &mut Graph {
                 .response;
         }
 
-        if self.state.is_finished() && self.export_state.triggered {
-            info!("exporting to data...");
+        if self.state.loading.progress() == 1.0 && self.export_state.triggered {
+            info!("Exporting data...");
 
             let name = format!(
                 "{}-{}-{}-{:?}",
@@ -286,7 +266,7 @@ impl Widget for &mut Graph {
 
             self.export_state.triggered = false;
 
-            info!("exported to data: {}.csv", name);
+            info!("Exported to file: {}.csv", name);
         }
 
         TopBottomPanel::top("graph toolbar")

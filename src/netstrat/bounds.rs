@@ -1,6 +1,6 @@
 use std::cmp::{max, min, Ordering};
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Ord)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Ord)]
 pub struct Bounds(pub i64, pub i64);
 
 impl Bounds {
@@ -26,8 +26,8 @@ impl Bounds {
         Some(Bounds(max(self.0, other.0), min(self.1, other.1)))
     }
 
-    pub fn len(&self) -> i64 {
-        self.1 - self.0
+    pub fn len(&self) -> usize {
+        (self.1 - self.0) as usize
     }
 
     pub fn subtract(&self, other: &Bounds) -> Option<BoundsSet> {
@@ -236,6 +236,10 @@ impl BoundsSet {
         Self { vals }
     }
 
+    pub fn vals(&self) -> Vec<Bounds> {
+        self.vals.clone()
+    }
+
     pub fn len(&self) -> usize {
         self.vals.len()
     }
@@ -251,6 +255,14 @@ impl BoundsSet {
         new_vals.sort();
 
         Self { vals: new_vals }
+    }
+
+    pub fn merge_single(&self, o: Bounds) -> Self {
+        self.merge(&BoundsSet::new(vec![o]))
+    }
+
+    pub fn left_edge(&self) -> Option<i64> {
+        Some(self.vals.first()?.0)
     }
 
     /// Concats, sorts and unions 2 bounds sequences.
