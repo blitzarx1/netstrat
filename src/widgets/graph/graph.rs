@@ -13,13 +13,13 @@ use tracing::{debug, error, info, trace};
 use crate::{
     netstrat::{
         bounds::{Bounds, BoundsSet},
-        graph::{props::Props, state::State},
+        graph::{props::Props, state::State}, data::Data,
     },
     sources::binance::{Client, Kline},
     windows::{AppWindow, TimeRangeChooser},
 };
 
-use super::{candles::Candles, data::Data, volume::Volume};
+use super::{candles::Candles, volume::Volume};
 
 #[derive(Default)]
 struct ExportState {
