@@ -114,10 +114,10 @@ impl Widget for &mut Symbols {
                                 let send_result = self.symbol_pub.send(s.symbol.clone());
                                 match send_result {
                                     Ok(_) => {
-                                        info!("sent symbol: {}", s.symbol);
+                                        info!("Sent symbol: {}.", s.symbol);
                                     }
                                     Err(err) => {
-                                        error!("failed to send symbol: {err}");
+                                        error!("Failed to send symbol: {err}.");
                                     }
                                 }
 

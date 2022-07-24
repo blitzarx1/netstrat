@@ -182,10 +182,10 @@ impl AppWindow for TimeRangeChooser {
                                     let send_result = self.props_pub.send(props.clone());
                                     match send_result {
                                         Ok(_) => {
-                                            info!("sent props for show: {props:?}");
+                                            info!("Sent props for show: {props:?}.");
                                         }
                                         Err(err) => {
-                                            error!("failed to send props for show: {err}");
+                                            error!("Failed to send props for show: {err}.");
                                         }
                                     }
                                 } else {
@@ -214,10 +214,10 @@ impl AppWindow for TimeRangeChooser {
                                     let send_result = self.export_pub.send(props.clone());
                                     match send_result {
                                         Ok(_) => {
-                                            info!("sent props for export: {props:?}");
+                                            info!("Sent props for export: {props:?}.");
                                         }
                                         Err(err) => {
-                                            error!("failed to send props for export: {err}");
+                                            error!("Failed to send props for export: {err}.");
                                         }
                                     }
                                 } else {

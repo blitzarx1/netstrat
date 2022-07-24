@@ -24,7 +24,7 @@ struct TemplateApp {
 
 impl TemplateApp {
     fn new(_ctx: &CreationContext<'_>) -> Self {
-        info!("creating app");
+        info!("Creating app...");
 
         let (s, r) = unbounded();
 
@@ -62,11 +62,6 @@ impl App for TemplateApp {
                 .duration_since(start)
                 .expect("failed to compute duration_since")
         );
-    }
-
-    /// Called by the frame work to save state before shutdown.
-    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
-        info!("called save")
     }
 }
 

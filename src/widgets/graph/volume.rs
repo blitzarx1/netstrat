@@ -3,10 +3,11 @@ use std::ops::RangeInclusive;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use egui::{
     plot::{Bar, BarChart, LinkedAxisGroup, Plot},
-    Color32, Widget,
+    Color32, FontId, TextFormat, Vec2, Widget,
 };
+use tracing::debug;
 
-use super::data::Data;
+use crate::netstrat::data::Data;
 
 #[derive(Clone)]
 pub struct Volume {
@@ -55,11 +56,12 @@ impl Widget for &Volume {
             .link_axis(self.axes_group.clone())
             .x_axis_formatter(|v: f64, _: &RangeInclusive<f64>| format_ts(v))
             .label_formatter(|_, v| format!("{}", format_ts(v.x)))
-            .include_x(self.data.max_x())
+            .set_margin_fraction(Vec2::new(0.0, 0.5))
             .include_y(self.data.max_vol())
             .allow_scroll(false)
             .allow_boxed_zoom(false)
             .allow_drag(false)
+            .allow_zoom(false)
             .show_axes([false, false])
             .show(ui, |plot_ui| {
                 plot_ui.bar_chart(
