@@ -42,6 +42,10 @@ impl State {
         self.props = props.clone();
     }
 
+    pub fn report_loading_error(&mut self) {
+        self.loading.has_error = true;
+    }
+
     fn step(i: Interval) -> usize {
         match i {
             Interval::Minute => 60 * 1000,

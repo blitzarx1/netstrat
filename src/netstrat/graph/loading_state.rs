@@ -14,6 +14,7 @@ use super::{
 #[derive(Default, Debug, Clone)]
 pub struct LoadingState {
     pub pages: Pages,
+    pub has_error: bool,
 }
 
 impl LoadingState {
@@ -22,6 +23,7 @@ impl LoadingState {
 
         Some(Self {
             pages: Pages::new(bounds.clone(), step, per_page_limit)?,
+            ..Default::default()
         })
     }
 

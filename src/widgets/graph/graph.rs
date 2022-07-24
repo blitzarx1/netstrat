@@ -13,9 +13,10 @@ use tracing::{debug, error, info, trace};
 use crate::{
     netstrat::{
         bounds::{Bounds, BoundsSet},
-        graph::{props::Props, state::State}, data::Data,
+        data::Data,
+        graph::{props::Props, state::State},
     },
-    sources::binance::{Client, Kline},
+    sources::binance::{errors::ClientError, Client, Kline},
     windows::{AppWindow, TimeRangeChooser},
 };
 
@@ -37,7 +38,7 @@ pub struct Graph {
     klines: Vec<Kline>,
     state: State,
     export_state: ExportState,
-    klines_promise: Option<Promise<Vec<Kline>>>,
+    klines_promise: Option<Promise<Result<Vec<Kline>, ClientError>>>,
     symbol_sub: Receiver<String>,
     show_sub: Receiver<Props>,
     export_sub: Receiver<Props>,
@@ -211,31 +212,40 @@ impl Widget for &mut Graph {
         }
 
         if let Some(promise) = &self.klines_promise {
-            if let Some(result) = promise.ready() {
-                result.iter().for_each(|k| {
-                    self.klines.push(k.clone());
-                });
+            if let Some(res) = promise.ready() {
+                match res {
+                    Ok(data) => {
+                        data.iter().for_each(|k| {
+                            self.klines.push(k.clone());
+                        });
 
-                self.klines_promise = None;
-                if let Some(_) = self.state.loading.turn_page() {
-                    let start = self.state.loading.left_edge();
-                    let symbol = self.symbol.clone();
-                    let interval = self.state.props.interval.clone();
-                    let limit = self.state.loading.pages.page_size();
+                        if let Some(_) = self.state.loading.turn_page() {
+                            let start = self.state.loading.left_edge();
+                            let symbol = self.symbol.clone();
+                            let interval = self.state.props.interval.clone();
+                            let limit = self.state.loading.pages.page_size();
 
-                    self.klines_promise = Some(Promise::spawn_async(async move {
-                        Client::kline(symbol, interval, start, limit).await
-                    }));
-                } else {
-                    let data = Data::new(self.klines.clone());
-                    self.volume.set_data(data.clone());
-                    self.candles.set_data(data);
-                    ui.ctx().request_repaint();
+                            self.klines_promise = Some(Promise::spawn_async(async move {
+                                Client::kline(symbol, interval, start, limit).await
+                            }));
+                        } else {
+                            self.klines_promise = None;
+                            let data = Data::new(self.klines.clone());
+                            self.volume.set_data(data.clone());
+                            self.candles.set_data(data);
+                            ui.ctx().request_repaint();
+                        }
+                    }
+                    Err(err) => {
+                        error!("Failed to get klines data: {err}");
+                        self.state.report_loading_error();
+                        self.klines_promise = None;
+                    }
                 }
             }
         }
 
-        if self.state.loading.progress() < 1.0 {
+        if self.state.loading.progress() < 1.0 && !self.state.loading.has_error {
             return ui
                 .centered_and_justified(|ui| {
                     ui.add(

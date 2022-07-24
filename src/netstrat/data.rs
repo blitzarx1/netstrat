@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use egui::Color32;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::sources::binance::Kline;
 
@@ -10,6 +10,7 @@ use crate::sources::binance::Kline;
 pub struct Data {
     pub vals: Vec<Kline>,
     max_x: f64,
+    min_x: f64,
     max_y: f64,
     min_y: f64,
     max_vol: f64,
@@ -53,15 +54,17 @@ impl Data {
             .unwrap()
             .volume as f64;
 
-        let max_x = vals[vals.len() - 1].t_close as f64;
+        let max_x = vals.last().unwrap().t_close as f64;
+        let min_x = vals.first().unwrap().t_open as f64;
 
-        debug!(
-            "Computed data props: max_x: {max_x},  max_y: {max_y}, min_y: {min_y}, max_vol: {max_vol}."
+        info!(
+            "Computed data props: max_x: {max_x},  min_x: {min_x}, max_y: {max_y}, min_y: {min_y}, max_vol: {max_vol}."
         );
 
         Self {
             vals,
             max_x,
+            min_x,
             max_y,
             min_y,
             max_vol,
@@ -78,6 +81,10 @@ impl Data {
 
     pub fn min_y(&self) -> f64 {
         self.min_y
+    }
+
+    pub fn min_x(&self) -> f64 {
+        self.min_x
     }
 
     pub fn max_vol(&self) -> f64 {
