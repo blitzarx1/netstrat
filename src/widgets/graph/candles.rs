@@ -156,7 +156,6 @@ impl Widget for &mut Candles {
                     }
                 }
 
-                // plot_ui.ctx().data().remove_by_type::<Plot>();
                 plot_ui.ctx().request_repaint();
             })
             .response
