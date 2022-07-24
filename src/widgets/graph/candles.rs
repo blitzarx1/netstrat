@@ -113,6 +113,8 @@ impl Widget for &mut Candles {
             .link_axis(self.axes_group.clone())
             .label_formatter(|_, v| -> String { format!("{}", Data::format_ts(v.x)) })
             .x_axis_formatter(|v, _range| Data::format_ts(v))
+            .include_x(self.data.max_x())
+            .include_x(self.data.min_x())
             .include_y(self.data.max_y())
             .include_y(self.data.min_y())
             .show(ui, |plot_ui| {
