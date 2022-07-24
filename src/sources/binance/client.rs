@@ -6,6 +6,8 @@ use serde_json;
 use crate::network::rest::Rest;
 use crate::sources::binance::interval::Interval;
 
+use super::errors::ClientError;
+
 #[derive(Clone, Debug, Default)]
 pub struct Client {}
 
@@ -145,7 +147,7 @@ impl Client {
         interval: Interval,
         start_time: i64,
         limit: usize,
-    ) -> Vec<Kline> {
+    ) -> Result<Vec<Kline>, ClientError> {
         let url = format!("{}{}", BASE_URL, PATH_KLINE);
         let params = &[
             ("symbol", symbol.as_str()),
@@ -153,13 +155,14 @@ impl Client {
             ("startTime", &start_time.to_string()),
             ("limit", &limit.to_string()),
         ];
-        let resp = Rest::new().get_with_params(&url, params).await.unwrap();
-        let json_str = &resp.text().await.unwrap();
-        let res: Vec<KlineData> = serde_json::from_str(json_str).unwrap();
+        let resp = Rest::new().get_with_params(&url, params).await?;
+        let json_str = &resp.text().await?;
+        let res = serde_json::from_str::<Vec<KlineData>>(json_str)?;
 
-        res.into_iter()
+        Ok(res
+            .into_iter()
             .map(|data| Kline::from_kline_data(data))
-            .collect()
+            .collect())
     }
 
     pub async fn info() -> Info {
