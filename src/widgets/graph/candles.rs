@@ -122,6 +122,7 @@ impl Widget for &mut Candles {
                 .x_axis_formatter(|v, _range| Data::format_ts(v))
                 .include_x(self.data.max_x())
                 .include_x(self.data.min_x())
+                .set_margin_fraction(Vec2::new(0.05, 0.05))
                 .include_y(self.data.max_y())
                 .include_y(self.data.min_y())
                 .show(ui, |plot_ui| {
