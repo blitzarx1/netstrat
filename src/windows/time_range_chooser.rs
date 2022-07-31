@@ -1,6 +1,4 @@
 use chrono::prelude::*;
-
-use super::AppWindow;
 use chrono::{Date, NaiveTime, Utc};
 use crossbeam::channel::{Receiver, Sender};
 use egui::{Ui, Window};
@@ -9,11 +7,13 @@ use tracing::{error, info, warn};
 use crate::{
     netstrat::{
         bounds::{Bounds, BoundsSet},
-        graph::props::Props,
+        props::Props,
     },
     sources::binance::Interval,
     widgets::TimeInput,
 };
+
+use super::AppWindow;
 
 pub struct TimeRangeChooser {
     symbol: String,
