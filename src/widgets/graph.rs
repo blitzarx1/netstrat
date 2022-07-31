@@ -15,7 +15,8 @@ use crate::{
     netstrat::{
         bounds::{Bounds, BoundsSet},
         data::Data,
-        graph::{props::Props, state::State},
+        props::Props,
+        state::State,
     },
     sources::binance::{errors::ClientError, Client, Kline},
     windows::{AppWindow, TimeRangeChooser},

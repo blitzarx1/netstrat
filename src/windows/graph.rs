@@ -46,7 +46,7 @@ impl SymbolsGraph {
         Self {
             graph: Graph::new(r),
             symbols: Symbols::new(s),
-            visible: visible,
+            visible,
         }
     }
 }

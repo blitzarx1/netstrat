@@ -136,7 +136,7 @@ impl Ord for Kline {
 impl Eq for Kline {}
 
 impl PartialOrd for Kline {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.close.partial_cmp(&other.close)
     }
 }

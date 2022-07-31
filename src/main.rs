@@ -2,20 +2,19 @@ use std::collections::HashMap;
 use std::time::SystemTime;
 
 use crossbeam::channel::unbounded;
-
 use eframe::{run_native, App, CreationContext, NativeOptions};
-
 use egui::{CentralPanel, Context, Layout, TopBottomPanel};
+use tokio;
 use tracing::{info, trace};
+
 use widgets::Theme;
+use windows::{AppWindow, SymbolsGraph};
 
 mod netstrat;
 mod network;
 mod sources;
 mod widgets;
 mod windows;
-use tokio;
-use windows::{AppWindow, SymbolsGraph};
 
 struct TemplateApp {
     windows: Vec<Box<dyn AppWindow>>,
@@ -70,7 +69,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     run_native(
-        "hedgegraph",
+        "netstrat",
         NativeOptions::default(),
         Box::new(|cc| Box::new(TemplateApp::new(cc))),
     );
