@@ -5,7 +5,7 @@ use egui::{
     Color32, Id, Response, Stroke, Vec2, Widget,
 };
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info};
+use tracing::{debug, enabled, error, info};
 
 use crate::netstrat::{bounds::Bounds, data::Data};
 
@@ -26,6 +26,7 @@ pub struct Candles {
     last_time_drag_happened: DateTime<Utc>,
     drag_happened: bool,
     bounds: Bounds,
+    enabled: bool,
 }
 
 impl Default for Candles {
@@ -41,6 +42,7 @@ impl Default for Candles {
             drag_happened: Default::default(),
             bounds: Bounds(0, 0),
             incremental_drag_diff: 0.0,
+            enabled: true,
         }
     }
 }
@@ -90,6 +92,10 @@ impl Candles {
         self.data = data;
         self.val = val;
     }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled
+    }
 }
 
 impl Widget for &mut Candles {
@@ -109,57 +115,59 @@ impl Widget for &mut Candles {
 
             self.drag_happened = false;
         }
-        Plot::new("candles")
-            .link_axis(self.axes_group.clone())
-            .label_formatter(|_, v| -> String { format!("{}", Data::format_ts(v.x)) })
-            .x_axis_formatter(|v, _range| Data::format_ts(v))
-            .include_x(self.data.max_x())
-            .include_x(self.data.min_x())
-            .include_y(self.data.max_y())
-            .include_y(self.data.min_y())
-            .show(ui, |plot_ui| {
-                plot_ui.box_plot(
-                    BoxPlot::new(self.val.clone())
-                        .element_formatter(Box::new(|el, _| -> String {
-                            format!(
-                                "open: {:.8}\nclose: {:.8}\nhigh: {:.8}\nlow: {:.8}\n{}",
-                                {
-                                    match el.fill == Color32::LIGHT_RED {
-                                        true => el.spread.quartile3,
-                                        false => el.spread.quartile1,
-                                    }
-                                },
-                                {
-                                    match el.fill == Color32::LIGHT_RED {
-                                        true => el.spread.quartile1,
-                                        false => el.spread.quartile3,
-                                    }
-                                },
-                                el.spread.upper_whisker,
-                                el.spread.lower_whisker,
-                                Data::format_ts(el.argument),
-                            )
-                        }))
-                        .vertical(),
-                );
+        ui.add_enabled_ui(self.enabled, |ui| {
+            Plot::new("candles")
+                .link_axis(self.axes_group.clone())
+                .label_formatter(|_, v| -> String { format!("{}", Data::format_ts(v.x)) })
+                .x_axis_formatter(|v, _range| Data::format_ts(v))
+                .include_x(self.data.max_x())
+                .include_x(self.data.min_x())
+                .include_y(self.data.max_y())
+                .include_y(self.data.min_y())
+                .show(ui, |plot_ui| {
+                    plot_ui.box_plot(
+                        BoxPlot::new(self.val.clone())
+                            .element_formatter(Box::new(|el, _| -> String {
+                                format!(
+                                    "open: {:.8}\nclose: {:.8}\nhigh: {:.8}\nlow: {:.8}\n{}",
+                                    {
+                                        match el.fill == Color32::LIGHT_RED {
+                                            true => el.spread.quartile3,
+                                            false => el.spread.quartile1,
+                                        }
+                                    },
+                                    {
+                                        match el.fill == Color32::LIGHT_RED {
+                                            true => el.spread.quartile1,
+                                            false => el.spread.quartile3,
+                                        }
+                                    },
+                                    el.spread.upper_whisker,
+                                    el.spread.lower_whisker,
+                                    Data::format_ts(el.argument),
+                                )
+                            }))
+                            .vertical(),
+                    );
 
-                let plot_bounds = plot_ui.plot_bounds();
-                self.bounds = Bounds(plot_bounds.min()[0] as i64, plot_bounds.max()[0] as i64);
+                    let plot_bounds = plot_ui.plot_bounds();
+                    self.bounds = Bounds(plot_bounds.min()[0] as i64, plot_bounds.max()[0] as i64);
 
-                let drag_diff = plot_ui.pointer_coordinate_drag_delta().x;
-                if drag_diff.abs() > 0.0 {
-                    self.incremental_drag_diff += drag_diff;
+                    let drag_diff = plot_ui.pointer_coordinate_drag_delta().x;
+                    if drag_diff.abs() > 0.0 {
+                        self.incremental_drag_diff += drag_diff;
 
-                    // TODO: use step to count min drag diff
-                    if self.incremental_drag_diff > (60 * 1000 * 5) as f32 {
-                        self.drag_happened = true;
-                        self.last_time_drag_happened = Utc::now();
-                        self.incremental_drag_diff = 0.0;
+                        // TODO: use step to count min drag diff
+                        if self.incremental_drag_diff > (60 * 1000 * 5) as f32 {
+                            self.drag_happened = true;
+                            self.last_time_drag_happened = Utc::now();
+                            self.incremental_drag_diff = 0.0;
+                        }
                     }
-                }
 
-                plot_ui.ctx().request_repaint();
-            })
-            .response
+                    plot_ui.ctx().request_repaint();
+                })
+        })
+        .response
     }
 }

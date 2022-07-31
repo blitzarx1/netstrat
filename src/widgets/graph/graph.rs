@@ -2,7 +2,6 @@ use std::fs::File;
 
 use chrono::{Date, NaiveDateTime, NaiveTime, Utc};
 use crossbeam::channel::{unbounded, Receiver, Sender};
-
 use egui::{
     plot::LinkedAxisGroup, CentralPanel, ProgressBar, Response, TopBottomPanel, Ui, Widget,
 };
@@ -245,17 +244,10 @@ impl Widget for &mut Graph {
             }
         }
 
-        if self.state.loading.progress() < 1.0 && !self.state.loading.has_error {
-            return ui
-                .centered_and_justified(|ui| {
-                    ui.add(
-                        ProgressBar::new(self.state.loading.progress())
-                            .show_percentage()
-                            .animate(true),
-                    )
-                })
-                .response;
-        }
+        self.candles
+            .set_enabled(self.state.loading.progress() == 1.0);
+        self.volume
+            .set_enabled(self.state.loading.progress() == 1.0);
 
         if self.state.loading.progress() == 1.0 && self.export_state.triggered {
             info!("Exporting data...");
@@ -280,8 +272,18 @@ impl Widget for &mut Graph {
             info!("Exported to file: {}.csv", name);
         }
 
-        TopBottomPanel::top("graph toolbar")
-            .show_inside(ui, |ui| self.time_range_window.toggle_btn(ui));
+        TopBottomPanel::top("graph toolbar").show_inside(ui, |ui| {
+            ui.horizontal(|ui| {
+                self.time_range_window.toggle_btn(ui);
+                if self.state.loading.progress() < 1.0 && !self.state.loading.has_error {
+                    ui.add(
+                        ProgressBar::new(self.state.loading.progress())
+                            .show_percentage()
+                            .animate(true),
+                    );
+                }
+            });
+        });
 
         CentralPanel::default()
             .show_inside(ui, |ui| {
