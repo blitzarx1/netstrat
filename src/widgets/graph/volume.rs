@@ -63,7 +63,7 @@ impl Widget for &Volume {
                 .link_axis(self.axes_group.clone())
                 .x_axis_formatter(|v: f64, _: &RangeInclusive<f64>| format_ts(v))
                 .label_formatter(|_, v| format!("{}", format_ts(v.x)))
-                .set_margin_fraction(Vec2::new(0.0, 0.5))
+                .set_margin_fraction(Vec2::new(0.05, 0.5))
                 .include_y(self.data.max_vol())
                 .allow_scroll(false)
                 .allow_boxed_zoom(false)
