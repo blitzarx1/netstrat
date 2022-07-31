@@ -1,4 +1,6 @@
+use std::ffi::OsStr;
 use std::fs::File;
+use std::path::Path;
 
 use chrono::{Date, NaiveDateTime, NaiveTime, Utc};
 use crossbeam::channel::{unbounded, Receiver, Sender};
@@ -253,23 +255,36 @@ impl Widget for &mut Graph {
             info!("Exporting data...");
 
             let name = format!(
-                "{}-{}-{}-{:?}",
+                "{}_{}_{}_{:?}.csv",
                 self.symbol,
-                self.state.props.start_time(),
-                self.state.props.end_time(),
+                self.state.props.start_time().timestamp(),
+                self.state.props.end_time().timestamp(),
                 self.state.props.interval,
             );
-            let f = File::create(format!("{}.csv", name)).unwrap();
 
-            let mut wtr = csv::Writer::from_writer(f);
-            self.klines.iter().for_each(|el| {
-                wtr.serialize(el).unwrap();
-            });
-            wtr.flush().unwrap();
+            let path = Path::new(&name);
+            let f_res = File::create(&path);
+            match f_res {
+                Ok(f) => {
+                    let abs_path = path.canonicalize().unwrap();
+                    info!("Saving to file: {:?}", abs_path.clone());
 
-            self.export_state.triggered = false;
-
-            info!("Exported to file: {}.csv", name);
+                    let mut wtr = csv::Writer::from_writer(f);
+                    self.klines.iter().for_each(|el| {
+                        wtr.serialize(el).unwrap();
+                    });
+                    if let Some(err) = wtr.flush().err() {
+                        error!("Failed to write to file with error: {}.", err);
+                    } else {
+                        info!("Exported to file: {:?}", abs_path);
+                        self.export_state.triggered = false;
+                    }
+                }
+                Err(err) => {
+                    error!("Failed to create file with error: {}.", err);
+                    self.export_state.triggered = false;
+                }
+            }
         }
 
         TopBottomPanel::top("graph toolbar").show_inside(ui, |ui| {

@@ -3,3 +3,19 @@
 
 
 ![Screen Shot 2022-07-31 at 14 40 17](https://user-images.githubusercontent.com/32969427/182022345-0fd69e39-8f62-4aa0-a1cf-511cc2c36c21.png)
+
+
+# dev
+## build
+### windows 10
+```bash
+cargo build --target=x86_64-pc-windows-gnu --release
+```
+### apple intel
+```bash
+cargo build --target aarch64-apple-darwin --release
+```
+### apple silicon
+```bash
+cargo build --release --target x86_64-apple-darwin --release
+```
