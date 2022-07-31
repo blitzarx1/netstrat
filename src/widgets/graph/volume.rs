@@ -14,6 +14,7 @@ pub struct Volume {
     data: Data,
     val: Vec<Bar>,
     axes_group: LinkedAxisGroup,
+    enabled: bool,
 }
 
 impl Default for Volume {
@@ -22,6 +23,7 @@ impl Default for Volume {
             data: Default::default(),
             val: Default::default(),
             axes_group: LinkedAxisGroup::new(false, false),
+            enabled: true,
         }
     }
 }
@@ -48,31 +50,37 @@ impl Volume {
         self.data = data;
         self.val = val;
     }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
 }
 
 impl Widget for &Volume {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        Plot::new("volume")
-            .link_axis(self.axes_group.clone())
-            .x_axis_formatter(|v: f64, _: &RangeInclusive<f64>| format_ts(v))
-            .label_formatter(|_, v| format!("{}", format_ts(v.x)))
-            .set_margin_fraction(Vec2::new(0.0, 0.5))
-            .include_y(self.data.max_vol())
-            .allow_scroll(false)
-            .allow_boxed_zoom(false)
-            .allow_drag(false)
-            .allow_zoom(false)
-            .show_axes([false, false])
-            .show(ui, |plot_ui| {
-                plot_ui.bar_chart(
-                    BarChart::new(self.val.clone())
-                        .element_formatter(Box::new(|b, _| {
-                            format!("{}\n{}", b.value, format_ts(b.argument))
-                        }))
-                        .vertical(),
-                );
-            })
-            .response
+        ui.add_enabled_ui(self.enabled, |ui| {
+            Plot::new("volume")
+                .link_axis(self.axes_group.clone())
+                .x_axis_formatter(|v: f64, _: &RangeInclusive<f64>| format_ts(v))
+                .label_formatter(|_, v| format!("{}", format_ts(v.x)))
+                .set_margin_fraction(Vec2::new(0.0, 0.5))
+                .include_y(self.data.max_vol())
+                .allow_scroll(false)
+                .allow_boxed_zoom(false)
+                .allow_drag(false)
+                .allow_zoom(false)
+                .show_axes([false, false])
+                .show(ui, |plot_ui| {
+                    plot_ui.bar_chart(
+                        BarChart::new(self.val.clone())
+                            .element_formatter(Box::new(|b, _| {
+                                format!("{}\n{}", b.value, format_ts(b.argument))
+                            }))
+                            .vertical(),
+                    );
+                })
+        })
+        .response
     }
 }
 
