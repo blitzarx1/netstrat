@@ -13,9 +13,9 @@ cargo build --target=x86_64-pc-windows-gnu --release
 ```
 ```bash
 # apple intel
-cargo build --target aarch64-apple-darwin --release
+cargo build --target=aarch64-apple-darwin --release
 ```
 ```bash
 # apple silicon
-cargo build --release --target x86_64-apple-darwin --release
+cargo build --target=x86_64-apple-darwin --release
 ```
