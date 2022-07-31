@@ -117,6 +117,14 @@ impl Graph {
         }
     }
 
+    fn draw(&mut self, ui: &Ui) {
+        info!("drawing data...");
+        let data = Data::new(self.klines.clone());
+        self.volume.set_data(data.clone());
+        self.candles.set_data(data);
+        ui.ctx().request_repaint();
+    }
+
     fn start_download(&mut self, props: Props, export: bool) {
         self.export_state.triggered = export;
 
@@ -244,15 +252,15 @@ impl Widget for &mut Graph {
                             let interval = self.state.props.interval.clone();
                             let limit = self.state.loading.pages.page_size();
 
+                            self.draw(ui);
+
                             self.klines_promise = Some(Promise::spawn_async(async move {
                                 Client::kline(symbol, interval, start, limit).await
                             }));
                         } else {
+                            self.draw(ui);
+
                             self.klines_promise = None;
-                            let data = Data::new(self.klines.clone());
-                            self.volume.set_data(data.clone());
-                            self.candles.set_data(data);
-                            ui.ctx().request_repaint();
                         }
                     }
                     Err(err) => {
