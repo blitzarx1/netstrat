@@ -1,6 +1,7 @@
 use std::ffi::OsStr;
 use std::fs::File;
 use std::path::Path;
+use std::time::Duration;
 
 use chrono::{Date, NaiveDateTime, NaiveTime, Utc};
 use crossbeam::channel::{unbounded, Receiver, Sender};
@@ -42,7 +43,8 @@ pub struct Graph {
     export_state: ExportState,
     klines_promise: Option<Promise<Result<Vec<Kline>, ClientError>>>,
     symbol_sub: Receiver<String>,
-    show_sub: Receiver<Props>,
+    props_sub: Receiver<Props>,
+    props_pub: Sender<Props>,
     export_sub: Receiver<Props>,
     drag_sub: Receiver<Bounds>,
 }
@@ -51,6 +53,7 @@ impl Default for Graph {
     fn default() -> Self {
         let (s_symbols, r_symbols) = unbounded();
         let (s_props, r_props) = unbounded();
+        let (s_props1, r_props1) = unbounded();
         let (s_export, r_export) = unbounded();
         let (_, r_bounds) = unbounded();
 
@@ -60,12 +63,14 @@ impl Default for Graph {
                 false,
                 r_symbols.clone(),
                 s_props,
+                r_props1,
                 s_export,
                 Props::default(),
             )),
 
             symbol_sub: r_symbols,
-            show_sub: r_props,
+            props_sub: r_props,
+            props_pub: s_props1,
             export_sub: r_export,
             drag_sub: r_bounds,
 
@@ -85,6 +90,7 @@ impl Graph {
     pub fn new(symbol_chan: Receiver<String>) -> Self {
         let (s_symbols, r_symbols) = unbounded();
         let (s_props, r_props) = unbounded();
+        let (s_props1, r_props1) = unbounded();
         let (s_export, r_export) = unbounded();
         let (s_bounds, r_bounds) = unbounded();
 
@@ -93,13 +99,15 @@ impl Graph {
         Self {
             symbol_sub: symbol_chan,
             symbol_pub: s_symbols,
-            show_sub: r_props,
+            props_sub: r_props,
+            props_pub: s_props1,
             export_sub: r_export,
             drag_sub: r_bounds,
             time_range_window: Box::new(TimeRangeChooser::new(
                 false,
                 r_symbols,
                 s_props,
+                r_props1,
                 s_export,
                 Props::default(),
             )),
@@ -115,18 +123,18 @@ impl Graph {
         self.state.apply_props(&props);
 
         if self.state.loading.pages.len() == 0 {
-            info!("Data already downloaded, skipping download.");
+            info!("data already downloaded, skipping download");
             return;
         }
 
-        info!("Starting data download...");
+        info!("starting data download...");
 
         let start_time = props.start_time().timestamp_millis().clone();
         let symbol = self.symbol.to_string();
         let interval = props.interval.clone();
         let limit = self.state.loading.pages.page_size();
 
-        debug!("Setting left edge to: {start_time}.");
+        debug!("setting left edge to: {start_time}");
 
         self.klines_promise = Some(Promise::spawn_async(async move {
             Client::kline(symbol, interval, start_time, limit).await
@@ -136,31 +144,44 @@ impl Graph {
 
 impl Widget for &mut Graph {
     fn ui(self, ui: &mut Ui) -> Response {
-        let drag_wrapped = self
-            .drag_sub
-            .recv_timeout(std::time::Duration::from_millis(1));
+        let drag_wrapped = self.drag_sub.recv_timeout(Duration::from_millis(1));
 
         match drag_wrapped {
             Ok(bounds) => {
-                info!("Got drag event. New bounds: {bounds:?}.");
+                info!("got bounds: {bounds:?}");
 
-                let dt = NaiveDateTime::from_timestamp((bounds.0 as f64 / 1000.0) as i64, 0);
                 let mut props = self.state.props.clone();
+
+                let dt_left = NaiveDateTime::from_timestamp((bounds.0 as f64 / 1000.0) as i64, 0);
                 props.bounds = BoundsSet::new(vec![bounds]);
-                props.date_start = Date::from_utc(dt.date(), Utc);
-                props.time_start = dt.time();
+                props.date_start = Date::from_utc(dt_left.date(), Utc);
+                props.time_start = dt_left.time();
+
+                let dt_right = NaiveDateTime::from_timestamp((bounds.1 as f64 / 1000.0) as i64, 0);
+                props.bounds = BoundsSet::new(vec![bounds]);
+                props.date_end = Date::from_utc(dt_right.date(), Utc);
+                props.time_end = dt_right.time();
+
+                let send_result = self.props_pub.send(props.clone());
+                match send_result {
+                    Ok(_) => {
+                        info!("sent props: {props:?}");
+                    }
+                    Err(err) => {
+                        error!("failed to send props: {err}");
+                    }
+                }
+
                 self.start_download(props, false);
             }
             Err(_) => {}
         }
 
-        let export_wrapped = self
-            .export_sub
-            .recv_timeout(std::time::Duration::from_millis(1));
+        let export_wrapped = self.export_sub.recv_timeout(Duration::from_millis(1));
 
         match export_wrapped {
             Ok(props) => {
-                info!("Got props for export: {props:?}.");
+                info!("got props for export: {props:?}");
 
                 self.klines = vec![];
                 self.state = State::default();
@@ -169,13 +190,11 @@ impl Widget for &mut Graph {
             Err(_) => {}
         }
 
-        let symbol_wrapped = self
-            .symbol_sub
-            .recv_timeout(std::time::Duration::from_millis(1));
+        let symbol_wrapped = self.symbol_sub.recv_timeout(Duration::from_millis(1));
 
         match symbol_wrapped {
             Ok(symbol) => {
-                info!("Got symbol: {symbol}.");
+                info!("got symbol: {symbol}");
 
                 self.klines = vec![];
                 self.symbol = symbol.clone();
@@ -195,16 +214,14 @@ impl Widget for &mut Graph {
         }
 
         if self.symbol == "" {
-            return ui.label("Select a symbol.");
+            return ui.label("Select a symbol");
         }
 
-        let show_wrapped = self
-            .show_sub
-            .recv_timeout(std::time::Duration::from_millis(1));
+        let show_wrapped = self.props_sub.recv_timeout(Duration::from_millis(1));
 
         match show_wrapped {
             Ok(props) => {
-                info!("Got show button pressed: {props:?}");
+                info!("got show button pressed: {props:?}");
 
                 self.klines = vec![];
                 self.state = State::default();
@@ -239,7 +256,7 @@ impl Widget for &mut Graph {
                         }
                     }
                     Err(err) => {
-                        error!("Failed to get klines data: {err}");
+                        error!("failed to get klines data: {err}");
                         self.state.report_loading_error();
                         self.klines_promise = None;
                     }
@@ -253,7 +270,7 @@ impl Widget for &mut Graph {
             .set_enabled(self.state.loading.progress() == 1.0);
 
         if self.state.loading.progress() == 1.0 && self.export_state.triggered {
-            info!("Exporting data...");
+            info!("exporting data...");
 
             let name = format!(
                 "{}_{}_{}_{:?}.csv",
@@ -268,21 +285,21 @@ impl Widget for &mut Graph {
             match f_res {
                 Ok(f) => {
                     let abs_path = path.canonicalize().unwrap();
-                    info!("Saving to file: {:?}", abs_path.clone());
+                    info!("Saving to file: {abs_path:?}");
 
                     let mut wtr = csv::Writer::from_writer(f);
                     self.klines.iter().for_each(|el| {
                         wtr.serialize(el).unwrap();
                     });
                     if let Some(err) = wtr.flush().err() {
-                        error!("Failed to write to file with error: {}.", err);
+                        error!("failed to write to file with error: {err}");
                     } else {
-                        info!("Exported to file: {:?}", abs_path);
+                        info!("exported to file: {abs_path:?}");
                         self.export_state.triggered = false;
                     }
                 }
                 Err(err) => {
-                    error!("Failed to create file with error: {}.", err);
+                    error!("failed to create file with error: {err}");
                     self.export_state.triggered = false;
                 }
             }
