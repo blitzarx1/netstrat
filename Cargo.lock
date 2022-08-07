@@ -581,6 +581,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_node_graph"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "177a001d59bc2d2b86f0cb567e249d502e70b31e8d31c438c7ea7a62fc8d2035"
+dependencies = [
+ "egui",
+ "slotmap",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "emath"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1300,6 +1312,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui_extras",
+ "egui_node_graph",
  "futures",
  "poll-promise",
  "quick-error",
@@ -1469,9 +1482,9 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.73"
+version = "0.9.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d5fd19fb3e0a8191c1e34935718976a3e70c112ab9a24af6d7cadccd9d90bc0"
+checksum = "e5f9bd0c2710541a3cda73d6f9ac4f1b240de4ae261065d309dbe73d9dceb42f"
 dependencies = [
  "autocfg",
  "cc",

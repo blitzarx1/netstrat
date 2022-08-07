@@ -31,7 +31,10 @@ impl TemplateApp {
         visibility_map.insert("debug".to_string(), false);
 
         Self {
-            windows: vec![Box::new(SymbolsGraph::new(s, r, true))],
+            windows: vec![
+                Box::new(SymbolsGraph::new(s, r, true)),
+                // Box::new(SymbolsGraph::new(ss, rr, true))
+            ],
             theme: Theme::new(),
         }
     }
