@@ -125,8 +125,11 @@ impl Graph {
         ui.ctx().request_repaint();
     }
 
-    fn start_download(&mut self, props: Props, export: bool) {
-        self.export_state.triggered = export;
+    fn start_download(&mut self, props: Props, reset_state: bool) {
+        if reset_state {
+            self.klines = vec![];
+            self.state = State::default();
+        }
 
         self.state.apply_props(&props);
 
@@ -137,21 +140,23 @@ impl Graph {
 
         info!("starting data download...");
 
-        let start_time = props.start_time().timestamp_millis().clone();
+        self.perform_data_request();
+    }
+
+    fn perform_data_request(&mut self) {
+        let start_time = self.state.loading.left_edge();
         let symbol = self.symbol.to_string();
-        let interval = props.interval.clone();
+        let interval = self.state.props.interval.clone();
         let limit = self.state.loading.pages.page_size();
 
-        debug!("setting left edge to: {start_time}");
+        debug!("performing request with left edge: {start_time}");
 
         self.klines_promise = Some(Promise::spawn_async(async move {
             Client::kline(symbol, interval, start_time, limit).await
         }));
     }
-}
 
-impl Widget for &mut Graph {
-    fn ui(self, ui: &mut Ui) -> Response {
+    fn handle_events(&mut self) {
         let drag_wrapped = self.drag_sub.recv_timeout(Duration::from_millis(1));
 
         match drag_wrapped {
@@ -191,8 +196,8 @@ impl Widget for &mut Graph {
             Ok(props) => {
                 info!("got props for export: {props:?}");
 
-                self.klines = vec![];
-                self.state = State::default();
+                self.export_state.triggered = true;
+
                 self.start_download(props, true);
             }
             Err(_) => {}
@@ -204,25 +209,12 @@ impl Widget for &mut Graph {
             Ok(symbol) => {
                 info!("got symbol: {symbol}");
 
-                self.klines = vec![];
                 self.symbol = symbol.clone();
                 self.symbol_pub.send(symbol).unwrap();
 
-                self.state = State::default();
-                self.state.apply_props(&Props::default());
-                let start_time = self.state.props.start_time().timestamp_millis().clone();
-                let interval = self.state.props.interval.clone();
-                let limit = self.state.loading.pages.page_size();
-                let symbol = self.symbol.clone();
-                self.klines_promise = Some(Promise::spawn_async(async move {
-                    Client::kline(symbol, interval, start_time, limit).await
-                }));
+                self.start_download(Props::default(), true);
             }
             Err(_) => {}
-        }
-
-        if self.symbol == "" {
-            return ui.label("Select a symbol");
         }
 
         let show_wrapped = self.props_sub.recv_timeout(Duration::from_millis(1));
@@ -231,11 +223,19 @@ impl Widget for &mut Graph {
             Ok(props) => {
                 info!("got show button pressed: {props:?}");
 
-                self.klines = vec![];
-                self.state = State::default();
-                self.start_download(props, false);
+                self.start_download(props, true);
             }
             Err(_) => {}
+        }
+    }
+}
+
+impl Widget for &mut Graph {
+    fn ui(self, ui: &mut Ui) -> Response {
+        self.handle_events();
+
+        if self.symbol == "" {
+            return ui.label("Select a symbol");
         }
 
         if let Some(promise) = &self.klines_promise {
@@ -247,21 +247,12 @@ impl Widget for &mut Graph {
                         });
 
                         if let Some(_) = self.state.loading.turn_page() {
-                            let start = self.state.loading.left_edge();
-                            let symbol = self.symbol.clone();
-                            let interval = self.state.props.interval.clone();
-                            let limit = self.state.loading.pages.page_size();
-
-                            self.draw(ui);
-
-                            self.klines_promise = Some(Promise::spawn_async(async move {
-                                Client::kline(symbol, interval, start, limit).await
-                            }));
+                            self.perform_data_request();
                         } else {
-                            self.draw(ui);
-
                             self.klines_promise = None;
                         }
+
+                        self.draw(ui);
                     }
                     Err(err) => {
                         error!("failed to get klines data: {err}");
