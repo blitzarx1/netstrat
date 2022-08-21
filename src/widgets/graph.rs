@@ -1,9 +1,8 @@
-use std::ffi::OsStr;
 use std::fs::File;
 use std::path::Path;
 use std::time::Duration;
 
-use chrono::{Date, NaiveDateTime, NaiveTime, Utc};
+use chrono::{Date, NaiveDateTime, Utc};
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use egui::{
     plot::LinkedAxisGroup, CentralPanel, ProgressBar, Response, TopBottomPanel, Ui, Widget,

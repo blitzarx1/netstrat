@@ -3,9 +3,8 @@ use std::ops::RangeInclusive;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use egui::{
     plot::{Bar, BarChart, LinkedAxisGroup, Plot},
-    Color32, FontId, TextFormat, Vec2, Widget,
+    Color32, Vec2, Widget,
 };
-use tracing::debug;
 
 use crate::netstrat::data::Data;
 

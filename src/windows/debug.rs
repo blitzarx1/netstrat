@@ -2,7 +2,7 @@ use std::io::Write;
 use std::time::Duration;
 
 use crossbeam::channel::{Receiver, Sender};
-use egui::{ScrollArea, TextFormat, Ui, Widget, Window};
+use egui::{ScrollArea, Ui, Widget, Window};
 
 use crate::AppWindow;
 

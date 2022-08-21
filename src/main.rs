@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufWriter, Write};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
@@ -9,7 +7,6 @@ use eframe::{run_native, App, CreationContext, NativeOptions};
 use egui::{CentralPanel, Context, Layout, TopBottomPanel};
 use tokio;
 use tracing::{info, trace};
-use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::windows::BuffWriter;
 use widgets::Theme;
