@@ -1,15 +1,8 @@
-use chrono::{DateTime, Duration, Utc};
 use tracing::info;
 
-use crate::{
-    netstrat::bounds::{Bounds, BoundsSet},
-    sources::binance::Interval,
-};
+use crate::netstrat::bounds::BoundsSet;
 
-use super::{
-    pages::{Page, Pages},
-    props::Props,
-};
+use super::pages::{Page, Pages};
 
 #[derive(Default, Debug, Clone)]
 pub struct LoadingState {

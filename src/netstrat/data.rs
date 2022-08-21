@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use egui::Color32;
-use tracing::{debug, info};
+use tracing::info;
 
 use crate::sources::binance::Kline;
 

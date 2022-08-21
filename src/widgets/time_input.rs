@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use chrono::{NaiveTime, Utc};
+use chrono::NaiveTime;
 use egui::widgets::{TextEdit, Widget};
 use egui::Color32;
 use tracing::info;

@@ -3,9 +3,8 @@ use std::ops::RangeInclusive;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use egui::{
     plot::{Bar, BarChart, LinkedAxisGroup, Plot},
-    Color32, FontId, TextFormat, Vec2, Widget,
+    Color32, Vec2, Widget,
 };
-use tracing::debug;
 
 use crate::netstrat::data::Data;
 
@@ -64,6 +63,7 @@ impl Widget for &Volume {
                 .x_axis_formatter(|v: f64, _: &RangeInclusive<f64>| format_ts(v))
                 .label_formatter(|_, v| format!("{}", format_ts(v.x)))
                 .set_margin_fraction(Vec2::new(0.05, 0.5))
+                // TODO: following include doesn't work on every screen redraw
                 .include_y(self.data.max_vol())
                 .allow_scroll(false)
                 .allow_boxed_zoom(false)
