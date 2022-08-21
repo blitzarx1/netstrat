@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::sync::Mutex;
 use std::time::SystemTime;
 
 use crossbeam::channel::unbounded;
@@ -6,9 +9,11 @@ use eframe::{run_native, App, CreationContext, NativeOptions};
 use egui::{CentralPanel, Context, Layout, TopBottomPanel};
 use tokio;
 use tracing::{info, trace};
+use tracing_subscriber::util::SubscriberInitExt;
 
+use crate::windows::BuffWriter;
 use widgets::Theme;
-use windows::{AppWindow, SymbolsGraph};
+use windows::{AppWindow, Debug, SymbolsGraph};
 
 mod netstrat;
 mod network;
@@ -23,6 +28,16 @@ struct TemplateApp {
 
 impl TemplateApp {
     fn new(_ctx: &CreationContext<'_>) -> Self {
+        let (buffer_s, buffer_r) = unbounded();
+        let buff = BuffWriter {
+            publisher: buffer_s,
+        };
+
+        tracing_subscriber::fmt()
+            .with_writer(Mutex::new(buff))
+            .with_ansi(false)
+            .init();
+
         info!("Creating app...");
 
         let (s, r) = unbounded();
@@ -31,7 +46,10 @@ impl TemplateApp {
         visibility_map.insert("debug".to_string(), false);
 
         Self {
-            windows: vec![Box::new(SymbolsGraph::new(s, r, true))],
+            windows: vec![
+                Box::new(SymbolsGraph::new(s, r, true)),
+                Box::new(Debug::new(buffer_r, true, 500)),
+            ],
             theme: Theme::new(),
         }
     }
@@ -66,8 +84,6 @@ impl App for TemplateApp {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
-
     run_native(
         "netstrat",
         NativeOptions::default(),

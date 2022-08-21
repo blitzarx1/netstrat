@@ -120,9 +120,10 @@ impl Widget for &mut Candles {
                 .link_axis(self.axes_group.clone())
                 .label_formatter(|_, v| -> String { format!("{}", Data::format_ts(v.x)) })
                 .x_axis_formatter(|v, _range| Data::format_ts(v))
+                .set_margin_fraction(Vec2::new(0.05, 0.05))
+                // TODO: following includes are not working properly on every screen redraw
                 .include_x(self.data.max_x())
                 .include_x(self.data.min_x())
-                .set_margin_fraction(Vec2::new(0.05, 0.05))
                 .include_y(self.data.max_y())
                 .include_y(self.data.min_y())
                 .show(ui, |plot_ui| {
