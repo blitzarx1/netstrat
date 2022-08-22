@@ -2,7 +2,8 @@ use std::io::Write;
 use std::time::Duration;
 
 use crossbeam::channel::{Receiver, Sender};
-use egui::{ScrollArea, Ui, Widget, Window};
+use egui::{ScrollArea, Ui, Widget, Window, CentralPanel, TopBottomPanel, Layout, TextEdit};
+use egui_extras::{StripBuilder, Size};
 
 use crate::AppWindow;
 
@@ -25,6 +26,8 @@ impl Write for BuffWriter {
 }
 
 pub struct Debug {
+    filter: String,
+    filtered: Vec<String>,
     buff: Vec<String>,
     max_lines: usize,
     receiver: Receiver<Vec<u8>>,
@@ -34,7 +37,11 @@ pub struct Debug {
 impl Debug {
     pub fn new(receiver: Receiver<Vec<u8>>, visible: bool, max_lines: usize) -> Self {
         let buff = vec![];
+        let filtered = vec![];
+        let filter = "".to_string();
         Self {
+            filter,
+            filtered,
             buff,
             max_lines,
             receiver,
@@ -60,6 +67,10 @@ impl Debug {
         }
         self.buff
             .push(String::from_utf8_lossy(msg.as_slice()).to_string());
+
+        self.filtered = self.buff.iter().filter(|el| {
+                el.to_lowercase().contains(&self.filter)
+            }).map(|el|el.clone()).collect();
     }
 }
 
@@ -76,14 +87,27 @@ impl AppWindow for Debug {
         Window::new("debug")
             .open(&mut self.visible)
             .show(ui.ctx(), |ui| {
+                ui.horizontal(|ui|{
+                    if TextEdit::singleline(&mut self.filter)
+                    .hint_text("filter")
+                    .show(ui)
+                    .response
+                    .changed() {
+                        self.filtered = self.buff.iter().filter(|el| {
+                            el.to_lowercase().contains(&self.filter)
+                        }).map(|el|el.clone()).collect();
+
+                    }
+                    ui.label(format!("{}/{}", self.filtered.len(), self.buff.len()))
+                });
+
                 ScrollArea::new([true, true])
-                    .always_show_scroll(true)
-                    .stick_to_bottom()
-                    .show(ui, |ui| {
-                        self.buff.iter().for_each(|line| {
-                            egui::widgets::Label::new(line).wrap(false).ui(ui);
-                        });
+                .stick_to_bottom()
+                .show(ui, |ui| {
+                    self.filtered.iter().for_each(|line| {
+                        egui::widgets::Label::new(line).wrap(false).ui(ui);
                     });
-            });
+                });
+            });         
     }
 }
