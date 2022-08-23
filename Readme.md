@@ -1,7 +1,7 @@
 # netstrat
 **netstrat** is a strategy backtesting and visualization tool
 
-![Screen Shot 2022-07-31 at 14 40 17](https://user-images.githubusercontent.com/32969427/182022345-0fd69e39-8f62-4aa0-a1cf-511cc2c36c21.png)
+<img width="1728" alt="Screen Shot 2022-08-23 at 14 06 58" src="https://user-images.githubusercontent.com/32969427/186132111-9bce80c2-fe13-4208-9d02-2ede064d5ed5.png">
 
 ## executables
 There are prebuilded versions for windows and mac supplied with every [release](https://github.com/qzarx1/netstrat/releases).
