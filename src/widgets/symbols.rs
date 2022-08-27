@@ -1,5 +1,5 @@
 use crossbeam::channel::{unbounded, Sender};
-use egui::{Label, Layout, Response, ScrollArea, TextEdit, Widget, WidgetText};
+use egui::{Layout, Response, ScrollArea, TextEdit, Widget, WidgetText};
 use poll_promise::Promise;
 use tracing::{error, info};
 
@@ -51,11 +51,7 @@ impl Widget for &mut Symbols {
             if let Some(result) = promise.ready() {
                 self.loading = false;
 
-                self.symbols = result
-                    .symbols
-                    .iter()
-                    .map(|s| -> Symbol { s.clone() })
-                    .collect();
+                self.symbols = result.symbols.to_vec();
             }
         }
 
@@ -89,9 +85,9 @@ impl Widget for &mut Symbols {
                 .collect();
             ui.with_layout(Layout::top_down(egui::Align::RIGHT), |ui| {
                 ui.checkbox(&mut self.filter.active_only, "active only");
-                ui.add(Label::new(
+                ui.label(
                     WidgetText::from(format!("{}/{}", filtered.len(), self.symbols.len())).small(),
-                ));
+                );
             });
 
             ui.add_space(5f32);

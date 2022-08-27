@@ -82,7 +82,7 @@ impl TimeInput {
             return None;
         }
 
-        Some(Time::new(hours, minutes, seconds)?)
+        Time::new(hours, minutes, seconds)
     }
 }
 
@@ -124,7 +124,7 @@ mod tests {
         let t_invalid = Time::new(32, 32, 32);
         let t_invalid_corner = Time::new(24, 24, 24);
 
-        assert_eq!(t_valid.is_some(), true);
+        assert!(t_valid.is_some());
         assert_eq!(t_invalid, None);
         assert_eq!(t_invalid_corner, None);
     }

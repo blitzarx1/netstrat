@@ -274,7 +274,7 @@ impl BoundsSet {
         Self {
             vals: new_vals.iter().fold(Vec::new(), |mut acc, v| {
                 if acc.is_empty() {
-                    acc.push(v.clone());
+                    acc.push(*v);
 
                     return acc;
                 }
@@ -283,7 +283,7 @@ impl BoundsSet {
                 if let Some(union) = last.union(v) {
                     *last = union;
                 } else {
-                    acc.push(v.clone());
+                    acc.push(*v);
                 }
 
                 acc
