@@ -44,9 +44,7 @@ impl Debug {
             }
         }
 
-        if filter != self.filter {
-            self.apply_filter(filter);
-        }
+        self.apply_filter(filter);
 
         self.visible = visible;
     }
@@ -75,10 +73,13 @@ impl Debug {
     }
 
     fn apply_filter(&mut self, new_filter: String) {
+        let filter_normalized = new_filter.to_lowercase();
+        if filter_normalized == self.filter {
+            return;
+        }
+
         info!("applying filter");
         debug!("filter: {new_filter}");
-
-        let filter_normalized = new_filter.to_lowercase();
 
         // optimization
         if filter_normalized.contains(self.filter.as_str()) {
@@ -147,12 +148,12 @@ impl AppWindow for Debug {
                     .show(ui, |ui| {
                         let mut lines = self.filtered.concat();
                         let mut layouter = |ui: &egui::Ui, string: &str, _: f32| {
-                            ui.fonts()
-                                .layout_job(line_filter_highlight_layout(string, &filter))
+                            ui.fonts().layout_job(line_filter_highlight_layout(
+                                ui, string, &filter, false,
+                            ))
                         };
 
                         TextEdit::multiline(&mut lines)
-                            .interactive(false)
                             .layouter(&mut layouter)
                             .show(ui);
                     });
