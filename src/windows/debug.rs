@@ -44,9 +44,12 @@ impl Debug {
     }
 
     fn update_data(&mut self, filter: String, visible: bool) {
-        let data_wrapped = self.receiver.recv_timeout(Duration::from_millis(1));
-        if let Ok(data) = data_wrapped {
-            self.add_new_message(data);
+        loop {
+            let data_wrapped = self.receiver.recv_timeout(Duration::from_millis(1));
+            match data_wrapped {
+                Ok(data) => self.add_new_message(data),
+                Err(_) => break,
+            }
         }
 
         if filter != self.filter {
