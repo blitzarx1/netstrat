@@ -1,4 +1,4 @@
-use tracing::info;
+use tracing::{info, debug};
 
 use crate::netstrat::bounds::BoundsSet;
 
@@ -27,7 +27,7 @@ impl LoadingState {
     }
 
     pub fn get_next_page(&mut self) -> Option<Page> {
-        info!("getting next page...");
+        debug!("getting next page...");
         let res = self.pages.next();
         if let Some(p) = res {
             self.curr_page = p.clone();
