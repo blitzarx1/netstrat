@@ -1,6 +1,6 @@
 use std::env;
+use std::sync::Mutex;
 use std::time::SystemTime;
-use std::{default, sync::Mutex};
 
 use crossbeam::channel::unbounded;
 use eframe::{run_native, App, CreationContext, NativeOptions};

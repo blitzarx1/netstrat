@@ -18,22 +18,27 @@ impl Pages {
     /// Page is a pair of start and end
     /// where the start is included in the range and the end is not.
     pub fn new(bounds: BoundsSet, step: usize, limit: usize) -> Option<Self> {
-        info!("Initializing Pages. Bounds: {bounds:?}. Step: {step}. Limit: {limit}.");
+        info!("initializing new pages");
+        debug!("bounds: {bounds:?}; step: {step}; limit: {limit}");
 
         if step < 1 {
-            error!("Invalid step. Step must be greater than 0.");
+            error!("invalid step. Step must be greater than 0");
+
             return None;
         }
 
         let mut vals = vec![];
         bounds.vals().iter_mut().for_each(|b| {
             if b.len() <= limit*step as usize  {
-                debug!("Not iterating inside bounds due to its size being less than limit. Taking it to page as a whole. Bounds: {b:?}. Step: {step}.");
+                info!("bounds is less or equal in size to one page");
+                debug!("bounds: {b:?}; step: {step}");
+
                 vals.push(Page(b.0, b.1));
                 return ;
             }
 
-            debug!("Iterating inside bounds constructing pages. Bounds: {b:?}. Step: {step}.");
+            info!("iterating inside bounds constructing pages");
+            debug!("bounds: {b:?}; step: {step}");
 
             let mut page_start = b.0;
             loop {
@@ -50,7 +55,7 @@ impl Pages {
             }
         });
 
-        info!("Computed pages: {vals:?}.");
+        debug!("computed pages: {vals:?}");
 
         Some(Self {
             vals,
