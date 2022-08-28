@@ -1,8 +1,8 @@
-use std::fs::File;
 use std::path::Path;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
+use std::{cmp::Ordering, fs::File};
 
 use chrono::{Date, NaiveDateTime, Utc};
 use crossbeam::channel::{unbounded, Receiver, Sender};
@@ -12,8 +12,8 @@ use egui::{
 use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
 use tracing::{debug, error, info};
+use tracing_subscriber::fmt::format::FieldFnVisitor;
 
-use crate::netstrat::loading_state::LoadingState;
 use crate::{
     netstrat::{
         bounds::{Bounds, BoundsSet},
@@ -21,7 +21,7 @@ use crate::{
         props::Props,
         state::State,
     },
-    sources::binance::{errors::ClientError, Client, Kline},
+    sources::binance::{Client, Kline},
     windows::{AppWindow, TimeRangeChooser},
 };
 
@@ -40,6 +40,7 @@ pub struct Graph {
 
     pub time_range_window: Box<dyn AppWindow>,
 
+    data_changed: bool,
     klines: Vec<Kline>,
     state: State,
     export_state: ExportState,
@@ -80,6 +81,7 @@ impl Default for Graph {
             klines_sub: r_klines,
             klines_pub: s_klines,
 
+            data_changed: Default::default(),
             symbol: Default::default(),
             candles: Default::default(),
             volume: Default::default(),
@@ -122,12 +124,12 @@ impl Graph {
         }
     }
 
-    fn draw(&mut self, ui: &Ui) {
-        debug!("drawing data...");
+    fn update_data(&mut self) {
+        debug!("updating data...");
         let data = Data::new(self.klines.clone());
         self.volume.set_data(data.clone());
         self.candles.set_data(data);
-        ui.ctx().request_repaint();
+        self.data_changed = true;
     }
 
     fn start_download(&mut self, props: Props, reset_state: bool) {
@@ -149,44 +151,43 @@ impl Graph {
     }
 
     fn perform_data_request(&mut self) {
-        // parallel data loading
+        // TODO: use workers pool with limited workers number
         loop {
-            match self.state.loading.get_next_page() {
-                Some(_) => {
-                    let start_time = self.state.loading.left_edge();
-                    let interval = self.state.props.interval;
-                    let limit = self.state.loading.page_size();            
-                    let symbol = self.symbol.to_string();
-                    let p = Mutex::new(Promise::spawn_async(async move {
-                        Client::kline(symbol, interval, start_time, limit).await
-                    }));
+            if self.state.loading.get_next_page().is_some() {
+                let start_time = self.state.loading.left_edge();
+                let interval = self.state.props.interval;
+                let limit = self.state.loading.page_size();
+                let symbol = self.symbol.to_string();
+                let p = Mutex::new(Promise::spawn_async(async move {
+                    Client::kline(symbol, interval, start_time, limit).await
+                }));
 
-                    let sender = Mutex::new(self.klines_pub.clone());
-                    thread::spawn(move || loop {
-                        if let Some(data) = p.lock().unwrap().ready() {
-                            match data {
-                                Ok(payload) => {
-                                    let res = sender.lock().unwrap().send(payload.clone());
-                                    if let Err(err) = res {
-                                        error!("failed to send klines to channel: {err}");
-                                    };
-                                }
-                                Err(err) => {
-                                    error!("got klines result with error: {err}")
-                                }
+                let sender = Mutex::new(self.klines_pub.clone());
+                thread::spawn(move || loop {
+                    if let Some(data) = p.lock().unwrap().ready() {
+                        match data {
+                            Ok(payload) => {
+                                let res = sender.lock().unwrap().send(payload.clone());
+                                if let Err(err) = res {
+                                    error!("failed to send klines to channel: {err}");
+                                };
                             }
-                            break;
-                        };
-                    });
-                }
-                None => break,
-            }
+                            Err(err) => {
+                                error!("got klines result with error: {err}")
+                            }
+                        }
+                        break;
+                    };
+                });
+                continue;
+            };
+
+            break;
         }
     }
 
-    fn handle_events(&mut self) {
+    fn update(&mut self) {
         let drag_wrapped = self.drag_sub.recv_timeout(Duration::from_millis(1));
-
         if let Ok(bounds) = drag_wrapped {
             info!("got bounds: {bounds:?}");
 
@@ -240,17 +241,8 @@ impl Graph {
 
             self.start_download(props, true);
         }
-    }
-}
 
-impl Widget for &mut Graph {
-    fn ui(self, ui: &mut Ui) -> Response {
-        self.handle_events();
-
-        if self.symbol.is_empty() {
-            return ui.label("Select a symbol");
-        }
-
+        // TODO: loop while RecvTimeoutError like in Debug window
         let mut got = 0;
         let klines_wrapped = self.klines_sub.recv_timeout(Duration::from_millis(1));
         if let Ok(klines) = klines_wrapped {
@@ -263,15 +255,11 @@ impl Widget for &mut Graph {
 
         if got > 0 {
             self.state.loading.inc_loaded_pages(got);
-            self.draw(ui);
+            self.update_data();
         }
 
-        self.candles
-            .set_enabled(self.state.loading.progress() == 1.0);
-        self.volume
-            .set_enabled(self.state.loading.progress() == 1.0);
-
-        if self.state.loading.progress() == 1.0 && self.export_state.triggered {
+        let finished = self.state.loading.progress() == 1.0;
+        if finished && self.export_state.triggered {
             info!("exporting data...");
 
             let name = format!(
@@ -290,6 +278,17 @@ impl Widget for &mut Graph {
                     info!("Saving to file: {}", abs_path.display());
 
                     let mut wtr = csv::Writer::from_writer(f);
+                    self.klines.sort_by(|a, b| {
+                        if a.t_close < b.t_close {
+                            return Ordering::Less;
+                        }
+
+                        if a.t_close > b.t_close {
+                            return Ordering::Greater;
+                        }
+
+                        Ordering::Equal
+                    });
                     self.klines.iter().for_each(|el| {
                         wtr.serialize(el).unwrap();
                     });
@@ -305,6 +304,27 @@ impl Widget for &mut Graph {
                     self.export_state.triggered = false;
                 }
             }
+        }
+        self.candles.set_enabled(finished);
+        self.volume.set_enabled(finished);
+    }
+
+    fn draw_data(&mut self, ui: &Ui) {
+        if self.data_changed {
+            ui.ctx().request_repaint();
+            self.data_changed = false;
+        }
+    }
+}
+
+impl Widget for &mut Graph {
+    fn ui(self, ui: &mut Ui) -> Response {
+        self.update();
+
+        self.draw_data(ui);
+
+        if self.symbol.is_empty() {
+            return ui.label("Select a symbol");
         }
 
         TopBottomPanel::top("graph toolbar").show_inside(ui, |ui| {
