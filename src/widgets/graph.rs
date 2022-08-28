@@ -12,7 +12,6 @@ use egui::{
 use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
 use tracing::{debug, error, info};
-use tracing_subscriber::fmt::format::FieldFnVisitor;
 
 use crate::{
     netstrat::{
@@ -141,7 +140,7 @@ impl Graph {
         self.state.apply_props(&props);
 
         if self.state.loading.pages() == 0 {
-            info!("data already downloaded, skipping download");
+            debug!("data already downloaded, skipping download");
             return;
         }
 
@@ -186,10 +185,58 @@ impl Graph {
         }
     }
 
+    fn export_data(&mut self) {
+        debug!("exporting data...");
+
+        let name = format!(
+            "{}_{}_{}_{:?}.csv",
+            self.symbol,
+            self.state.props.start_time().timestamp(),
+            self.state.props.end_time().timestamp(),
+            self.state.props.interval,
+        );
+
+        let path = Path::new(&name);
+        let f_res = File::create(&path);
+        match f_res {
+            Ok(f) => {
+                let abs_path = path.canonicalize().unwrap();
+                debug!("saving to file: {}", abs_path.display());
+
+                let mut wtr = csv::Writer::from_writer(f);
+                self.klines.sort_by(|a, b| {
+                    if a.t_close < b.t_close {
+                        return Ordering::Less;
+                    }
+
+                    if a.t_close > b.t_close {
+                        return Ordering::Greater;
+                    }
+
+                    Ordering::Equal
+                });
+                self.klines.iter().for_each(|el| {
+                    wtr.serialize(el).unwrap();
+                });
+
+                if let Some(err) = wtr.flush().err() {
+                    error!("failed to write to file with error: {err}");
+                } else {
+                    info!("exported to file: {abs_path:?}");
+                }
+            }
+            Err(err) => {
+                error!("failed to create file with error: {err}");
+            }
+        }
+
+        self.export_state.triggered = false;
+    }
+
     fn update(&mut self) {
         let drag_wrapped = self.drag_sub.recv_timeout(Duration::from_millis(1));
         if let Ok(bounds) = drag_wrapped {
-            info!("got bounds: {bounds:?}");
+            debug!("got bounds: {bounds:?}");
 
             let mut props = self.state.props.clone();
 
@@ -206,7 +253,7 @@ impl Graph {
             let send_result = self.props_pub.send(props.clone());
             match send_result {
                 Ok(_) => {
-                    info!("sent props: {props:?}");
+                    debug!("sent props: {props:?}");
                 }
                 Err(err) => {
                     error!("failed to send props: {err}");
@@ -218,7 +265,7 @@ impl Graph {
 
         let export_wrapped = self.export_sub.recv_timeout(Duration::from_millis(1));
         if let Ok(props) = export_wrapped {
-            info!("got props for export: {props:?}");
+            debug!("got export msg: {props:?}");
 
             self.export_state.triggered = true;
 
@@ -227,7 +274,7 @@ impl Graph {
 
         let symbol_wrapped = self.symbol_sub.recv_timeout(Duration::from_millis(1));
         if let Ok(symbol) = symbol_wrapped {
-            info!("got symbol: {symbol}");
+            debug!("got symbol: {symbol}");
 
             self.symbol = symbol.clone();
             self.symbol_pub.send(symbol).unwrap();
@@ -237,7 +284,7 @@ impl Graph {
 
         let show_wrapped = self.props_sub.recv_timeout(Duration::from_millis(1));
         if let Ok(props) = show_wrapped {
-            info!("got show button pressed: {props:?}");
+            debug!("got show button pressed: {props:?}");
 
             self.start_download(props, true);
         }
@@ -246,7 +293,7 @@ impl Graph {
         let mut got = 0;
         let klines_wrapped = self.klines_sub.recv_timeout(Duration::from_millis(1));
         if let Ok(klines) = klines_wrapped {
-            info!("received klines");
+            debug!("received klines");
             klines.iter().for_each(|k| {
                 self.klines.push(*k);
             });
@@ -260,51 +307,9 @@ impl Graph {
 
         let finished = self.state.loading.progress() == 1.0;
         if finished && self.export_state.triggered {
-            info!("exporting data...");
-
-            let name = format!(
-                "{}_{}_{}_{:?}.csv",
-                self.symbol,
-                self.state.props.start_time().timestamp(),
-                self.state.props.end_time().timestamp(),
-                self.state.props.interval,
-            );
-
-            let path = Path::new(&name);
-            let f_res = File::create(&path);
-            match f_res {
-                Ok(f) => {
-                    let abs_path = path.canonicalize().unwrap();
-                    info!("Saving to file: {}", abs_path.display());
-
-                    let mut wtr = csv::Writer::from_writer(f);
-                    self.klines.sort_by(|a, b| {
-                        if a.t_close < b.t_close {
-                            return Ordering::Less;
-                        }
-
-                        if a.t_close > b.t_close {
-                            return Ordering::Greater;
-                        }
-
-                        Ordering::Equal
-                    });
-                    self.klines.iter().for_each(|el| {
-                        wtr.serialize(el).unwrap();
-                    });
-                    if let Some(err) = wtr.flush().err() {
-                        error!("failed to write to file with error: {err}");
-                    } else {
-                        info!("exported to file: {abs_path:?}");
-                        self.export_state.triggered = false;
-                    }
-                }
-                Err(err) => {
-                    error!("failed to create file with error: {err}");
-                    self.export_state.triggered = false;
-                }
-            }
+            self.export_data();
         }
+
         self.candles.set_enabled(finished);
         self.volume.set_enabled(finished);
     }
@@ -327,7 +332,7 @@ impl Widget for &mut Graph {
             return ui.label("Select a symbol");
         }
 
-        TopBottomPanel::top("graph toolbar").show_inside(ui, |ui| {
+        TopBottomPanel::top("graph_toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 self.time_range_window.toggle_btn(ui);
                 if self.state.loading.progress() < 1.0 && !self.state.loading.has_error {
