@@ -1,11 +1,12 @@
-use std::sync::Mutex;
+use std::env;
 use std::time::SystemTime;
+use std::{default, sync::Mutex};
 
 use crossbeam::channel::unbounded;
 use eframe::{run_native, App, CreationContext, NativeOptions};
 use egui::{CentralPanel, Context, Layout, TopBottomPanel};
 
-use tracing::{info, trace};
+use tracing::{info, trace, Level};
 
 use crate::windows::BuffWriter;
 use widgets::Theme;
@@ -31,6 +32,7 @@ impl TemplateApp {
 
         tracing_subscriber::fmt()
             .with_writer(Mutex::new(buff))
+            .with_max_level(parse_log_level())
             .with_ansi(false)
             .init();
 
@@ -72,6 +74,20 @@ impl App for TemplateApp {
                 .expect("failed to compute duration_since")
         );
     }
+}
+
+fn parse_log_level() -> Level {
+    if let Ok(level) = env::var("RUST_LOG") {
+        match level.to_lowercase().as_str() {
+            "error" => return Level::ERROR,
+            "info" => return Level::INFO,
+            "debug" => return Level::DEBUG,
+            "trace" => return Level::TRACE,
+            _ => return Level::DEBUG,
+        }
+    }
+
+    Level::INFO
 }
 
 #[tokio::main]
