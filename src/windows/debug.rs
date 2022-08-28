@@ -2,18 +2,10 @@ use std::io::Write;
 use std::time::Duration;
 
 use crossbeam::channel::{Receiver, Sender};
-use eframe::epaint::text::TextWrapping;
-use egui::{
-    style::Spacing, text::LayoutJob, Color32, ScrollArea, TextBuffer, TextEdit, TextFormat, Ui,
-    Vec2, Window,
-};
-use futures::sink::drain;
-use tracing::{debug, debug_span, error, info};
+use egui::{ScrollArea, TextEdit, Ui, Window};
+use tracing::{debug, info};
 
-use crate::{
-    netstrat::line_filter_highlight_layout::line_filter_highlight_layout, sources::binance::Info,
-    AppWindow,
-};
+use crate::{netstrat::line_filter_highlight_layout::line_filter_highlight_layout, AppWindow};
 
 pub struct BuffWriter {
     pub publisher: Sender<Vec<u8>>,
@@ -60,9 +52,7 @@ impl Debug {
     }
 
     fn add_new_message(&mut self, msg: Vec<u8>) {
-        if self.buff.len() > self.max_lines {
-            self.remove_first_line()
-        }
+        self.handle_size_limit();
 
         let msg_text = String::from_utf8_lossy(msg.as_slice()).to_string();
         self.buff.push(msg_text.clone());
@@ -74,9 +64,13 @@ impl Debug {
         }
     }
 
-    fn remove_first_line(&mut self) {
-        if let Some(split_res) = self.buff.split_first() {
-            self.buff = split_res.1.to_vec();
+    fn handle_size_limit(&mut self) {
+        if self.buff.len() > self.max_lines {
+            remove_first_line(&mut self.buff)
+        }
+
+        if self.filtered.len() > self.max_lines {
+            remove_first_line(&mut self.filtered)
         }
     }
 
@@ -165,5 +159,11 @@ impl AppWindow for Debug {
             });
 
         self.update_data(filter, visible);
+    }
+}
+
+fn remove_first_line(lines: &mut Vec<String>) {
+    if let Some(split_res) = lines.split_first() {
+        *lines = split_res.1.to_vec();
     }
 }
