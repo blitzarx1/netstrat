@@ -137,24 +137,18 @@ impl AppWindow for TimeRangeChooser {
             .symbol_sub
             .recv_timeout(std::time::Duration::from_millis(1));
 
-        match symbol_wrapped {
-            Ok(symbol) => {
-                info!("received symbol: {symbol}");
-                self.symbol = symbol;
-            }
-            Err(_) => {}
+        if let Ok(symbol) = symbol_wrapped {
+            info!("received symbol: {symbol}");
+            self.symbol = symbol;
         }
 
         let props_wrapped = self
             .props_sub
             .recv_timeout(std::time::Duration::from_millis(1));
 
-        match props_wrapped {
-            Ok(props) => {
-                info!("received props: {props:?}");
-                self.unpack_props(&props);
-            }
-            Err(_) => {}
+        if let Ok(props) = props_wrapped {
+            info!("received props: {props:?}");
+            self.unpack_props(&props);
         }
 
         Window::new(self.symbol.to_string())

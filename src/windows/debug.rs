@@ -2,8 +2,7 @@ use std::io::Write;
 use std::time::Duration;
 
 use crossbeam::channel::{Receiver, Sender};
-use egui::{ScrollArea, Ui, Widget, Window, CentralPanel, TopBottomPanel, Layout, TextEdit};
-use egui_extras::{StripBuilder, Size};
+use egui::{ScrollArea, TextEdit, Ui, Widget, Window};
 
 use crate::AppWindow;
 
@@ -13,9 +12,7 @@ pub struct BuffWriter {
 
 impl Write for BuffWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.publisher
-            .send(buf.into_iter().map(|el| *el).collect())
-            .unwrap();
+        self.publisher.send(buf.to_vec()).unwrap();
 
         Ok(buf.len())
     }
@@ -51,11 +48,8 @@ impl Debug {
 
     fn update_data(&mut self) {
         let data_wrapped = self.receiver.recv_timeout(Duration::from_millis(1));
-        match data_wrapped {
-            Ok(data) => {
-                self.add_new_message(data);
-            }
-            Err(_) => {}
+        if let Ok(data) = data_wrapped {
+            self.add_new_message(data);
         }
     }
 
@@ -68,9 +62,12 @@ impl Debug {
         self.buff
             .push(String::from_utf8_lossy(msg.as_slice()).to_string());
 
-        self.filtered = self.buff.iter().filter(|el| {
-                el.to_lowercase().contains(&self.filter)
-            }).map(|el|el.clone()).collect();
+        self.filtered = self
+            .buff
+            .iter()
+            .filter(|el| el.to_lowercase().contains(&self.filter.to_lowercase()))
+            .cloned()
+            .collect();
     }
 }
 
@@ -87,27 +84,30 @@ impl AppWindow for Debug {
         Window::new("debug")
             .open(&mut self.visible)
             .show(ui.ctx(), |ui| {
-                ui.horizontal(|ui|{
+                ui.horizontal(|ui| {
                     if TextEdit::singleline(&mut self.filter)
-                    .hint_text("filter")
-                    .show(ui)
-                    .response
-                    .changed() {
-                        self.filtered = self.buff.iter().filter(|el| {
-                            el.to_lowercase().contains(&self.filter)
-                        }).map(|el|el.clone()).collect();
-
+                        .hint_text("filter")
+                        .show(ui)
+                        .response
+                        .changed()
+                    {
+                        self.filtered = self
+                            .buff
+                            .iter()
+                            .filter(|el| el.to_lowercase().contains(&self.filter.to_lowercase()))
+                            .cloned()
+                            .collect();
                     }
                     ui.label(format!("{}/{}", self.filtered.len(), self.buff.len()))
                 });
 
                 ScrollArea::new([true, true])
-                .stick_to_bottom()
-                .show(ui, |ui| {
-                    self.filtered.iter().for_each(|line| {
-                        egui::widgets::Label::new(line).wrap(false).ui(ui);
+                    .stick_to_bottom()
+                    .show(ui, |ui| {
+                        self.filtered.iter().for_each(|line| {
+                            egui::widgets::Label::new(line).wrap(false).ui(ui);
+                        });
                     });
-                });
-            });         
+            });
     }
 }

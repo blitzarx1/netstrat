@@ -6,7 +6,9 @@ use super::pages::{Page, Pages};
 
 #[derive(Default, Debug, Clone)]
 pub struct LoadingState {
-    pub pages: Pages,
+    loaded_pages: usize,
+    pages: Pages,
+    curr_page: Page,
     pub has_error: bool,
 }
 
@@ -21,11 +23,22 @@ impl LoadingState {
     }
 
     pub fn left_edge(&self) -> i64 {
-        self.pages.page().0
+        self.curr_page.0
     }
 
-    pub fn turn_page(&mut self) -> Option<Page> {
-        self.pages.next()
+    pub fn get_next_page(&mut self) -> Option<Page> {
+        info!("getting next page...");
+        let res = self.pages.next();
+        if let Some(p) = res {
+            self.curr_page = p.clone();
+            return Some(p);
+        };
+        
+        None
+    }
+
+    pub fn inc_loaded_pages(&mut self, cnt: usize) {
+        self.loaded_pages += cnt;
     }
 
     pub fn progress(&mut self) -> f32 {
@@ -33,6 +46,14 @@ impl LoadingState {
             return 1.0;
         }
 
-        self.pages.turned_pages as f32 / self.pages.len() as f32
+        self.loaded_pages as f32 / self.pages.len() as f32
+    }
+
+    pub fn page_size(&self) -> usize {
+        self.pages.page_size(self.curr_page.clone())
+    }
+
+    pub fn pages(&self) -> usize {
+        self.pages.len()
     }
 }

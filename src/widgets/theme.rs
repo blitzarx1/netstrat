@@ -13,6 +13,12 @@ impl Theme {
     }
 }
 
+impl Default for Theme {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Widget for &mut Theme {
     fn ui(self, ui: &mut egui::Ui) -> Response {
         if self.dark_mode {

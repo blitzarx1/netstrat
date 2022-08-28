@@ -1,5 +1,7 @@
 use std::fs::File;
 use std::path::Path;
+use std::sync::Mutex;
+use std::thread;
 use std::time::Duration;
 
 use chrono::{Date, NaiveDateTime, Utc};
@@ -9,8 +11,9 @@ use egui::{
 };
 use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info};
 
+use crate::netstrat::loading_state::LoadingState;
 use crate::{
     netstrat::{
         bounds::{Bounds, BoundsSet},
@@ -40,7 +43,8 @@ pub struct Graph {
     klines: Vec<Kline>,
     state: State,
     export_state: ExportState,
-    klines_promise: Option<Promise<Result<Vec<Kline>, ClientError>>>,
+    klines_sub: Receiver<Vec<Kline>>,
+    klines_pub: Sender<Vec<Kline>>,
     symbol_sub: Receiver<String>,
     props_sub: Receiver<Props>,
     props_pub: Sender<Props>,
@@ -54,6 +58,7 @@ impl Default for Graph {
         let (s_props, r_props) = unbounded();
         let (s_props1, r_props1) = unbounded();
         let (s_export, r_export) = unbounded();
+        let (s_klines, r_klines) = unbounded();
         let (_, r_bounds) = unbounded();
 
         Self {
@@ -72,6 +77,8 @@ impl Default for Graph {
             props_pub: s_props1,
             export_sub: r_export,
             drag_sub: r_bounds,
+            klines_sub: r_klines,
+            klines_pub: s_klines,
 
             symbol: Default::default(),
             candles: Default::default(),
@@ -79,7 +86,6 @@ impl Default for Graph {
 
             klines: Default::default(),
             state: Default::default(),
-            klines_promise: Default::default(),
             export_state: Default::default(),
         }
     }
@@ -117,7 +123,7 @@ impl Graph {
     }
 
     fn draw(&mut self, ui: &Ui) {
-        info!("drawing data...");
+        debug!("drawing data...");
         let data = Data::new(self.klines.clone());
         self.volume.set_data(data.clone());
         self.candles.set_data(data);
@@ -132,7 +138,7 @@ impl Graph {
 
         self.state.apply_props(&props);
 
-        if self.state.loading.pages.len() == 0 {
+        if self.state.loading.pages() == 0 {
             info!("data already downloaded, skipping download");
             return;
         }
@@ -143,88 +149,96 @@ impl Graph {
     }
 
     fn perform_data_request(&mut self) {
-        let start_time = self.state.loading.left_edge();
-        let symbol = self.symbol.to_string();
-        let interval = self.state.props.interval.clone();
-        let limit = self.state.loading.pages.page_size();
+        // parallel data loading
+        loop {
+            match self.state.loading.get_next_page() {
+                Some(_) => {
+                    let start_time = self.state.loading.left_edge();
+                    let interval = self.state.props.interval;
+                    let limit = self.state.loading.page_size();            
+                    let symbol = self.symbol.to_string();
+                    let p = Mutex::new(Promise::spawn_async(async move {
+                        Client::kline(symbol, interval, start_time, limit).await
+                    }));
 
-        debug!("performing request with left edge: {start_time}");
-
-        self.klines_promise = Some(Promise::spawn_async(async move {
-            Client::kline(symbol, interval, start_time, limit).await
-        }));
+                    let sender = Mutex::new(self.klines_pub.clone());
+                    thread::spawn(move || loop {
+                        if let Some(data) = p.lock().unwrap().ready() {
+                            match data {
+                                Ok(payload) => {
+                                    let res = sender.lock().unwrap().send(payload.clone());
+                                    if let Err(err) = res {
+                                        error!("failed to send klines to channel: {err}");
+                                    };
+                                }
+                                Err(err) => {
+                                    error!("got klines result with error: {err}")
+                                }
+                            }
+                            break;
+                        };
+                    });
+                }
+                None => break,
+            }
+        }
     }
 
     fn handle_events(&mut self) {
         let drag_wrapped = self.drag_sub.recv_timeout(Duration::from_millis(1));
 
-        match drag_wrapped {
-            Ok(bounds) => {
-                info!("got bounds: {bounds:?}");
+        if let Ok(bounds) = drag_wrapped {
+            info!("got bounds: {bounds:?}");
 
-                let mut props = self.state.props.clone();
+            let mut props = self.state.props.clone();
 
-                let dt_left = NaiveDateTime::from_timestamp((bounds.0 as f64 / 1000.0) as i64, 0);
-                props.bounds = BoundsSet::new(vec![bounds]);
-                props.date_start = Date::from_utc(dt_left.date(), Utc);
-                props.time_start = dt_left.time();
+            let dt_left = NaiveDateTime::from_timestamp((bounds.0 as f64 / 1000.0) as i64, 0);
+            props.bounds = BoundsSet::new(vec![bounds]);
+            props.date_start = Date::from_utc(dt_left.date(), Utc);
+            props.time_start = dt_left.time();
 
-                let dt_right = NaiveDateTime::from_timestamp((bounds.1 as f64 / 1000.0) as i64, 0);
-                props.bounds = BoundsSet::new(vec![bounds]);
-                props.date_end = Date::from_utc(dt_right.date(), Utc);
-                props.time_end = dt_right.time();
+            let dt_right = NaiveDateTime::from_timestamp((bounds.1 as f64 / 1000.0) as i64, 0);
+            props.bounds = BoundsSet::new(vec![bounds]);
+            props.date_end = Date::from_utc(dt_right.date(), Utc);
+            props.time_end = dt_right.time();
 
-                let send_result = self.props_pub.send(props.clone());
-                match send_result {
-                    Ok(_) => {
-                        info!("sent props: {props:?}");
-                    }
-                    Err(err) => {
-                        error!("failed to send props: {err}");
-                    }
+            let send_result = self.props_pub.send(props.clone());
+            match send_result {
+                Ok(_) => {
+                    info!("sent props: {props:?}");
                 }
-
-                self.start_download(props, false);
+                Err(err) => {
+                    error!("failed to send props: {err}");
+                }
             }
-            Err(_) => {}
+
+            self.start_download(props, false);
         }
 
         let export_wrapped = self.export_sub.recv_timeout(Duration::from_millis(1));
+        if let Ok(props) = export_wrapped {
+            info!("got props for export: {props:?}");
 
-        match export_wrapped {
-            Ok(props) => {
-                info!("got props for export: {props:?}");
+            self.export_state.triggered = true;
 
-                self.export_state.triggered = true;
-
-                self.start_download(props, true);
-            }
-            Err(_) => {}
+            self.start_download(props, true);
         }
 
         let symbol_wrapped = self.symbol_sub.recv_timeout(Duration::from_millis(1));
+        if let Ok(symbol) = symbol_wrapped {
+            info!("got symbol: {symbol}");
 
-        match symbol_wrapped {
-            Ok(symbol) => {
-                info!("got symbol: {symbol}");
+            self.symbol = symbol.clone();
+            self.symbol_pub.send(symbol).unwrap();
 
-                self.symbol = symbol.clone();
-                self.symbol_pub.send(symbol).unwrap();
-
-                self.start_download(Props::default(), true);
-            }
-            Err(_) => {}
+            self.start_download(Props::default(), true);
         }
 
         let show_wrapped = self.props_sub.recv_timeout(Duration::from_millis(1));
+        if let Ok(props) = show_wrapped {
+            info!("got show button pressed: {props:?}");
 
-        match show_wrapped {
-            Ok(props) => {
-                info!("got show button pressed: {props:?}");
-
-                self.start_download(props, true);
-            }
-            Err(_) => {}
+            self.start_download(props, true);
         }
     }
 }
@@ -233,33 +247,23 @@ impl Widget for &mut Graph {
     fn ui(self, ui: &mut Ui) -> Response {
         self.handle_events();
 
-        if self.symbol == "" {
+        if self.symbol.is_empty() {
             return ui.label("Select a symbol");
         }
 
-        if let Some(promise) = &self.klines_promise {
-            if let Some(res) = promise.ready() {
-                match res {
-                    Ok(data) => {
-                        data.iter().for_each(|k| {
-                            self.klines.push(k.clone());
-                        });
+        let mut got = 0;
+        let klines_wrapped = self.klines_sub.recv_timeout(Duration::from_millis(1));
+        if let Ok(klines) = klines_wrapped {
+            info!("received klines");
+            klines.iter().for_each(|k| {
+                self.klines.push(*k);
+            });
+            got += 1;
+        }
 
-                        if let Some(_) = self.state.loading.turn_page() {
-                            self.perform_data_request();
-                        } else {
-                            self.klines_promise = None;
-                        }
-
-                        self.draw(ui);
-                    }
-                    Err(err) => {
-                        error!("failed to get klines data: {err}");
-                        self.state.report_loading_error();
-                        self.klines_promise = None;
-                    }
-                }
-            }
+        if got > 0 {
+            self.state.loading.inc_loaded_pages(got);
+            self.draw(ui);
         }
 
         self.candles
@@ -283,7 +287,7 @@ impl Widget for &mut Graph {
             match f_res {
                 Ok(f) => {
                     let abs_path = path.canonicalize().unwrap();
-                    info!("Saving to file: {abs_path:?}");
+                    info!("Saving to file: {}", abs_path.display());
 
                     let mut wtr = csv::Writer::from_writer(f);
                     self.klines.iter().for_each(|el| {

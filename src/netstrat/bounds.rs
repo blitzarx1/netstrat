@@ -32,7 +32,7 @@ impl Bounds {
 
     pub fn subtract(&self, other: &Bounds) -> Option<BoundsSet> {
         if !self.intersects(other) {
-            return Some(BoundsSet::new(vec![self.clone()]));
+            return Some(BoundsSet::new(vec![*self]));
         }
 
         if other.contains(self) {
@@ -274,7 +274,7 @@ impl BoundsSet {
         Self {
             vals: new_vals.iter().fold(Vec::new(), |mut acc, v| {
                 if acc.is_empty() {
-                    acc.push(v.clone());
+                    acc.push(*v);
 
                     return acc;
                 }
@@ -283,7 +283,7 @@ impl BoundsSet {
                 if let Some(union) = last.union(v) {
                     *last = union;
                 } else {
-                    acc.push(v.clone());
+                    acc.push(*v);
                 }
 
                 acc

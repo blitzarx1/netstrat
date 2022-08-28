@@ -106,8 +106,8 @@ impl Widget for &mut Candles {
                 .num_milliseconds()
                 > BOUNDS_SEND_DELAY_MILLIS
         {
-            let msg = self.bounds.clone();
-            let send_res = self.bounds_pub.send(msg.clone());
+            let msg = self.bounds;
+            let send_res = self.bounds_pub.send(msg);
             match send_res {
                 Ok(_) => info!("sent bounds: {msg:?}"),
                 Err(err) => error!("failed to send bounds: {err}"),
@@ -118,7 +118,7 @@ impl Widget for &mut Candles {
         ui.add_enabled_ui(self.enabled, |ui| {
             Plot::new("candles")
                 .link_axis(self.axes_group.clone())
-                .label_formatter(|_, v| -> String { format!("{}", Data::format_ts(v.x)) })
+                .label_formatter(|_, v| -> String { Data::format_ts(v.x) })
                 .x_axis_formatter(|v, _range| Data::format_ts(v))
                 .set_margin_fraction(Vec2::new(0.05, 0.05))
                 // TODO: following includes are not working properly on every screen redraw
