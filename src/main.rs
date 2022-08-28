@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::SystemTime;
 
@@ -38,10 +37,6 @@ impl TemplateApp {
         info!("Creating app...");
 
         let (s, r) = unbounded();
-
-        let mut visibility_map = HashMap::new();
-        visibility_map.insert("debug".to_string(), false);
-
         Self {
             windows: vec![
                 Box::new(SymbolsGraph::new(s, r, true)),

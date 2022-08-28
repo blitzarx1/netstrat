@@ -1,5 +1,7 @@
 use std::fs::File;
 use std::path::Path;
+use std::sync::Mutex;
+use std::thread;
 use std::time::Duration;
 
 use chrono::{Date, NaiveDateTime, Utc};
@@ -11,6 +13,7 @@ use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
 use tracing::{debug, error, info};
 
+use crate::netstrat::loading_state::LoadingState;
 use crate::{
     netstrat::{
         bounds::{Bounds, BoundsSet},
@@ -40,7 +43,8 @@ pub struct Graph {
     klines: Vec<Kline>,
     state: State,
     export_state: ExportState,
-    klines_promise: Option<Promise<Result<Vec<Kline>, ClientError>>>,
+    klines_sub: Receiver<Vec<Kline>>,
+    klines_pub: Sender<Vec<Kline>>,
     symbol_sub: Receiver<String>,
     props_sub: Receiver<Props>,
     props_pub: Sender<Props>,
@@ -54,6 +58,7 @@ impl Default for Graph {
         let (s_props, r_props) = unbounded();
         let (s_props1, r_props1) = unbounded();
         let (s_export, r_export) = unbounded();
+        let (s_klines, r_klines) = unbounded();
         let (_, r_bounds) = unbounded();
 
         Self {
@@ -72,6 +77,8 @@ impl Default for Graph {
             props_pub: s_props1,
             export_sub: r_export,
             drag_sub: r_bounds,
+            klines_sub: r_klines,
+            klines_pub: s_klines,
 
             symbol: Default::default(),
             candles: Default::default(),
@@ -79,7 +86,6 @@ impl Default for Graph {
 
             klines: Default::default(),
             state: Default::default(),
-            klines_promise: Default::default(),
             export_state: Default::default(),
         }
     }
@@ -132,7 +138,7 @@ impl Graph {
 
         self.state.apply_props(&props);
 
-        if self.state.loading.pages.len() == 0 {
+        if self.state.loading.pages() == 0 {
             info!("data already downloaded, skipping download");
             return;
         }
@@ -143,16 +149,39 @@ impl Graph {
     }
 
     fn perform_data_request(&mut self) {
-        let start_time = self.state.loading.left_edge();
-        let symbol = self.symbol.to_string();
-        let interval = self.state.props.interval;
-        let limit = self.state.loading.pages.page_size();
+        // parallel data loading
+        loop {
+            match self.state.loading.get_next_page() {
+                Some(_) => {
+                    let start_time = self.state.loading.left_edge();
+                    let interval = self.state.props.interval;
+                    let limit = self.state.loading.page_size();            
+                    let symbol = self.symbol.to_string();
+                    let p = Mutex::new(Promise::spawn_async(async move {
+                        Client::kline(symbol, interval, start_time, limit).await
+                    }));
 
-        debug!("performing request with left edge: {start_time}");
-
-        self.klines_promise = Some(Promise::spawn_async(async move {
-            Client::kline(symbol, interval, start_time, limit).await
-        }));
+                    let sender = Mutex::new(self.klines_pub.clone());
+                    thread::spawn(move || loop {
+                        if let Some(data) = p.lock().unwrap().ready() {
+                            match data {
+                                Ok(payload) => {
+                                    let res = sender.lock().unwrap().send(payload.clone());
+                                    if let Err(err) = res {
+                                        error!("failed to send klines to channel: {err}");
+                                    };
+                                }
+                                Err(err) => {
+                                    error!("got klines result with error: {err}")
+                                }
+                            }
+                            break;
+                        };
+                    });
+                }
+                None => break,
+            }
+        }
     }
 
     fn handle_events(&mut self) {
@@ -222,32 +251,19 @@ impl Widget for &mut Graph {
             return ui.label("Select a symbol");
         }
 
-        if let Some(promise) = &self.klines_promise {
-            if let Some(res) = promise.ready() {
-                match res {
-                    Ok(data) => {
-                        data.iter().for_each(|k| {
-                            self.klines.push(*k);
-                        });
+        let mut got = 0;
+        let klines_wrapped = self.klines_sub.recv_timeout(Duration::from_millis(1));
+        if let Ok(klines) = klines_wrapped {
+            info!("received klines");
+            klines.iter().for_each(|k| {
+                self.klines.push(*k);
+            });
+            got += 1;
+        }
 
-                        match self.state.loading.turn_page() {
-                            Some(_) => {
-                                self.perform_data_request();
-                            }
-                            None => {
-                                self.klines_promise = None;
-                            }
-                        }
-
-                        self.draw(ui);
-                    }
-                    Err(err) => {
-                        error!("failed to get klines data: {err}");
-                        self.state.report_loading_error();
-                        self.klines_promise = None;
-                    }
-                }
-            }
+        if got > 0 {
+            self.state.loading.inc_loaded_pages(got);
+            self.draw(ui);
         }
 
         self.candles

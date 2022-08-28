@@ -2,13 +2,12 @@ use tracing::{debug, error, info};
 
 use crate::netstrat::bounds::BoundsSet;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct Page(pub i64, pub i64);
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Pages {
-    pub curr_page_idx: usize,
-    pub turned_pages: usize,
+    curr_page_idx: usize,
     vals: Vec<Page>,
     step: usize,
 }
@@ -65,8 +64,7 @@ impl Pages {
     }
 
     pub fn next(&mut self) -> Option<Page> {
-        self.turned_pages += 1;
-        if let Some(page) = self.vals.get(self.turned_pages) {
+        if let Some(page) = self.vals.get(self.curr_page_idx) {
             self.curr_page_idx += 1;
             return Some(page.clone());
         }
@@ -74,12 +72,7 @@ impl Pages {
         None
     }
 
-    pub fn page(&self) -> Page {
-        self.vals[self.curr_page_idx].clone()
-    }
-
-    pub fn page_size(&self) -> usize {
-        let page = self.page();
+    pub fn page_size(&self, page: Page) -> usize {
         ((page.1 - page.0) / self.step as i64) as usize
     }
 }
