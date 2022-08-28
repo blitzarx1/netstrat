@@ -87,7 +87,7 @@ fn parse_log_level() -> Level {
         }
     }
 
-    Level::DEBUG
+    Level::INFO
 }
 
 #[tokio::main]
