@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use egui::Color32;
-use tracing::info;
+use tracing::{info, debug};
 
 use crate::sources::binance::Kline;
 
@@ -57,8 +57,8 @@ impl Data {
         let max_x = vals.last().unwrap().t_close as f64;
         let min_x = vals.first().unwrap().t_open as f64;
 
-        info!(
-            "Computed data props: max_x: {max_x},  min_x: {min_x}, max_y: {max_y}, min_y: {min_y}, max_vol: {max_vol}."
+        debug!(
+            "computed data props: max_x: {max_x}, min_x: {min_x}, max_y: {max_y}, min_y: {min_y}, max_vol: {max_vol}"
         );
 
         Self {
