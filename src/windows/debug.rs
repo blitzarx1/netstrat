@@ -2,10 +2,18 @@ use std::io::Write;
 use std::time::Duration;
 
 use crossbeam::channel::{Receiver, Sender};
-use egui::{Color32, ScrollArea, TextEdit, Ui, Window};
-use tracing::{debug, debug_span, info};
+use eframe::epaint::text::TextWrapping;
+use egui::{
+    style::Spacing, text::LayoutJob, Color32, ScrollArea, TextBuffer, TextEdit, TextFormat, Ui,
+    Vec2, Window,
+};
+use futures::sink::drain;
+use tracing::{debug, debug_span, error, info};
 
-use crate::{sources::binance::Info, AppWindow};
+use crate::{
+    netstrat::line_filter_highlight_layout::line_filter_highlight_layout, sources::binance::Info,
+    AppWindow,
+};
 
 pub struct BuffWriter {
     pub publisher: Sender<Vec<u8>>,
@@ -13,7 +21,6 @@ pub struct BuffWriter {
 
 pub struct Debug {
     filter: String,
-    filter_input: String,
     filtered: Vec<String>,
     buff: Vec<String>,
     max_lines: usize,
@@ -26,10 +33,8 @@ impl Debug {
         let buff = vec![];
         let filtered = vec![];
         let filter = "".to_string();
-        let filter_input = "".to_string();
         Self {
             filter,
-            filter_input,
             filtered,
             buff,
             max_lines,
@@ -138,21 +143,19 @@ impl AppWindow for Debug {
                     ui.label(format!("{}/{}", self.filtered.len(), self.buff.len()))
                 });
 
+                ui.add_space(10.0);
+
                 ScrollArea::new([true, true])
                     .stick_to_bottom()
                     .show(ui, |ui| {
                         let mut lines = self.filtered.concat();
                         let mut layouter = |ui: &egui::Ui, string: &str, _: f32| {
-                            ui.fonts().layout_no_wrap(
-                                string.to_string(),
-                                egui::FontId {
-                                    size: 12.0,
-                                    family: egui::FontFamily::Monospace,
-                                },
-                                ui.visuals().text_color(),
-                            )
+                            ui.fonts()
+                                .layout_job(line_filter_highlight_layout(string, &filter))
                         };
+
                         TextEdit::multiline(&mut lines)
+                            .interactive(false)
                             .layouter(&mut layouter)
                             .show(ui);
                     });
