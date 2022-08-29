@@ -14,7 +14,7 @@ pub struct LoadingState {
 
 impl LoadingState {
     pub fn new(bounds: &BoundsSet, step: usize, per_page_limit: usize) -> Option<Self> {
-        info!("Initializing LoadingState. Bounds: {bounds:?}. Step: {step}. Per page limit: {per_page_limit}.");
+        debug!("initializing LoadingState... bounds: {bounds:?}; step: {step}; per page limit: {per_page_limit}");
 
         Some(Self {
             pages: Pages::new(bounds.clone(), step, per_page_limit)?,

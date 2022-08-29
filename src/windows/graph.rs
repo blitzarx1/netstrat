@@ -1,6 +1,7 @@
 use crossbeam::channel::{Receiver, Sender};
 use egui::{Layout, Ui, Window};
 use egui_extras::{Size, StripBuilder};
+use tracing::info;
 
 use super::window::AppWindow;
 use crate::widgets::{Graph, Symbols};
@@ -14,13 +15,14 @@ pub struct SymbolsGraph {
 impl AppWindow for SymbolsGraph {
     fn toggle_btn(&mut self, ui: &mut Ui) {
         if ui.button("graph").clicked() {
-            self.visible = !self.visible
+            self.update(!self.visible);
         }
     }
 
     fn show(&mut self, ui: &mut Ui) {
+        let mut visible = self.visible;
         Window::new("graph")
-            .open(&mut self.visible)
+            .open(&mut visible)
             .min_height(500.0)
             .min_width(700.0)
             .show(ui.ctx(), |ui| {
@@ -38,6 +40,8 @@ impl AppWindow for SymbolsGraph {
                         })
                 })
             });
+
+        self.update(visible);
     }
 }
 
@@ -48,5 +52,9 @@ impl SymbolsGraph {
             symbols: Symbols::new(s),
             visible,
         }
+    }
+
+    fn update(&mut self, visible: bool) {
+        self.visible = visible;
     }
 }

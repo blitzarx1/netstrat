@@ -1,7 +1,7 @@
 use crossbeam::channel::{unbounded, Sender};
 use egui::{Layout, Response, ScrollArea, TextEdit, Widget, WidgetText};
 use poll_promise::Promise;
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 use crate::{
     netstrat::line_filter_highlight_layout::line_filter_highlight_layout,
@@ -60,8 +60,7 @@ impl Symbols {
             return;
         }
 
-        info!("applying filter");
-        debug!("filter_value: {filter_value}; active_only: {active_only}");
+        debug!("applying filter: {filter_value}; active_only: {active_only}");
 
         // optimization
         if filter_normalized != self.filter.value
@@ -171,7 +170,7 @@ impl Widget for &mut Symbols {
                                     let send_result = self.symbol_pub.send(s.symbol.clone());
                                     match send_result {
                                         Ok(_) => {
-                                            info!("sent symbol: {}", s.symbol);
+                                            debug!("sent symbol: {}", s.symbol);
                                         }
                                         Err(err) => {
                                             error!("failed to send symbol: {err}");
