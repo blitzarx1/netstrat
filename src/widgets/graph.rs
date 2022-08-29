@@ -144,7 +144,10 @@ impl Graph {
             return;
         }
 
-        info!("starting data download...");
+        debug!(
+            "data splitted in {} pages; starting download...",
+            self.state.loading.pages()
+        );
 
         self.perform_data_request();
     }
@@ -289,18 +292,22 @@ impl Graph {
             self.start_download(props, true);
         }
 
-        // TODO: loop while RecvTimeoutError like in Debug window
         let mut got = 0;
-        let klines_wrapped = self.klines_sub.recv_timeout(Duration::from_millis(1));
-        if let Ok(klines) = klines_wrapped {
+        loop {
+            let klines_res = self.klines_sub.recv_timeout(Duration::from_millis(1));
+            if klines_res.is_err() {
+                break;
+            }
+
             debug!("received klines");
-            klines.iter().for_each(|k| {
+            klines_res.unwrap().iter().for_each(|k| {
                 self.klines.push(*k);
             });
             got += 1;
         }
 
         if got > 0 {
+            debug!("received {} pages of data", got);
             self.state.loading.inc_loaded_pages(got);
             self.update_data();
         }
