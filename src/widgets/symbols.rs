@@ -1,7 +1,7 @@
 use crossbeam::channel::{unbounded, Sender};
 use egui::{Layout, Response, ScrollArea, TextEdit, Widget, WidgetText};
 use poll_promise::Promise;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use crate::{
     netstrat::line_filter_highlight_layout::line_filter_highlight_layout,
@@ -27,23 +27,24 @@ pub struct Symbols {
 impl Default for Symbols {
     fn default() -> Self {
         let (s, _) = unbounded();
+        let symbols_promise = Some(Promise::spawn_async(async { Client::info().await }));
+        let loading = true;
         Self {
+            loading,
+            symbols_promise,
             symbol_pub: s,
             symbols: Default::default(),
             filter: Default::default(),
             filtered: Default::default(),
-            loading: Default::default(),
             selected_symbol: Default::default(),
-            symbols_promise: Default::default(),
         }
     }
 }
 
 impl Symbols {
     pub fn new(symbol_pub: Sender<String>) -> Self {
+        info!("initing widget symbols");
         Self {
-            loading: true,
-            symbols_promise: Some(Promise::spawn_async(async { Client::info().await })),
             symbol_pub,
             ..Default::default()
         }
@@ -51,7 +52,11 @@ impl Symbols {
 
     fn update(&mut self, filter_value: String, active_only: bool, selected_symbol: String) {
         self.apply_filter(filter_value, active_only);
-        self.selected_symbol = selected_symbol;
+
+        if self.selected_symbol != selected_symbol {
+            info!("setting symbol to {selected_symbol}");
+            self.selected_symbol = selected_symbol;
+        }
     }
 
     fn apply_filter(&mut self, filter_value: String, active_only: bool) {
@@ -60,9 +65,8 @@ impl Symbols {
             return;
         }
 
-        debug!("applying filter: {filter_value}; active_only: {active_only}");
+        info!("applying filter: {filter_value}; active_only: {active_only}");
 
-        // optimization
         if filter_normalized != self.filter.value
             && filter_normalized.contains(self.filter.value.as_str())
             && self.filter.active_only == active_only

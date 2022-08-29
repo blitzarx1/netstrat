@@ -32,48 +32,62 @@ struct ExportState {
 }
 
 pub struct Graph {
+    time_range_window: Box<dyn AppWindow>,
+
     candles: Candles,
     volume: Volume,
     symbol: String,
-    symbol_pub: Sender<String>,
+
     max_frame_pages: usize,
-
-    pub time_range_window: Box<dyn AppWindow>,
-
     data_changed: bool,
     klines: Vec<Kline>,
     state: State,
     export_state: ExportState,
-    klines_sub: Receiver<Vec<Kline>>,
+
     klines_pub: Sender<Vec<Kline>>,
+    klines_sub: Receiver<Vec<Kline>>,
+    symbol_pub: Sender<String>,
     symbol_sub: Receiver<String>,
-    props_sub: Receiver<Props>,
     props_pub: Sender<Props>,
+    props_sub: Receiver<Props>,
     export_sub: Receiver<Props>,
     drag_sub: Receiver<Bounds>,
 }
 
 impl Default for Graph {
     fn default() -> Self {
+        let max_frame_pages = 50;
+
         let (s_symbols, r_symbols) = unbounded();
         let (s_props, r_props) = unbounded();
         let (s_props1, r_props1) = unbounded();
         let (s_export, r_export) = unbounded();
         let (s_klines, r_klines) = unbounded();
-        let (_, r_bounds) = unbounded();
+        let (s_bounds, r_bounds) = unbounded();
+
+        let time_range_window = Box::new(TimeRangeChooser::new(
+            false,
+            r_symbols.clone(),
+            s_props,
+            r_props1,
+            s_export,
+            Props::default(),
+        ));
+
+        let axes_group = LinkedAxisGroup::new(true, false);
+        let candles = Candles::new(axes_group.clone(), s_bounds);
+        let volume = Volume::new(axes_group);
 
         Self {
-            symbol_pub: s_symbols,
-            time_range_window: Box::new(TimeRangeChooser::new(
-                false,
-                r_symbols.clone(),
-                s_props,
-                r_props1,
-                s_export,
-                Props::default(),
-            )),
+            max_frame_pages,
+
+            time_range_window,
+
+            candles,
+            volume,
 
             symbol_sub: r_symbols,
+            symbol_pub: s_symbols,
             props_sub: r_props,
             props_pub: s_props1,
             export_sub: r_export,
@@ -83,10 +97,6 @@ impl Default for Graph {
 
             data_changed: Default::default(),
             symbol: Default::default(),
-            candles: Default::default(),
-            volume: Default::default(),
-            max_frame_pages: Default::default(),
-
             klines: Default::default(),
             state: Default::default(),
             export_state: Default::default(),
@@ -95,42 +105,23 @@ impl Default for Graph {
 }
 
 impl Graph {
-    pub fn new(symbol_chan: Receiver<String>) -> Self {
-        let (s_symbols, r_symbols) = unbounded();
-        let (s_props, r_props) = unbounded();
-        let (s_props1, r_props1) = unbounded();
-        let (s_export, r_export) = unbounded();
-        let (s_bounds, r_bounds) = unbounded();
-
-        let axes_group = LinkedAxisGroup::new(true, false);
-
+    pub fn new(symbol_sub: Receiver<String>) -> Self {
+        info!("initing widget graph");
         Self {
-            symbol_sub: symbol_chan,
-            symbol_pub: s_symbols,
-            props_sub: r_props,
-            props_pub: s_props1,
-            export_sub: r_export,
-            drag_sub: r_bounds,
-            time_range_window: Box::new(TimeRangeChooser::new(
-                false,
-                r_symbols,
-                s_props,
-                r_props1,
-                s_export,
-                Props::default(),
-            )),
-            max_frame_pages: 50, // TODO: take from settings
-            candles: Candles::new(axes_group.clone(), s_bounds),
-            volume: Volume::new(axes_group),
+            symbol_sub,
             ..Default::default()
         }
     }
 
     fn update_data(&mut self) {
-        debug!("updating data...");
+        info!("updating volume and candles widgets with new data...");
+        
         let data = Data::new(self.klines.clone());
+        
+
         self.volume.set_data(data.clone());
         self.candles.set_data(data);
+
         self.data_changed = true;
     }
 

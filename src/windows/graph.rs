@@ -47,6 +47,7 @@ impl AppWindow for SymbolsGraph {
 
 impl SymbolsGraph {
     pub fn new(s: Sender<String>, r: Receiver<String>, visible: bool) -> Self {
+        info!("initing window graph");
         Self {
             graph: Graph::new(r),
             symbols: Symbols::new(s),
@@ -55,6 +56,12 @@ impl SymbolsGraph {
     }
 
     fn update(&mut self, visible: bool) {
-        self.visible = visible;
+        if visible != self.visible {
+            self.visible = visible;
+            match visible {
+                true => info!("opening graph window..."),
+                false => info!("closing graph window..."),
+            }
+        }
     }
 }
