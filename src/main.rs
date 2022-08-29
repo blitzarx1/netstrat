@@ -1,12 +1,12 @@
-use std::env;
 use std::sync::Mutex;
 use std::time::SystemTime;
 
-use crossbeam::channel::unbounded;
+use crossbeam::channel::{unbounded, Sender};
 use eframe::{run_native, App, CreationContext, NativeOptions};
 use egui::{CentralPanel, Context, Layout, TopBottomPanel};
 
 use tracing::{info, trace, Level};
+use tracing_subscriber::EnvFilter;
 
 use crate::windows::BuffWriter;
 use widgets::Theme;
@@ -23,24 +23,46 @@ struct TemplateApp {
     theme: Theme,
 }
 
+fn init_logger(s: Sender<Vec<u8>>) {
+    let buff = BuffWriter::new(s);
+
+    let has_config = std::env::var("RUST_LOG");
+    if has_config.is_err() {
+        tracing_subscriber::fmt()
+        .with_writer(Mutex::new(buff))
+        .with_ansi(false)
+        .with_max_level(Level::INFO)
+        .with_line_number(false)
+        .with_file(false)
+        .with_target(false)
+        .without_time()
+        .init();
+        
+        return ;
+    }
+
+    tracing_subscriber::fmt()
+        .with_writer(Mutex::new(buff))
+        .with_ansi(false)
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_line_number(true)
+        .with_file(true)
+        .with_target(false)
+        .init();
+}
+
 impl TemplateApp {
     fn new(_ctx: &CreationContext<'_>) -> Self {
         let (buffer_s, buffer_r) = unbounded();
-        let buff = BuffWriter {
-            publisher: buffer_s,
-        };
 
-        tracing_subscriber::fmt()
-            .with_writer(Mutex::new(buff))
-            .with_max_level(parse_log_level())
-            .with_ansi(false)
-            .init();
+        init_logger(buffer_s);
 
+        info!("starting app");
         let (s, r) = unbounded();
         Self {
             windows: vec![
                 Box::new(SymbolsGraph::new(s, r, true)),
-                Box::new(Debug::new(buffer_r, true, 500)),
+                Box::new(Debug::new(buffer_r, true)),
             ],
             theme: Theme::new(),
         }
@@ -72,20 +94,6 @@ impl App for TemplateApp {
                 .expect("failed to compute duration_since")
         );
     }
-}
-
-fn parse_log_level() -> Level {
-    if let Ok(level) = env::var("RUST_LOG") {
-        match level.to_lowercase().as_str() {
-            "error" => return Level::ERROR,
-            "info" => return Level::INFO,
-            "debug" => return Level::DEBUG,
-            "trace" => return Level::TRACE,
-            _ => return Level::DEBUG,
-        }
-    }
-
-    Level::INFO
 }
 
 #[tokio::main]

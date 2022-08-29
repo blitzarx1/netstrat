@@ -2,7 +2,7 @@ use chrono::prelude::*;
 use chrono::{Date, NaiveTime, Utc};
 use crossbeam::channel::{Receiver, Sender};
 use egui::{Ui, Window};
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     netstrat::{
@@ -16,17 +16,19 @@ use crate::{
 use super::AppWindow;
 
 pub struct TimeRangeChooser {
-    symbol: String,
     time_start_input: TimeInput,
     time_end_input: TimeInput,
+    interval: Interval,
+
+    symbol: String,
     valid: bool,
     visible: bool,
     date_start: Date<Utc>,
     date_end: Date<Utc>,
-    interval: Interval,
+
     symbol_sub: Receiver<String>,
-    props_sub: Receiver<Props>,
     props_pub: Sender<Props>,
+    props_sub: Receiver<Props>,
     export_pub: Sender<Props>,
 }
 
@@ -40,6 +42,8 @@ impl TimeRangeChooser {
         export_pub: Sender<Props>,
         props: Props,
     ) -> Self {
+        info!("initing window time_range_chooser");
+
         Self {
             symbol: String::new(),
             symbol_sub,
@@ -73,25 +77,13 @@ impl TimeRangeChooser {
         date_end: Date<Utc>,
         interval: Interval,
     ) -> Option<Props> {
-        let time_start: NaiveTime;
-        match time_start_opt {
-            Some(time) => {
-                time_start = time;
-            }
-            None => {
-                return None;
-            }
+        if time_start_opt.is_none() || time_end_opt.is_none() {
+            return None;
         }
 
-        let time_end: NaiveTime;
-        match time_end_opt {
-            Some(time) => {
-                time_end = time;
-            }
-            None => {
-                return None;
-            }
-        }
+        let time_start = time_start_opt.unwrap();
+        let time_end = time_end_opt.unwrap();
+
         let mut p = Props {
             date_start,
             date_end,
@@ -101,6 +93,7 @@ impl TimeRangeChooser {
             bounds: BoundsSet::new(vec![]),
             limit: 1000,
         };
+
         p.bounds = BoundsSet::new(vec![Bounds(
             p.start_time().timestamp_millis(),
             p.end_time().timestamp_millis(),
