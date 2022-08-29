@@ -13,13 +13,13 @@ pub struct State {
 
 impl State {
     pub fn apply_props(&mut self, props: &Props) {
-        info!("applying new props: {props:?}");
+        debug!("applying new props: {props:?}");
 
         self.props = props.clone();
 
         let subtract_res = props.bounds.subtract(&self.bounds);
         if subtract_res.is_none() {
-            info!("Found nothing to load.");
+            debug!("found nothing to load");
             self.loading = LoadingState::default();
             return;
         }

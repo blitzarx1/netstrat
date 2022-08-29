@@ -2,7 +2,7 @@ use chrono::prelude::*;
 use chrono::{Date, NaiveTime, Utc};
 use crossbeam::channel::{Receiver, Sender};
 use egui::{Ui, Window};
-use tracing::{error, info, warn};
+use tracing::{debug, error, warn};
 
 use crate::{
     netstrat::{
@@ -30,6 +30,7 @@ pub struct TimeRangeChooser {
     export_pub: Sender<Props>,
 }
 
+// TODO: add and use update function like in other windows
 impl TimeRangeChooser {
     pub fn new(
         visible: bool,
@@ -109,7 +110,7 @@ impl TimeRangeChooser {
     }
 
     fn unpack_props(&mut self, p: &Props) {
-        info!("unpacking props...");
+        debug!("unpacking props...");
 
         self.date_start = p.date_start;
         self.date_end = p.date_end;
@@ -121,14 +122,14 @@ impl TimeRangeChooser {
         let time_end = p.time_end;
         self.time_end_input = TimeInput::new(time_end.hour(), time_end.minute(), time_end.second());
 
-        info!("props unpacked and applied");
+        debug!("props unpacked and applied");
     }
 }
 
 impl AppWindow for TimeRangeChooser {
     fn toggle_btn(&mut self, ui: &mut Ui) {
         if ui.button("Props").clicked() {
-            self.visible = !self.visible
+            self.visible = !self.visible;
         }
     }
 
@@ -138,7 +139,7 @@ impl AppWindow for TimeRangeChooser {
             .recv_timeout(std::time::Duration::from_millis(1));
 
         if let Ok(symbol) = symbol_wrapped {
-            info!("received symbol: {symbol}");
+            debug!("received symbol: {symbol}");
             self.symbol = symbol;
         }
 
@@ -147,7 +148,7 @@ impl AppWindow for TimeRangeChooser {
             .recv_timeout(std::time::Duration::from_millis(1));
 
         if let Ok(props) = props_wrapped {
-            info!("received props: {props:?}");
+            debug!("received props: {props:?}");
             self.unpack_props(&props);
         }
 
@@ -207,14 +208,14 @@ impl AppWindow for TimeRangeChooser {
                                     let send_result = self.props_pub.send(props.clone());
                                     match send_result {
                                         Ok(_) => {
-                                            info!("sent props for show: {props:?}");
+                                            debug!("sent props for show: {props:?}");
                                         }
                                         Err(err) => {
                                             error!("failed to send props for show: {err}");
                                         }
                                     }
                                 } else {
-                                    warn!("invalid props");
+                                    warn!("invalid props: {props:?}");
                                     self.valid = false;
                                 }
                             }
@@ -239,14 +240,14 @@ impl AppWindow for TimeRangeChooser {
                                     let send_result = self.export_pub.send(props.clone());
                                     match send_result {
                                         Ok(_) => {
-                                            info!("sent props for export: {props:?}");
+                                            debug!("sent props for export: {props:?}");
                                         }
                                         Err(err) => {
                                             error!("failed to send props for export: {err}");
                                         }
                                     }
                                 } else {
-                                    warn!("invalid props");
+                                    warn!("invalid props: {props:?}");
                                     self.valid = false;
                                 }
                             }
@@ -259,7 +260,9 @@ impl AppWindow for TimeRangeChooser {
                 });
 
                 if !self.valid {
-                    ui.label("invalid time format or start > end");
+                    let msg = "invalid time format or start > end";
+                    ui.label(msg);
+                    warn!(msg);
                 }
             });
     }

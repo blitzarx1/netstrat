@@ -36,6 +36,7 @@ pub struct Graph {
     volume: Volume,
     symbol: String,
     symbol_pub: Sender<String>,
+    max_frame_pages: usize,
 
     pub time_range_window: Box<dyn AppWindow>,
 
@@ -84,6 +85,7 @@ impl Default for Graph {
             symbol: Default::default(),
             candles: Default::default(),
             volume: Default::default(),
+            max_frame_pages: Default::default(),
 
             klines: Default::default(),
             state: Default::default(),
@@ -117,6 +119,7 @@ impl Graph {
                 s_export,
                 Props::default(),
             )),
+            max_frame_pages: 50, // TODO: take from settings
             candles: Candles::new(axes_group.clone(), s_bounds),
             volume: Volume::new(axes_group),
             ..Default::default()
@@ -295,7 +298,7 @@ impl Graph {
         let mut got = 0;
         loop {
             let klines_res = self.klines_sub.recv_timeout(Duration::from_millis(1));
-            if klines_res.is_err() {
+            if klines_res.is_err() || got == self.max_frame_pages {
                 break;
             }
 

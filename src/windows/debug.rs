@@ -14,20 +14,25 @@ pub struct BuffWriter {
 pub struct Debug {
     filter: String,
     filtered: Vec<String>,
+    max_frame_msgs: usize,
     buff: Vec<String>,
     max_lines: usize,
     receiver: Receiver<Vec<u8>>,
     visible: bool,
 }
 
+
+// TODO: add stats
 impl Debug {
     pub fn new(receiver: Receiver<Vec<u8>>, visible: bool, max_lines: usize) -> Self {
         let buff = vec![];
         let filtered = vec![];
         let filter = "".to_string();
+        let max_frame_msgs = 1000;
         Self {
             filter,
             filtered,
+            max_frame_msgs,
             buff,
             max_lines,
             receiver,
@@ -36,12 +41,16 @@ impl Debug {
     }
 
     fn update_data(&mut self, filter: String, visible: bool) {
+        let mut got = 0;
         loop {
-            let data_wrapped = self.receiver.recv_timeout(Duration::from_millis(1));
-            match data_wrapped {
-                Ok(data) => self.add_new_message(data),
-                Err(_) => break,
+            let data_res = self.receiver.recv_timeout(Duration::from_millis(1));
+            if data_res.is_err() || got == self.max_frame_msgs {
+                debug!("received {got} messages"); // TODO: add to stats messages/frame
+                break;
             }
+
+            self.add_new_message(data_res.unwrap());
+            got += 1
         }
 
         self.apply_filter(filter);
@@ -78,8 +87,7 @@ impl Debug {
             return;
         }
 
-        info!("applying filter");
-        debug!("filter: {new_filter}");
+        debug!("applying filter: {new_filter}");
 
         // optimization
         if filter_normalized.contains(self.filter.as_str()) {
@@ -124,7 +132,7 @@ impl Write for BuffWriter {
 impl AppWindow for Debug {
     fn toggle_btn(&mut self, ui: &mut Ui) {
         if ui.button("debug").clicked() {
-            self.visible = !self.visible
+            self.update_data(self.filter.clone(), !self.visible)
         }
     }
 

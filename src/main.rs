@@ -36,8 +36,6 @@ impl TemplateApp {
             .with_ansi(false)
             .init();
 
-        info!("Creating app...");
-
         let (s, r) = unbounded();
         Self {
             windows: vec![
