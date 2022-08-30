@@ -1,4 +1,4 @@
-use tracing::debug;
+use tracing::trace;
 
 #[derive(Clone, Debug)]
 pub struct Rest {
@@ -33,8 +33,8 @@ impl Rest {
         req: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, reqwest::Error> {
         let req_builded = req.build()?;
-        debug!(
-            "Sending request: method: {:?}; url: {:?}; headers: {:?}; body: {:?}.",
+        trace!(
+            "sending request: method: {:?}; url: {:?}; headers: {:?}; body: {:?}.",
             req_builded.method(),
             req_builded.url().as_str(),
             req_builded.headers(),

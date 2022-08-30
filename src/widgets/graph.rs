@@ -1,6 +1,5 @@
 use std::path::Path;
 use std::sync::Mutex;
-use std::thread;
 use std::time::Duration;
 use std::{cmp::Ordering, fs::File};
 
@@ -11,12 +10,12 @@ use egui::{
 };
 use egui_extras::{Size, StripBuilder};
 use poll_promise::Promise;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
+use crate::netstrat::thread_pool::ThreadPool;
 use crate::{
     netstrat::{
         bounds::{Bounds, BoundsSet},
-        data::Data,
         props::Props,
         state::State,
     },
@@ -40,9 +39,10 @@ pub struct Graph {
 
     max_frame_pages: usize,
     data_changed: bool,
-    klines: Vec<Kline>,
     state: State,
     export_state: ExportState,
+
+    pool: ThreadPool,
 
     klines_pub: Sender<Vec<Kline>>,
     klines_sub: Receiver<Vec<Kline>>,
@@ -78,6 +78,8 @@ impl Default for Graph {
         let candles = Candles::new(axes_group.clone(), s_bounds);
         let volume = Volume::new(axes_group);
 
+        let pool = ThreadPool::new(100);
+
         Self {
             max_frame_pages,
 
@@ -85,6 +87,8 @@ impl Default for Graph {
 
             candles,
             volume,
+
+            pool,
 
             symbol_sub: r_symbols,
             symbol_pub: s_symbols,
@@ -97,7 +101,6 @@ impl Default for Graph {
 
             data_changed: Default::default(),
             symbol: Default::default(),
-            klines: Default::default(),
             state: Default::default(),
             export_state: Default::default(),
         }
@@ -113,21 +116,20 @@ impl Graph {
         }
     }
 
-    fn update_data(&mut self) {
-        info!("updating volume and candles widgets with new data...");
-        
-        let data = Data::new(self.klines.clone());
-        
+    fn update_data(&mut self, klines: &mut Vec<Kline>) {
+        info!(
+            "adding {} entries to volume and candles widgets",
+            klines.len()
+        );
 
-        self.volume.set_data(data.clone());
-        self.candles.set_data(data);
+        self.volume.add_data(&mut klines.clone());
+        self.candles.add_data(klines);
 
         self.data_changed = true;
     }
 
     fn start_download(&mut self, props: Props, reset_state: bool) {
         if reset_state {
-            self.klines = vec![];
             self.state = State::default();
         }
 
@@ -147,43 +149,39 @@ impl Graph {
     }
 
     fn perform_data_request(&mut self) {
-        // TODO: use workers pool with limited workers number
-        loop {
-            if self.state.loading.get_next_page().is_some() {
-                let start_time = self.state.loading.left_edge();
-                let interval = self.state.props.interval;
-                let limit = self.state.loading.page_size();
-                let symbol = self.symbol.to_string();
-                let p = Mutex::new(Promise::spawn_async(async move {
-                    Client::kline(symbol, interval, start_time, limit).await
-                }));
+        debug!("asking for new klines");
+        while self.state.loading.get_next_page().is_some() {
+            let start_time = self.state.loading.left_edge();
+            let interval = self.state.props.interval;
+            let limit = self.state.loading.page_size();
+            let symbol = self.symbol.to_string();
+            let p = Mutex::new(Promise::spawn_async(async move {
+                Client::kline(symbol, interval, start_time, limit).await
+            }));
 
-                let sender = Mutex::new(self.klines_pub.clone());
-                thread::spawn(move || loop {
-                    if let Some(data) = p.lock().unwrap().ready() {
-                        match data {
-                            Ok(payload) => {
-                                let res = sender.lock().unwrap().send(payload.clone());
-                                if let Err(err) = res {
-                                    error!("failed to send klines to channel: {err}");
-                                };
-                            }
-                            Err(err) => {
-                                error!("got klines result with error: {err}")
-                            }
+            let sender = Mutex::new(self.klines_pub.clone());
+            self.pool.execute(move || {
+                while p.lock().unwrap().ready().is_none() {}
+
+                if let Some(data) = p.lock().unwrap().ready() {
+                    match data {
+                        Ok(payload) => {
+                            let res = sender.lock().unwrap().send(payload.clone());
+                            if let Err(err) = res {
+                                error!("failed to send klines to channel: {err}");
+                            };
                         }
-                        break;
-                    };
-                });
-                continue;
-            };
-
-            break;
+                        Err(err) => {
+                            error!("got klines result with error: {err}")
+                        }
+                    }
+                }
+            });
         }
     }
 
     fn export_data(&mut self) {
-        debug!("exporting data...");
+        debug!("exporting data");
 
         let name = format!(
             "{}_{}_{}_{:?}.csv",
@@ -201,7 +199,9 @@ impl Graph {
                 debug!("saving to file: {}", abs_path.display());
 
                 let mut wtr = csv::Writer::from_writer(f);
-                self.klines.sort_by(|a, b| {
+
+                let mut data = self.candles.get_data().vals;
+                data.sort_by(|a, b| {
                     if a.t_close < b.t_close {
                         return Ordering::Less;
                     }
@@ -212,7 +212,7 @@ impl Graph {
 
                     Ordering::Equal
                 });
-                self.klines.iter().for_each(|el| {
+                data.iter().for_each(|el| {
                     wtr.serialize(el).unwrap();
                 });
 
@@ -276,6 +276,9 @@ impl Graph {
             self.symbol = symbol.clone();
             self.symbol_pub.send(symbol).unwrap();
 
+            self.candles.clear();
+            self.volume.clear();
+
             self.start_download(Props::default(), true);
         }
 
@@ -287,23 +290,23 @@ impl Graph {
         }
 
         let mut got = 0;
+        let mut res = vec![];
         loop {
             let klines_res = self.klines_sub.recv_timeout(Duration::from_millis(1));
             if klines_res.is_err() || got == self.max_frame_pages {
                 break;
             }
 
-            debug!("received klines");
             klines_res.unwrap().iter().for_each(|k| {
-                self.klines.push(*k);
+                res.push(*k);
             });
             got += 1;
         }
 
         if got > 0 {
-            debug!("received {} pages of data", got);
+            trace!("received {} pages of data", got);
             self.state.loading.inc_loaded_pages(got);
-            self.update_data();
+            self.update_data(&mut res);
         }
 
         let finished = self.state.loading.progress() == 1.0;

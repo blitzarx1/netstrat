@@ -1,6 +1,7 @@
 use std::io::Write;
 use std::time::Duration;
 
+use chrono::Utc;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use egui::{ScrollArea, TextEdit, Ui, Window};
 use tracing::{debug, info, trace};
@@ -33,7 +34,8 @@ pub struct Debug {
     filter: String,
     filtered: Vec<String>,
     max_frame_msgs: usize,
-    msgs_last_frame: usize,
+    msgs_last_minute: usize,
+    last_minute_start: chrono::DateTime<Utc>,
     buff: Vec<String>,
     max_lines: usize,
     receiver: Receiver<Vec<u8>>,
@@ -55,7 +57,8 @@ impl Default for Debug {
             max_frame_msgs,
             max_lines,
             receiver,
-            msgs_last_frame: Default::default(),
+            msgs_last_minute: Default::default(),
+            last_minute_start: chrono::Utc::now(),
             visible: Default::default(),
         }
     }
@@ -91,15 +94,12 @@ impl Debug {
         loop {
             let data_res = self.receiver.recv_timeout(Duration::from_millis(1));
             if data_res.is_err() || got == self.max_frame_msgs {
-                trace!("received {got} messages");
                 break;
             }
 
             self.add_new_message(data_res.unwrap());
             got += 1
         }
-
-        self.msgs_last_frame = got;
     }
 
     fn add_new_message(&mut self, msg: Vec<u8>) {
@@ -113,6 +113,15 @@ impl Debug {
         {
             self.filtered.push(msg_text)
         }
+
+        let now = Utc::now();
+        if now - self.last_minute_start > chrono::Duration::from_std(Duration::from_secs(60)).unwrap() {
+            self.msgs_last_minute = 1;
+            self.last_minute_start = now;
+            return ;
+        }
+
+        self.msgs_last_minute += 1
     }
 
     fn handle_size_limit(&mut self) {
@@ -179,8 +188,8 @@ impl AppWindow for Debug {
                         .show(ui);
                     ui.label(format!("{}/{}", self.filtered.len(), self.buff.len()));
                     ui.label(format!(
-                        "{}/{} per frame",
-                        self.msgs_last_frame, self.max_frame_msgs
+                        "{} msgs last minute",
+                        self.msgs_last_minute
                     ));
                 });
 
