@@ -5,7 +5,7 @@ use crossbeam::channel::{unbounded, Sender};
 use eframe::{run_native, App, CreationContext, NativeOptions};
 use egui::{CentralPanel, Context, Layout, TopBottomPanel};
 
-use tracing::{info, trace, Level};
+use tracing::{info, Level};
 use tracing_subscriber::EnvFilter;
 
 use crate::windows::BuffWriter;
@@ -71,8 +71,6 @@ impl TemplateApp {
 
 impl App for TemplateApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-        let start = SystemTime::now();
-
         TopBottomPanel::top("header").show(ctx, |ui| {
             ui.with_layout(Layout::left_to_right(), |ui| {
                 ui.add(&mut self.theme);

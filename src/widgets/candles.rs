@@ -8,17 +8,14 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
 use crate::{
-    netstrat::{bounds::Bounds, data::Data},
+    netstrat::{
+        bounds::Bounds,
+        data::{Data, DataType},
+    },
     sources::binance::Kline,
 };
 
 const BOUNDS_SEND_DELAY_MILLIS: i64 = 300;
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct CachedPlotData {
-    auto_bounds: bool,
-    min_auto_bounds: PlotBounds,
-}
 
 pub struct Candles {
     data: Data,
@@ -37,7 +34,7 @@ impl Default for Candles {
         let (s_bounds, _) = unbounded();
 
         Self {
-            data: Default::default(),
+            data: Data::new_candle(),
             val: Default::default(),
             axes_group: LinkedAxisGroup::new(false, false),
             bounds_pub: s_bounds,
@@ -104,7 +101,7 @@ impl Candles {
     }
 
     pub(crate) fn clear(&mut self) {
-        self.data = Data::default();
+        self.data = Data::new_candle();
     }
 }
 
@@ -131,7 +128,6 @@ impl Widget for &mut Candles {
                 .label_formatter(|_, v| -> String { Data::format_ts(v.x) })
                 .x_axis_formatter(|v, _range| Data::format_ts(v))
                 .set_margin_fraction(Vec2::new(0.05, 0.05))
-                // TODO: following includes are not working properly on every screen redraw
                 .include_x(self.data.max_x())
                 .include_x(self.data.min_x())
                 .include_y(self.data.max_y())
