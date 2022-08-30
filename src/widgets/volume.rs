@@ -6,7 +6,7 @@ use egui::{
     Color32, Vec2, Widget,
 };
 
-use crate::netstrat::data::Data;
+use crate::{netstrat::data::Data, sources::binance::Kline};
 
 #[derive(Clone)]
 pub struct Volume {
@@ -35,8 +35,10 @@ impl Volume {
         }
     }
 
-    pub fn set_data(&mut self, data: Data) {
-        let val = data
+    pub fn add_data(&mut self, vals: &mut Vec<Kline>) {
+        self.data.append(vals);
+        self.val = self
+            .data
             .vals
             .iter()
             .map(|k| {
@@ -45,13 +47,14 @@ impl Volume {
                     .fill(Color32::LIGHT_GREEN.linear_multiply(0.5))
             })
             .collect();
-
-        self.data = data;
-        self.val = val;
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.data = Data::default();
     }
 }
 

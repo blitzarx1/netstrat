@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use egui::Color32;
-use tracing::{info, debug};
+use tracing::{debug, info, trace};
 
 use crate::sources::binance::Kline;
 
@@ -18,57 +18,17 @@ pub struct Data {
 
 impl Data {
     pub fn new(vals: Vec<Kline>) -> Self {
-        let max_y = vals
-            .iter()
-            .max_by(|l, r| {
-                if l.high > r.high {
-                    return Ordering::Greater;
-                }
-
-                Ordering::Less
-            })
-            .unwrap()
-            .high as f64;
-
-        let min_y = vals
-            .iter()
-            .min_by(|l, r| {
-                if l.low < r.low {
-                    return Ordering::Less;
-                }
-
-                Ordering::Greater
-            })
-            .unwrap()
-            .low as f64;
-
-        let max_vol = vals
-            .iter()
-            .max_by(|l, r| {
-                if l.volume > r.volume {
-                    return Ordering::Greater;
-                }
-
-                Ordering::Less
-            })
-            .unwrap()
-            .volume as f64;
-
-        let max_x = vals.last().unwrap().t_close as f64;
-        let min_x = vals.first().unwrap().t_open as f64;
-
-        debug!(
-            "computed data props: max_x: {max_x}, min_x: {min_x}, max_y: {max_y}, min_y: {min_y}, max_vol: {max_vol}"
-        );
-
-        Self {
+        let mut res = Self {
             vals,
-            max_x,
-            min_x,
-            max_y,
-            min_y,
-            max_vol,
-        }
+            ..Default::default()
+        };
+        res.compute_stats();
+        res
+    }
+
+    pub fn append(&mut self, vals: &mut Vec<Kline>) {
+        self.vals.append(vals);
+        self.compute_stats();
     }
 
     pub fn max_x(&self) -> f64 {
@@ -104,5 +64,60 @@ impl Data {
             true => Color32::LIGHT_RED,
             false => Color32::LIGHT_GREEN,
         }
+    }
+
+    fn compute_stats(&mut self) {
+        self.vals.sort_by_key(|el| el.t_close);
+
+        self.max_y = self
+            .vals
+            .iter()
+            .max_by(|l, r| {
+                if l.high > r.high {
+                    return Ordering::Greater;
+                }
+
+                Ordering::Less
+            })
+            .unwrap()
+            .high as f64;
+
+        self.min_y = self
+            .vals
+            .iter()
+            .min_by(|l, r| {
+                if l.low < r.low {
+                    return Ordering::Less;
+                }
+
+                Ordering::Greater
+            })
+            .unwrap()
+            .low as f64;
+
+        self.max_vol = self
+            .vals
+            .iter()
+            .max_by(|l, r| {
+                if l.volume > r.volume {
+                    return Ordering::Greater;
+                }
+
+                Ordering::Less
+            })
+            .unwrap()
+            .volume as f64;
+
+        self.max_x = self.vals.last().unwrap().t_close as f64;
+        self.min_x = self.vals.first().unwrap().t_open as f64;
+
+        trace!(
+            "computed data props: max_x: {}, min_x: {}, max_y: {}, min_y: {}, max_vol: {}",
+            self.max_x,
+            self.min_x,
+            self.max_y,
+            self.min_y,
+            self.max_vol,
+        );
     }
 }

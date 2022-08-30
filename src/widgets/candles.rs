@@ -7,7 +7,10 @@ use egui::{
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
-use crate::netstrat::{bounds::Bounds, data::Data};
+use crate::{
+    netstrat::{bounds::Bounds, data::Data},
+    sources::binance::Kline,
+};
 
 const BOUNDS_SEND_DELAY_MILLIS: i64 = 300;
 
@@ -56,8 +59,14 @@ impl Candles {
         }
     }
 
-    pub fn set_data(&mut self, data: Data) {
-        let val: Vec<BoxElem> = data
+    pub fn get_data(&self) -> Data {
+        self.data.clone()
+    }
+
+    pub fn add_data(&mut self, vals: &mut Vec<Kline>) {
+        self.data.append(vals);
+        self.val = self
+            .data
             .vals
             .iter()
             .map(|k| -> BoxElem {
@@ -88,13 +97,14 @@ impl Candles {
                 .box_width((k.t_open - k.t_close) as f64 * 0.9)
             })
             .collect();
-
-        self.data = data;
-        self.val = val;
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.data = Data::default();
     }
 }
 

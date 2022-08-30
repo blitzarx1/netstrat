@@ -14,7 +14,7 @@ pub struct LoadingState {
 
 impl LoadingState {
     pub fn new(bounds: &BoundsSet, step: usize, per_page_limit: usize) -> Option<Self> {
-        debug!("initializing LoadingState... bounds: {bounds:?}; step: {step}; per page limit: {per_page_limit}");
+        debug!("initializing LoadingState: bounds: {bounds:?}; step: {step}; per page limit: {per_page_limit}");
 
         Some(Self {
             pages: Pages::new(bounds.clone(), step, per_page_limit)?,
@@ -27,7 +27,6 @@ impl LoadingState {
     }
 
     pub fn get_next_page(&mut self) -> Option<Page> {
-        debug!("getting next page...");
         let res = self.pages.next();
         if let Some(p) = res {
             self.curr_page = p.clone();

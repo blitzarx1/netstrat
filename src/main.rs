@@ -86,13 +86,6 @@ impl App for TemplateApp {
         CentralPanel::default().show(ctx, |ui| {
             self.windows.iter_mut().for_each(|w| w.show(ui));
         });
-
-        trace!(
-            "time elapsed per frame: {:?}",
-            SystemTime::now()
-                .duration_since(start)
-                .expect("failed to compute duration_since")
-        );
     }
 }
 
