@@ -19,7 +19,7 @@ pub struct Volume {
 impl Default for Volume {
     fn default() -> Self {
         Self {
-            data: Default::default(),
+            data: Data::new_volume(),
             val: Default::default(),
             axes_group: LinkedAxisGroup::new(false, false),
             enabled: true,
@@ -54,7 +54,7 @@ impl Volume {
     }
 
     pub(crate) fn clear(&mut self) {
-        self.data = Data::default();
+        self.data = Data::new_volume();
     }
 }
 
@@ -66,8 +66,7 @@ impl Widget for &Volume {
                 .x_axis_formatter(|v: f64, _: &RangeInclusive<f64>| format_ts(v))
                 .label_formatter(|_, v| format_ts(v.x))
                 .set_margin_fraction(Vec2::new(0.05, 0.5))
-                // TODO: following include doesn't work on every screen redraw
-                .include_y(self.data.max_vol())
+                .include_y(self.data.max_y())
                 .allow_scroll(false)
                 .allow_boxed_zoom(false)
                 .allow_drag(false)

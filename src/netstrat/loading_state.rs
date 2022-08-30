@@ -1,4 +1,4 @@
-use tracing::{info, debug};
+use tracing::debug;
 
 use crate::netstrat::bounds::BoundsSet;
 

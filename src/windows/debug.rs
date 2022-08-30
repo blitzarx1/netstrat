@@ -4,7 +4,7 @@ use std::time::Duration;
 use chrono::Utc;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use egui::{ScrollArea, TextEdit, Ui, Window};
-use tracing::{debug, info, trace};
+use tracing::{debug, info};
 
 use crate::{netstrat::line_filter_highlight_layout::line_filter_highlight_layout, AppWindow};
 
