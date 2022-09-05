@@ -3,9 +3,6 @@
 
 <img width="1728" alt="Screen Shot 2022-08-23 at 14 06 58" src="https://user-images.githubusercontent.com/32969427/186132111-9bce80c2-fe13-4208-9d02-2ede064d5ed5.png">
 
-## executables
-There are prebuilded versions for windows and mac supplied with every [release](https://github.com/qzarx1/netstrat/releases).
-
 ### build
 ```bash
 # windows 10
