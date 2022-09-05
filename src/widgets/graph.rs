@@ -9,6 +9,7 @@ use egui::{
     plot::LinkedAxisGroup, CentralPanel, ProgressBar, Response, TopBottomPanel, Ui, Widget,
 };
 use egui_extras::{Size, StripBuilder};
+use egui_notify::Toasts;
 use poll_promise::Promise;
 use tracing::{debug, error, info, trace};
 
@@ -23,7 +24,7 @@ use crate::{
     windows::{AppWindow, TimeRangeChooser},
 };
 
-use super::{candles::Candles, volume::Volume};
+use super::candles::Candles;
 
 #[derive(Default)]
 struct ExportState {
@@ -34,13 +35,14 @@ pub struct Graph {
     time_range_window: Box<dyn AppWindow>,
 
     candles: Candles,
-    volume: Volume,
     symbol: String,
 
     max_frame_pages: usize,
     data_changed: bool,
     state: State,
     export_state: ExportState,
+
+    toasts: Toasts,
 
     pool: ThreadPool,
 
@@ -74,9 +76,7 @@ impl Default for Graph {
             Props::default(),
         ));
 
-        let axes_group = LinkedAxisGroup::new(true, false);
-        let candles = Candles::new(axes_group.clone(), s_bounds);
-        let volume = Volume::new(axes_group);
+        let candles = Candles::new(s_bounds);
 
         let pool = ThreadPool::new(100);
 
@@ -86,7 +86,6 @@ impl Default for Graph {
             time_range_window,
 
             candles,
-            volume,
 
             pool,
 
@@ -99,6 +98,7 @@ impl Default for Graph {
             klines_sub: r_klines,
             klines_pub: s_klines,
 
+            toasts: Default::default(),
             data_changed: Default::default(),
             symbol: Default::default(),
             state: Default::default(),
@@ -122,7 +122,6 @@ impl Graph {
             klines.len()
         );
 
-        self.volume.add_data(&mut klines.clone());
         self.candles.add_data(klines);
 
         self.data_changed = true;
@@ -221,6 +220,10 @@ impl Graph {
                 } else {
                     info!("exported to file: {abs_path:?}");
                 }
+
+                self.toasts
+                    .info("File exported")
+                    .set_duration(Some(Duration::from_secs(5)));
             }
             Err(err) => {
                 error!("failed to create file with error: {err}");
@@ -277,7 +280,6 @@ impl Graph {
             self.symbol_pub.send(symbol).unwrap();
 
             self.candles.clear();
-            self.volume.clear();
 
             self.start_download(Props::default(), true);
         }
@@ -315,7 +317,6 @@ impl Graph {
         }
 
         self.candles.set_enabled(finished);
-        self.volume.set_enabled(finished);
     }
 
     fn draw_data(&mut self, ui: &Ui) {
@@ -336,6 +337,8 @@ impl Widget for &mut Graph {
             return ui.label("Select a symbol");
         }
 
+        self.toasts.show(ui.ctx());
+
         TopBottomPanel::top("graph_toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 self.time_range_window.toggle_btn(ui);
@@ -352,18 +355,7 @@ impl Widget for &mut Graph {
         CentralPanel::default()
             .show_inside(ui, |ui| {
                 self.time_range_window.show(ui);
-
-                StripBuilder::new(ui)
-                    .size(Size::relative(0.8))
-                    .size(Size::remainder())
-                    .vertical(|mut strip| {
-                        strip.cell(|ui| {
-                            ui.add(&mut self.candles);
-                        });
-                        strip.cell(|ui| {
-                            ui.add(&self.volume);
-                        });
-                    })
+                ui.add(&mut self.candles);
             })
             .response
     }

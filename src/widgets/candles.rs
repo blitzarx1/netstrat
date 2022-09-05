@@ -8,10 +8,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
 use crate::{
-    netstrat::{
-        bounds::Bounds,
-        data::{Data, DataType},
-    },
+    netstrat::{bounds::Bounds, data::Data},
     sources::binance::Kline,
 };
 
@@ -20,7 +17,6 @@ const BOUNDS_SEND_DELAY_MILLIS: i64 = 300;
 pub struct Candles {
     data: Data,
     val: Vec<BoxElem>,
-    axes_group: LinkedAxisGroup,
     bounds_pub: Sender<Bounds>,
     incremental_drag_diff: f32,
     last_time_drag_happened: DateTime<Utc>,
@@ -36,7 +32,6 @@ impl Default for Candles {
         Self {
             data: Data::new_candle(),
             val: Default::default(),
-            axes_group: LinkedAxisGroup::new(false, false),
             bounds_pub: s_bounds,
             last_time_drag_happened: Utc::now(),
             drag_happened: Default::default(),
@@ -48,9 +43,8 @@ impl Default for Candles {
 }
 
 impl Candles {
-    pub fn new(axes_group: LinkedAxisGroup, bounds_pub: Sender<Bounds>) -> Self {
+    pub fn new(bounds_pub: Sender<Bounds>) -> Self {
         Self {
-            axes_group,
             bounds_pub,
             ..Default::default()
         }
@@ -100,7 +94,7 @@ impl Candles {
         self.enabled = enabled
     }
 
-    pub(crate) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.data = Data::new_candle();
     }
 }
@@ -124,14 +118,8 @@ impl Widget for &mut Candles {
         }
         ui.add_enabled_ui(self.enabled, |ui| {
             Plot::new("candles")
-                .link_axis(self.axes_group.clone())
                 .label_formatter(|_, v| -> String { Data::format_ts(v.x) })
                 .x_axis_formatter(|v, _range| Data::format_ts(v))
-                .set_margin_fraction(Vec2::new(0.05, 0.05))
-                .include_x(self.data.max_x())
-                .include_x(self.data.min_x())
-                .include_y(self.data.max_y())
-                .include_y(self.data.min_y())
                 .show(ui, |plot_ui| {
                     plot_ui.box_plot(
                         BoxPlot::new(self.val.clone())

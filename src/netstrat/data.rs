@@ -6,22 +6,9 @@ use tracing::{debug, trace};
 
 use crate::sources::binance::Kline;
 
-#[derive(Clone, Debug)]
-pub enum DataType {
-    Volume,
-    Candle,
-}
-
-impl Default for DataType {
-    fn default() -> Self {
-        Self::Candle
-    }
-}
-
 #[derive(Default, Clone)]
 pub struct Data {
     pub vals: Vec<Kline>,
-    data_type: DataType,
     max_x: f64,
     min_x: f64,
     max_y: f64,
@@ -31,17 +18,7 @@ pub struct Data {
 
 impl Data {
     pub fn new_candle() -> Self {
-        let data_type = DataType::Candle;
         Self {
-            data_type,
-            ..Default::default()
-        }
-    }
-
-    pub fn new_volume() -> Self {
-        let data_type = DataType::Volume;
-        Self {
-            data_type,
             ..Default::default()
         }
     }
@@ -89,73 +66,38 @@ impl Data {
     fn compute_stats(&mut self) {
         self.vals.sort_by_key(|el| el.t_close);
 
-        match self.data_type {
-            DataType::Volume => {
-                self.max_y = self
-                    .vals
-                    .iter()
-                    .max_by(|l, r| {
-                        if l.volume > r.volume {
-                            return Ordering::Greater;
-                        }
+        self.max_y = self
+            .vals
+            .iter()
+            .max_by(|l, r| {
+                if l.high > r.high {
+                    return Ordering::Greater;
+                }
 
-                        Ordering::Less
-                    })
-                    .unwrap()
-                    .volume as f64;
+                Ordering::Less
+            })
+            .unwrap()
+            .high as f64;
 
-                self.min_y = self
-                    .vals
-                    .iter()
-                    .min_by(|l, r| {
-                        if l.volume < r.volume {
-                            return Ordering::Less;
-                        }
+        self.min_y = self
+            .vals
+            .iter()
+            .min_by(|l, r| {
+                if l.low < r.low {
+                    return Ordering::Less;
+                }
 
-                        Ordering::Greater
-                    })
-                    .unwrap()
-                    .volume as f64;
-            }
-            DataType::Candle => {
-                self.max_y = self
-                    .vals
-                    .iter()
-                    .max_by(|l, r| {
-                        if l.high > r.high {
-                            return Ordering::Greater;
-                        }
-
-                        Ordering::Less
-                    })
-                    .unwrap()
-                    .high as f64;
-
-                self.min_y = self
-                    .vals
-                    .iter()
-                    .min_by(|l, r| {
-                        if l.low < r.low {
-                            return Ordering::Less;
-                        }
-
-                        Ordering::Greater
-                    })
-                    .unwrap()
-                    .low as f64;
-            }
-        }
+                Ordering::Greater
+            })
+            .unwrap()
+            .low as f64;
 
         self.max_x = self.vals.last().unwrap().t_close as f64;
         self.min_x = self.vals.first().unwrap().t_open as f64;
 
         debug!(
-            "computed data props for {:?}: max_x: {}, min_x: {}, max_y: {}, min_y: {}",
-            self.data_type,
-            self.max_x,
-            self.min_x,
-            self.max_y,
-            self.min_y,
+            "computed data props : max_x: {}, min_x: {}, max_y: {}, min_y: {}",
+            self.max_x, self.min_x, self.max_y, self.min_y,
         );
     }
 }

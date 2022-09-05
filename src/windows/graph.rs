@@ -1,4 +1,5 @@
 use crossbeam::channel::{Receiver, Sender};
+use eframe::emath::Align;
 use egui::{Layout, Ui, Window};
 use egui_extras::{Size, StripBuilder};
 use tracing::info;
@@ -26,7 +27,7 @@ impl AppWindow for SymbolsGraph {
             .min_height(500.0)
             .min_width(700.0)
             .show(ui.ctx(), |ui| {
-                ui.with_layout(Layout::left_to_right(), |ui| {
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     StripBuilder::new(ui)
                         .size(Size::relative(0.2).at_most(200.0))
                         .size(Size::remainder())
