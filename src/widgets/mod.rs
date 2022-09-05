@@ -3,7 +3,6 @@ mod graph;
 mod symbols;
 mod theme;
 mod time_input;
-mod volume;
 
 pub use self::graph::Graph;
 pub use self::symbols::Symbols;

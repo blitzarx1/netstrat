@@ -3,12 +3,12 @@ use std::time::SystemTime;
 
 use crossbeam::channel::{unbounded, Sender};
 use eframe::{run_native, App, CreationContext, NativeOptions};
-use egui::{CentralPanel, Context, Layout, TopBottomPanel};
+use egui::{Align, CentralPanel, Context, Layout, TopBottomPanel, Window};
 
 use tracing::{info, Level};
 use tracing_subscriber::EnvFilter;
 
-use crate::windows::BuffWriter;
+use crate::windows::{BuffWriter, Net};
 use widgets::Theme;
 use windows::{AppWindow, Debug, SymbolsGraph};
 
@@ -29,16 +29,16 @@ fn init_logger(s: Sender<Vec<u8>>) {
     let has_config = std::env::var("RUST_LOG");
     if has_config.is_err() {
         tracing_subscriber::fmt()
-        .with_writer(Mutex::new(buff))
-        .with_ansi(false)
-        .with_max_level(Level::INFO)
-        .with_line_number(false)
-        .with_file(false)
-        .with_target(false)
-        .without_time()
-        .init();
-        
-        return ;
+            .with_writer(Mutex::new(buff))
+            .with_ansi(false)
+            .with_max_level(Level::INFO)
+            .with_line_number(false)
+            .with_file(false)
+            .with_target(false)
+            .without_time()
+            .init();
+
+        return;
     }
 
     tracing_subscriber::fmt()
@@ -63,6 +63,7 @@ impl TemplateApp {
             windows: vec![
                 Box::new(SymbolsGraph::new(s, r, true)),
                 Box::new(Debug::new(buffer_r, true)),
+                Box::new(Net::new(true)),
             ],
             theme: Theme::new(),
         }
@@ -72,7 +73,7 @@ impl TemplateApp {
 impl App for TemplateApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         TopBottomPanel::top("header").show(ctx, |ui| {
-            ui.with_layout(Layout::left_to_right(), |ui| {
+            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                 ui.add(&mut self.theme);
 
                 self.windows.iter_mut().for_each(|w| {

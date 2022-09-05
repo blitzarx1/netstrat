@@ -115,10 +115,12 @@ impl Debug {
         }
 
         let now = Utc::now();
-        if now - self.last_minute_start > chrono::Duration::from_std(Duration::from_secs(60)).unwrap() {
+        if now - self.last_minute_start
+            > chrono::Duration::from_std(Duration::from_secs(60)).unwrap()
+        {
             self.msgs_last_minute = 1;
             self.last_minute_start = now;
-            return ;
+            return;
         }
 
         self.msgs_last_minute += 1
@@ -187,16 +189,13 @@ impl AppWindow for Debug {
                         .hint_text("filter")
                         .show(ui);
                     ui.label(format!("{}/{}", self.filtered.len(), self.buff.len()));
-                    ui.label(format!(
-                        "{} msgs last minute",
-                        self.msgs_last_minute
-                    ));
+                    ui.label(format!("{} msgs last minute", self.msgs_last_minute));
                 });
 
                 ui.add_space(10f32);
 
                 ScrollArea::new([true, true])
-                    .stick_to_bottom()
+                    .stick_to_bottom(true)
                     .show(ui, |ui| {
                         let mut lines = self.filtered.concat();
                         let mut layouter = |ui: &egui::Ui, string: &str, _: f32| {
