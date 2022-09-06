@@ -61,9 +61,9 @@ impl TemplateApp {
         let (s, r) = unbounded();
         Self {
             windows: vec![
-                Box::new(SymbolsGraph::new(s, r, true)),
-                Box::new(Debug::new(buffer_r, true)),
                 Box::new(Net::new(true)),
+                Box::new(SymbolsGraph::new(s, r, false)),
+                Box::new(Debug::new(buffer_r, false)),
             ],
             theme: Theme::new(),
         }
