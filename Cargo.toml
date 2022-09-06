@@ -22,3 +22,6 @@ tracing-subscriber = { version = "0.3.11", features = ["env-filter"] }
 rand = "0.8.5"
 quick-error = "2.0.1"
 egui-notify = "0.4.0"
+petgraph = "0.6.2"
+open = "3.0.2"
+urlencoding = "2.1.2"

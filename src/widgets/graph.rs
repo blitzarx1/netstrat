@@ -9,7 +9,7 @@ use egui::{
     plot::LinkedAxisGroup, CentralPanel, ProgressBar, Response, TopBottomPanel, Ui, Widget,
 };
 use egui_extras::{Size, StripBuilder};
-use egui_notify::Toasts;
+use egui_notify::{Anchor, Toasts};
 use poll_promise::Promise;
 use tracing::{debug, error, info, trace};
 
@@ -59,6 +59,7 @@ pub struct Graph {
 impl Default for Graph {
     fn default() -> Self {
         let max_frame_pages = 50;
+        let toasts = Toasts::default().with_anchor(Anchor::TopRight);
 
         let (s_symbols, r_symbols) = unbounded();
         let (s_props, r_props) = unbounded();
@@ -89,6 +90,8 @@ impl Default for Graph {
 
             pool,
 
+            toasts,
+
             symbol_sub: r_symbols,
             symbol_pub: s_symbols,
             props_sub: r_props,
@@ -98,7 +101,6 @@ impl Default for Graph {
             klines_sub: r_klines,
             klines_pub: s_klines,
 
-            toasts: Default::default(),
             data_changed: Default::default(),
             symbol: Default::default(),
             state: Default::default(),
@@ -223,7 +225,7 @@ impl Graph {
 
                 self.toasts
                     .info("File exported")
-                    .set_duration(Some(Duration::from_secs(5)));
+                    .set_duration(Some(Duration::from_secs(3)));
             }
             Err(err) => {
                 error!("failed to create file with error: {err}");
