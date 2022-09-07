@@ -104,6 +104,8 @@ impl Net {
         reset: bool,
         apply: bool,
         diamond_filter: bool,
+        color_ini_cones: bool,
+        color_fin_cones: bool,
     ) {
         self.update_visible(visible);
         self.update_cnts(ini_cnt, fin_cnt, total_cnt, max_out_degree);
@@ -119,6 +121,22 @@ impl Net {
         if diamond_filter {
             self.diamond_filter()
         }
+
+        if color_ini_cones {
+            self.color_ini_cones()
+        }
+
+        if color_fin_cones {
+            self.color_fin_cones()
+        }
+    }
+
+    fn color_ini_cones(&mut self) {
+        self.dot = self.data.dot_with_ini_cones();
+    }
+
+    fn color_fin_cones(&mut self) {
+        self.dot = self.data.dot_with_fin_cones();
     }
 }
 
@@ -139,22 +157,40 @@ impl AppWindow for Net {
         let mut reset = false;
         let mut apply = false;
         let mut diamond_filter = false;
+        let mut color_ini_cones = false;
+        let mut color_fin_cones = false;
 
         Window::new("net").open(&mut visible).show(ui.ctx(), |ui| {
-            ui.add(Slider::new(&mut ini_cnt, 1..=25).text("ini_cnt"));
-            ui.add(Slider::new(&mut fin_cnt, 1..=25).text("fin_cnt"));
-            ui.add(Slider::new(&mut total_cnt, ini_cnt + fin_cnt..=100).text("total_cnt"));
-            ui.add(Slider::new(&mut max_out_degree, 2..=10).text("max_out_degree"));
-            ui.horizontal_top(|ui| {
-                if ui.button("apply").clicked() {
-                    apply = true;
-                }
+            ui.collapsing("Create", |ui| {
+                ui.add(Slider::new(&mut ini_cnt, 1..=25).text("ini_cnt"));
+                ui.add(Slider::new(&mut fin_cnt, 1..=25).text("fin_cnt"));
+                ui.add(Slider::new(&mut total_cnt, ini_cnt + fin_cnt..=100).text("total_cnt"));
+                ui.add(Slider::new(&mut max_out_degree, 2..=10).text("max_out_degree"));
+                ui.horizontal_top(|ui| {
+                    if ui.button("apply").clicked() {
+                        apply = true;
+                    }
+                    if ui.button("reset").clicked() {
+                        reset = true;
+                    }
+                });
+            });
+
+            ui.collapsing("Edit", |ui| {
                 if ui.button("diamond filter").clicked() {
                     diamond_filter = true;
                 }
-                if ui.button("reset").clicked() {
-                    reset = true;
-                }
+            });
+
+            ui.collapsing("Visual", |ui| {
+                ui.horizontal_top(|ui| {
+                    if ui.button("color ini cone").clicked() {
+                        color_ini_cones = true;
+                    }
+                    if ui.button("color fin cone").clicked() {
+                        color_fin_cones = true;
+                    }
+                });
             });
 
             if ui.link("Check visual representation").clicked() {
@@ -177,6 +213,8 @@ impl AppWindow for Net {
             reset,
             apply,
             diamond_filter,
+            color_ini_cones,
+            color_fin_cones,
         );
     }
 }
