@@ -1,12 +1,14 @@
 use crate::netstrat::net::Data;
 use crate::AppWindow;
-use egui::{ScrollArea, Slider, Ui, Window};
+use egui::{InputState, ScrollArea, Slider, TextEdit, Ui, Window};
+use petgraph::{Incoming, Outgoing};
 use urlencoding::encode;
 
 const DEFAULT_INI_CNT: usize = 5;
 const DEFAULT_FIN_CNT: usize = 5;
 const DEFAULT_TOTAL_CNT: usize = 20;
 const DEFAULT_MAX_OUT_DEGREE: usize = 4;
+const DEFAULT_MAX_STEPS: i32 = -1;
 
 pub struct Net {
     data: Data,
@@ -16,20 +18,27 @@ pub struct Net {
     max_out_degree: usize,
     dot: String,
     visible: bool,
+    node_name: String,
+    cone_type: ConeType,
+    max_steps: i32,
 }
 
 impl Net {
     pub fn new(visible: bool) -> Self {
         let data = Net::reset_data();
         let dot = data.dot();
+        let cone_type = ConeType::Plus;
         Self {
             visible,
             data,
             dot,
+            cone_type,
             ini_cnt: DEFAULT_INI_CNT,
             fin_cnt: DEFAULT_FIN_CNT,
             total_cnt: DEFAULT_TOTAL_CNT,
             max_out_degree: DEFAULT_MAX_OUT_DEGREE,
+            max_steps: DEFAULT_MAX_STEPS,
+            node_name: Default::default(),
         }
     }
 
@@ -106,9 +115,18 @@ impl Net {
         diamond_filter: bool,
         color_ini_cones: bool,
         color_fin_cones: bool,
+        node_name: String,
+        cone_type: ConeType,
+        color: bool,
+        max_steps: i32,
     ) {
         self.update_visible(visible);
         self.update_cnts(ini_cnt, fin_cnt, total_cnt, max_out_degree);
+        self.update_cone_coloring(node_name, cone_type, max_steps);
+
+        if color {
+            self.color_custom_cone();
+        }
 
         if reset {
             self.reset()
@@ -129,6 +147,31 @@ impl Net {
         if color_fin_cones {
             self.color_fin_cones()
         }
+    }
+
+    fn update_cone_coloring(&mut self, node_name: String, cone_type: ConeType, max_steps: i32) {
+        if self.node_name != node_name {
+            self.node_name = node_name
+        }
+
+        if self.cone_type != cone_type {
+            self.cone_type = cone_type
+        }
+
+        if self.max_steps != max_steps {
+            self.max_steps = max_steps
+        }
+    }
+
+    fn color_custom_cone(&mut self) {
+        self.dot = self.data.dot_with_custom_cone(
+            self.node_name.clone(),
+            match self.cone_type.clone() {
+                ConeType::Minus => Incoming,
+                ConeType::Plus => Outgoing,
+            },
+            self.max_steps,
+        )
     }
 
     fn color_ini_cones(&mut self) {
@@ -159,6 +202,10 @@ impl AppWindow for Net {
         let mut diamond_filter = false;
         let mut color_ini_cones = false;
         let mut color_fin_cones = false;
+        let mut node_name = self.node_name.to_string();
+        let mut cone_type = self.cone_type.clone();
+        let mut color = false;
+        let mut max_steps = self.max_steps;
 
         Window::new("net").open(&mut visible).show(ui.ctx(), |ui| {
             ui.collapsing("Create", |ui| {
@@ -176,12 +223,6 @@ impl AppWindow for Net {
                 });
             });
 
-            ui.collapsing("Edit", |ui| {
-                if ui.button("diamond filter").clicked() {
-                    diamond_filter = true;
-                }
-            });
-
             ui.collapsing("Visual", |ui| {
                 ui.horizontal_top(|ui| {
                     if ui.button("color ini cone").clicked() {
@@ -191,6 +232,21 @@ impl AppWindow for Net {
                         color_fin_cones = true;
                     }
                 });
+                ui.add_space(10.0);
+                ui.label("Custom cone coloring");
+                ui.add(TextEdit::singleline(&mut node_name).hint_text("Node name"));
+                ui.radio_value(&mut cone_type, ConeType::Minus, "Minus");
+                ui.radio_value(&mut cone_type, ConeType::Plus, "Plus");
+                ui.add(Slider::new(&mut max_steps, -1..=10).text("Steps"));
+                if ui.button("color").clicked() {
+                    color = true;
+                };
+            });
+
+            ui.collapsing("Edit", |ui| {
+                if ui.button("diamond filter").clicked() {
+                    diamond_filter = true;
+                }
             });
 
             if ui.link("Check visual representation").clicked() {
@@ -215,6 +271,16 @@ impl AppWindow for Net {
             diamond_filter,
             color_ini_cones,
             color_fin_cones,
+            node_name,
+            cone_type,
+            color,
+            max_steps,
         );
     }
+}
+
+#[derive(PartialEq, Clone)]
+enum ConeType {
+    Minus,
+    Plus,
 }
