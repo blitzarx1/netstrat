@@ -8,7 +8,7 @@ const DEFAULT_INI_CNT: usize = 5;
 const DEFAULT_FIN_CNT: usize = 5;
 const DEFAULT_TOTAL_CNT: usize = 20;
 const DEFAULT_MAX_OUT_DEGREE: usize = 4;
-const DEFAULT_MAX_STEPS: i32 = 1;
+const DEFAULT_MAX_STEPS: i32 = -1;
 
 pub struct Net {
     data: Data,
@@ -237,7 +237,7 @@ impl AppWindow for Net {
                 ui.add(TextEdit::singleline(&mut node_name).hint_text("Node name"));
                 ui.radio_value(&mut cone_type, ConeType::Minus, "Minus");
                 ui.radio_value(&mut cone_type, ConeType::Plus, "Plus");
-                ui.add(Slider::new(&mut max_steps, -1..=10).text("steps"));
+                ui.add(Slider::new(&mut max_steps, -1..=10).text("Steps"));
                 if ui.button("color").clicked() {
                     color = true;
                 };

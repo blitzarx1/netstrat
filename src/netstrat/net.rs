@@ -328,7 +328,7 @@ impl Data {
 }
 
 fn color_line(line: String) -> String {
-    let first_part = line.replace("]", "");
+    let first_part = line.replace(']', "");
     format!("{first_part}, color=red ]")
 }
 
