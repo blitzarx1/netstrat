@@ -1,7 +1,13 @@
 use crate::netstrat::net::Data;
 use crate::AppWindow;
 use egui::{InputState, ScrollArea, Slider, TextEdit, Ui, Window};
+use egui_notify::{Anchor, Toasts};
 use petgraph::{Incoming, Outgoing};
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
+use std::time::Duration;
+use tracing::{debug, error, info};
 use urlencoding::encode;
 
 const DEFAULT_INI_CNT: usize = 5;
@@ -21,6 +27,7 @@ pub struct Net {
     node_name: String,
     cone_type: ConeType,
     max_steps: i32,
+    toasts: Toasts,
 }
 
 impl Net {
@@ -28,11 +35,13 @@ impl Net {
         let data = Net::reset_data();
         let dot = data.dot();
         let cone_type = ConeType::Plus;
+        let toasts = Toasts::default().with_anchor(Anchor::TopRight);
         Self {
             visible,
             data,
             dot,
             cone_type,
+            toasts,
             ini_cnt: DEFAULT_INI_CNT,
             fin_cnt: DEFAULT_FIN_CNT,
             total_cnt: DEFAULT_TOTAL_CNT,
@@ -119,6 +128,7 @@ impl Net {
         cone_type: ConeType,
         color: bool,
         max_steps: i32,
+        export: bool,
     ) {
         self.update_visible(visible);
         self.update_cnts(ini_cnt, fin_cnt, total_cnt, max_out_degree);
@@ -146,6 +156,37 @@ impl Net {
 
         if color_fin_cones {
             self.color_fin_cones()
+        }
+
+        if export {
+            self.export();
+        }
+    }
+
+    fn export(&mut self) {
+        let path = Path::new("graph_export.dot");
+        let f_res = File::create(&path);
+        match f_res {
+            Ok(mut f) => {
+                let abs_path = path.canonicalize().unwrap();
+                debug!("exporting graph to file: {}", abs_path.display());
+
+                if f.write_all(self.dot.as_bytes()).is_err() {
+                    error!("failed to export graph")
+                }
+
+                if let Some(err) = f.flush().err() {
+                    error!("failed to write to file with error: {err}");
+                }
+
+                self.toasts
+                    .success("File exported")
+                    .set_duration(Some(Duration::from_secs(3)));
+                info!("exported to file: {abs_path:?}");
+            }
+            Err(err) => {
+                error!("failed to create file with error: {err}");
+            }
         }
     }
 
@@ -206,6 +247,7 @@ impl AppWindow for Net {
         let mut cone_type = self.cone_type.clone();
         let mut color = false;
         let mut max_steps = self.max_steps;
+        let mut export = false;
 
         Window::new("net").open(&mut visible).show(ui.ctx(), |ui| {
             ui.collapsing("Create", |ui| {
@@ -249,15 +291,22 @@ impl AppWindow for Net {
                 }
             });
 
-            if ui.link("Check visual representation").clicked() {
-                open::that(format!(
-                    "https://dreampuf.github.io/GraphvizOnline/#{}",
-                    encode(self.dot.as_str())
-                ))
-                .unwrap();
-            }
+            ui.horizontal_top(|ui| {
+                if ui.link("Check visual representation").clicked() {
+                    open::that(format!(
+                        "https://dreampuf.github.io/GraphvizOnline/#{}",
+                        encode(self.dot.as_str())
+                    ))
+                    .unwrap();
+                }
+                if ui.button("export").clicked() {
+                    export = true
+                };
+            });
 
             ScrollArea::vertical().show(ui, |ui| ui.text_edit_multiline(&mut dot));
+
+            self.toasts.show(ui.ctx());
         });
 
         self.update(
@@ -275,6 +324,7 @@ impl AppWindow for Net {
             cone_type,
             color,
             max_steps,
+            export,
         );
     }
 }
