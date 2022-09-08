@@ -10,53 +10,36 @@ use std::time::Duration;
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
-const DEFAULT_INI_CNT: usize = 5;
-const DEFAULT_FIN_CNT: usize = 5;
-const DEFAULT_TOTAL_CNT: usize = 20;
-const DEFAULT_MAX_OUT_DEGREE: usize = 4;
 const DEFAULT_MAX_STEPS: i32 = -1;
 
 pub struct Net {
     data: Data,
-    ini_cnt: usize,
-    fin_cnt: usize,
-    total_cnt: usize,
-    max_out_degree: usize,
+    graph_settings: GraphSettings,
+    cone_coloring_settings: ConeColoringSettings,
     dot: String,
     visible: bool,
-    node_name: String,
-    cone_type: ConeType,
-    max_steps: i32,
     toasts: Toasts,
 }
 
 impl Net {
     pub fn new(visible: bool) -> Self {
-        let data = Net::reset_data();
-        let dot = data.dot();
-        let cone_type = ConeType::Plus;
-        let toasts = Toasts::default().with_anchor(Anchor::TopRight);
         Self {
             visible,
-            data,
-            dot,
-            cone_type,
-            toasts,
-            ini_cnt: DEFAULT_INI_CNT,
-            fin_cnt: DEFAULT_FIN_CNT,
-            total_cnt: DEFAULT_TOTAL_CNT,
-            max_out_degree: DEFAULT_MAX_OUT_DEGREE,
-            max_steps: DEFAULT_MAX_STEPS,
-            node_name: Default::default(),
+            data: Net::reset_data(),
+            dot: Net::reset_data().dot(),
+            toasts: Toasts::default().with_anchor(Anchor::TopRight),
+            graph_settings: Default::default(),
+            cone_coloring_settings: Default::default(),
         }
     }
 
     fn reset_data() -> Data {
+        let settings = GraphSettings::default();
         Data::new(
-            DEFAULT_INI_CNT,
-            DEFAULT_FIN_CNT,
-            DEFAULT_TOTAL_CNT,
-            DEFAULT_MAX_OUT_DEGREE,
+            settings.ini_cnt,
+            settings.fin_cnt,
+            settings.total_cnt,
+            settings.max_out_degree,
         )
     }
 
@@ -64,17 +47,15 @@ impl Net {
         let data = Net::reset_data();
         self.dot = data.dot();
         self.data = data;
-        self.ini_cnt = DEFAULT_INI_CNT;
-        self.fin_cnt = DEFAULT_FIN_CNT;
-        self.total_cnt = DEFAULT_TOTAL_CNT;
+        self.graph_settings = GraphSettings::default();
     }
 
-    fn apply(&mut self) {
+    fn create(&mut self) {
         let data = Data::new(
-            self.ini_cnt,
-            self.fin_cnt,
-            self.total_cnt,
-            self.max_out_degree,
+            self.graph_settings.ini_cnt,
+            self.graph_settings.fin_cnt,
+            self.graph_settings.total_cnt,
+            self.graph_settings.max_out_degree,
         );
         self.dot = data.dot();
         self.data = data;
@@ -91,63 +72,37 @@ impl Net {
         }
     }
 
-    fn update_cnts(
-        &mut self,
-        ini_cnt: usize,
-        fin_cnt: usize,
-        total_cnt: usize,
-        max_out_degree: usize,
-    ) {
-        if self.ini_cnt != ini_cnt {
-            self.ini_cnt = ini_cnt
+    fn update_graph_settings(&mut self, graph_settings: GraphSettings) {
+        if self.graph_settings == graph_settings {
+            return;
         }
-        if self.fin_cnt != fin_cnt {
-            self.fin_cnt = fin_cnt
-        }
-        if self.total_cnt != total_cnt {
-            self.total_cnt = total_cnt
-        }
-        if self.max_out_degree != max_out_degree {
-            self.max_out_degree = max_out_degree
-        }
+
+        self.graph_settings = graph_settings;
     }
 
     fn update(
         &mut self,
         visible: bool,
-        ini_cnt: usize,
-        fin_cnt: usize,
-        total_cnt: usize,
-        max_out_degree: usize,
+        graph_settings: GraphSettings,
         reset: bool,
         apply: bool,
         diamond_filter: bool,
+        cone_coloring_settings: ConeColoringSettings,
         color_ini_cones: bool,
         color_fin_cones: bool,
-        node_name: String,
-        cone_type: ConeType,
         color: bool,
-        max_steps: i32,
         export: bool,
     ) {
         self.update_visible(visible);
-        self.update_cnts(ini_cnt, fin_cnt, total_cnt, max_out_degree);
-        self.update_cone_coloring(node_name, cone_type, max_steps);
-
-        if color {
-            self.color_custom_cone();
-        }
+        self.update_graph_settings(graph_settings);
+        self.update_cone_coloring(cone_coloring_settings);
 
         if reset {
             self.reset()
         }
 
         if apply {
-            self.apply()
-        }
-
-        if diamond_filter {
-            self.diamond_filter()
+            self.create()
         }
 
         if color_ini_cones {
@@ -156,6 +111,14 @@ impl Net {
 
         if color_fin_cones {
             self.color_fin_cones()
+        }
+
+        if color {
+            self.color_custom_cone();
+        }
+
+        if diamond_filter {
+            self.diamond_filter()
         }
 
         if export {
@@ -190,28 +153,22 @@ impl Net {
         }
     }
 
-    fn update_cone_coloring(&mut self, node_name: String, cone_type: ConeType, max_steps: i32) {
-        if self.node_name != node_name {
-            self.node_name = node_name
+    fn update_cone_coloring(&mut self, cone_coloring_settings: ConeColoringSettings) {
+        if self.cone_coloring_settings == cone_coloring_settings {
+            return;
         }
 
-        if self.cone_type != cone_type {
-            self.cone_type = cone_type
-        }
-
-        if self.max_steps != max_steps {
-            self.max_steps = max_steps
-        }
+        self.cone_coloring_settings = cone_coloring_settings
     }
 
     fn color_custom_cone(&mut self) {
         self.dot = self.data.dot_with_custom_cone(
-            self.node_name.clone(),
-            match self.cone_type.clone() {
+            self.cone_coloring_settings.node_name.clone(),
+            match self.cone_coloring_settings.cone_type.clone() {
                 ConeType::Minus => Incoming,
                 ConeType::Plus => Outgoing,
             },
-            self.max_steps,
+            self.cone_coloring_settings.max_steps,
         )
     }
 
@@ -233,30 +190,33 @@ impl AppWindow for Net {
 
     fn show(&mut self, ui: &mut Ui) {
         let mut visible = self.visible;
-        let mut ini_cnt = self.ini_cnt;
-        let mut fin_cnt = self.fin_cnt;
-        let mut total_cnt = self.total_cnt;
-        let mut max_out_degree = self.max_out_degree;
+        let mut graph_settings = self.graph_settings.clone();
+        let mut cone_coloring_settings = self.cone_coloring_settings.clone();
         let mut dot = self.dot.clone();
         let mut reset = false;
         let mut apply = false;
         let mut diamond_filter = false;
         let mut color_ini_cones = false;
         let mut color_fin_cones = false;
-        let mut node_name = self.node_name.to_string();
-        let mut cone_type = self.cone_type.clone();
         let mut color = false;
-        let mut max_steps = self.max_steps;
         let mut export = false;
 
         Window::new("net").open(&mut visible).show(ui.ctx(), |ui| {
             ui.collapsing("Create", |ui| {
-                ui.add(Slider::new(&mut ini_cnt, 1..=25).text("ini_cnt"));
-                ui.add(Slider::new(&mut fin_cnt, 1..=25).text("fin_cnt"));
-                ui.add(Slider::new(&mut total_cnt, ini_cnt + fin_cnt..=100).text("total_cnt"));
-                ui.add(Slider::new(&mut max_out_degree, 2..=10).text("max_out_degree"));
+                ui.add(Slider::new(&mut graph_settings.ini_cnt, 1..=25).text("ini_cnt"));
+                ui.add(Slider::new(&mut graph_settings.fin_cnt, 1..=25).text("fin_cnt"));
+                ui.add(
+                    Slider::new(
+                        &mut graph_settings.total_cnt,
+                        graph_settings.ini_cnt + graph_settings.fin_cnt..=100,
+                    )
+                    .text("total_cnt"),
+                );
+                ui.add(
+                    Slider::new(&mut graph_settings.max_out_degree, 2..=10).text("max_out_degree"),
+                );
                 ui.horizontal_top(|ui| {
-                    if ui.button("apply").clicked() {
+                    if ui.button("create").clicked() {
                         apply = true;
                     }
                     if ui.button("reset").clicked() {
@@ -276,10 +236,21 @@ impl AppWindow for Net {
                 });
                 ui.add_space(10.0);
                 ui.label("Custom cone coloring");
-                ui.add(TextEdit::singleline(&mut node_name).hint_text("Node name"));
-                ui.radio_value(&mut cone_type, ConeType::Minus, "Minus");
-                ui.radio_value(&mut cone_type, ConeType::Plus, "Plus");
-                ui.add(Slider::new(&mut max_steps, -1..=10).text("Steps"));
+                ui.add(
+                    TextEdit::singleline(&mut cone_coloring_settings.node_name)
+                        .hint_text("Node name"),
+                );
+                ui.radio_value(
+                    &mut cone_coloring_settings.cone_type,
+                    ConeType::Minus,
+                    "Minus",
+                );
+                ui.radio_value(
+                    &mut cone_coloring_settings.cone_type,
+                    ConeType::Plus,
+                    "Plus",
+                );
+                ui.add(Slider::new(&mut cone_coloring_settings.max_steps, -1..=10).text("Steps"));
                 if ui.button("color").clicked() {
                     color = true;
                 };
@@ -292,7 +263,7 @@ impl AppWindow for Net {
             });
 
             ui.horizontal_top(|ui| {
-                if ui.link("Check visual representation").clicked() {
+                if ui.button("show").clicked() {
                     open::that(format!(
                         "https://dreampuf.github.io/GraphvizOnline/#{}",
                         encode(self.dot.as_str())
@@ -311,26 +282,59 @@ impl AppWindow for Net {
 
         self.update(
             visible,
-            ini_cnt,
-            fin_cnt,
-            total_cnt,
-            max_out_degree,
+            graph_settings,
             reset,
             apply,
             diamond_filter,
+            cone_coloring_settings,
             color_ini_cones,
             color_fin_cones,
-            node_name,
-            cone_type,
             color,
-            max_steps,
             export,
         );
     }
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
+struct ConeColoringSettings {
+    node_name: String,
+    cone_type: ConeType,
+    max_steps: i32,
+}
+
+impl Default for ConeColoringSettings {
+    fn default() -> Self {
+        Self {
+            cone_type: ConeType::Plus,
+            max_steps: -1,
+            node_name: Default::default(),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Clone)]
 enum ConeType {
+    /// Go along arrow from head to tail
     Minus,
+    /// Go along arrow from tail to head
     Plus,
+}
+
+#[derive(PartialEq, Eq, Clone)]
+struct GraphSettings {
+    ini_cnt: usize,
+    fin_cnt: usize,
+    total_cnt: usize,
+    max_out_degree: usize,
+}
+
+impl Default for GraphSettings {
+    fn default() -> Self {
+        Self {
+            ini_cnt: 5,
+            fin_cnt: 5,
+            total_cnt: 20,
+            max_out_degree: 3,
+        }
+    }
 }
