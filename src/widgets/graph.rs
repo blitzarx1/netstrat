@@ -220,12 +220,11 @@ impl Graph {
                 if let Some(err) = wtr.flush().err() {
                     error!("failed to write to file with error: {err}");
                 } else {
+                    self.toasts
+                        .success("File exported")
+                        .set_duration(Some(Duration::from_secs(3)));
                     info!("exported to file: {abs_path:?}");
                 }
-
-                self.toasts
-                    .info("File exported")
-                    .set_duration(Some(Duration::from_secs(3)));
             }
             Err(err) => {
                 error!("failed to create file with error: {err}");
