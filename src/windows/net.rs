@@ -1,16 +1,17 @@
-use crate::netstrat::net::Data;
-use crate::AppWindow;
-use egui::{InputState, ScrollArea, Slider, TextEdit, Ui, Window};
-use egui_notify::{Anchor, Toasts};
-use petgraph::{Incoming, Outgoing};
+use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
+
+use egui::{ScrollArea, Slider, TextEdit, Ui, Window};
+use egui_notify::{Anchor, Toasts};
+use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
-const DEFAULT_MAX_STEPS: i32 = -1;
+use crate::netstrat::net::Data;
+use crate::AppWindow;
 
 pub struct Net {
     data: Data,
@@ -84,49 +85,43 @@ impl Net {
         &mut self,
         visible: bool,
         graph_settings: GraphSettings,
-        reset: bool,
-        apply: bool,
-        diamond_filter: bool,
         cone_coloring_settings: ConeColoringSettings,
-        color_ini_cones: bool,
-        color_fin_cones: bool,
-        color: bool,
-        export: bool,
+        clicks: FrameClicks,
     ) {
         self.update_visible(visible);
         self.update_graph_settings(graph_settings);
         self.update_cone_coloring(cone_coloring_settings);
 
-        if reset {
+        if clicks.reset {
             self.reset()
         }
 
-        if apply {
+        if clicks.apply {
             self.create()
         }
 
-        if color_ini_cones {
+        if clicks.color_ini_cones {
             self.color_ini_cones()
         }
 
-        if color_fin_cones {
+        if clicks.color_fin_cones {
             self.color_fin_cones()
         }
 
-        if color {
+        if clicks.color {
             self.color_custom_cone();
         }
 
-        if diamond_filter {
+        if clicks.diamond_filter {
             self.diamond_filter()
         }
 
-        if export {
-            self.export();
+        if clicks.export_dot {
+            self.export_dot();
         }
     }
 
-    fn export(&mut self) {
+    fn export_dot(&mut self) {
         let path = Path::new("graph_export.dot");
         let f_res = File::create(&path);
         match f_res {
@@ -193,13 +188,7 @@ impl AppWindow for Net {
         let mut graph_settings = self.graph_settings.clone();
         let mut cone_coloring_settings = self.cone_coloring_settings.clone();
         let mut dot = self.dot.clone();
-        let mut reset = false;
-        let mut apply = false;
-        let mut diamond_filter = false;
-        let mut color_ini_cones = false;
-        let mut color_fin_cones = false;
-        let mut color = false;
-        let mut export = false;
+        let mut clicks = FrameClicks::default();
 
         Window::new("net").open(&mut visible).show(ui.ctx(), |ui| {
             ui.collapsing("Create", |ui| {
@@ -217,10 +206,10 @@ impl AppWindow for Net {
                 );
                 ui.horizontal_top(|ui| {
                     if ui.button("create").clicked() {
-                        apply = true;
+                        clicks.apply = true;
                     }
                     if ui.button("reset").clicked() {
-                        reset = true;
+                        clicks.reset = true;
                     }
                 });
             });
@@ -228,10 +217,10 @@ impl AppWindow for Net {
             ui.collapsing("Visual", |ui| {
                 ui.horizontal_top(|ui| {
                     if ui.button("color ini cone").clicked() {
-                        color_ini_cones = true;
+                        clicks.color_ini_cones = true;
                     }
                     if ui.button("color fin cone").clicked() {
-                        color_fin_cones = true;
+                        clicks.color_fin_cones = true;
                     }
                 });
                 ui.add_space(10.0);
@@ -251,14 +240,14 @@ impl AppWindow for Net {
                     "Plus",
                 );
                 ui.add(Slider::new(&mut cone_coloring_settings.max_steps, -1..=10).text("Steps"));
-                if ui.button("color").clicked() {
-                    color = true;
+                if ui.button("apply").clicked() {
+                    clicks.color = true;
                 };
             });
 
             ui.collapsing("Edit", |ui| {
                 if ui.button("diamond filter").clicked() {
-                    diamond_filter = true;
+                    clicks.diamond_filter = true;
                 }
             });
 
@@ -270,8 +259,8 @@ impl AppWindow for Net {
                     ))
                     .unwrap();
                 }
-                if ui.button("export").clicked() {
-                    export = true
+                if ui.button("export dot").clicked() {
+                    clicks.export_dot = true;
                 };
             });
 
@@ -280,18 +269,7 @@ impl AppWindow for Net {
             self.toasts.show(ui.ctx());
         });
 
-        self.update(
-            visible,
-            graph_settings,
-            reset,
-            apply,
-            diamond_filter,
-            cone_coloring_settings,
-            color_ini_cones,
-            color_fin_cones,
-            color,
-            export,
-        );
+        self.update(visible, graph_settings, cone_coloring_settings, clicks);
     }
 }
 
@@ -337,4 +315,15 @@ impl Default for GraphSettings {
             max_out_degree: 3,
         }
     }
+}
+
+#[derive(Default)]
+struct FrameClicks {
+    reset: bool,
+    apply: bool,
+    diamond_filter: bool,
+    color_ini_cones: bool,
+    color_fin_cones: bool,
+    color: bool,
+    export_dot: bool,
 }
