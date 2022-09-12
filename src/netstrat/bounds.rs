@@ -1,6 +1,6 @@
 use std::cmp::{max, min, Ordering};
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Ord)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Bounds(pub i64, pub i64);
 
 impl Bounds {
@@ -91,6 +91,12 @@ impl PartialOrd for Bounds {
         }
 
         Some(Ordering::Equal)
+    }
+}
+
+impl Ord for Bounds {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
     }
 }
 
