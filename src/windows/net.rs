@@ -16,7 +16,7 @@ use crate::AppWindow;
 pub struct Net {
     data: Data,
     graph_settings: GraphSettings,
-    cone_coloring_settings: ConeColoringSettings,
+    cone_settings: ConeSettings,
     dot: String,
     visible: bool,
     toasts: Toasts,
@@ -32,7 +32,7 @@ impl Net {
             dot,
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             graph_settings: Default::default(),
-            cone_coloring_settings: Default::default(),
+            cone_settings: Default::default(),
         }
     }
 
@@ -43,6 +43,7 @@ impl Net {
             settings.fin_cnt,
             settings.total_cnt,
             settings.max_out_degree,
+            settings.no_twin_edges,
         )
     }
 
@@ -59,6 +60,7 @@ impl Net {
             self.graph_settings.fin_cnt,
             self.graph_settings.total_cnt,
             self.graph_settings.max_out_degree,
+            self.graph_settings.no_twin_edges,
         );
         self.dot = data.dot();
         self.data = data;
@@ -87,7 +89,7 @@ impl Net {
         &mut self,
         visible: bool,
         graph_settings: GraphSettings,
-        cone_coloring_settings: ConeColoringSettings,
+        cone_coloring_settings: ConeSettings,
         clicks: FrameClicks,
     ) {
         self.update_visible(visible);
@@ -112,6 +114,10 @@ impl Net {
 
         if clicks.color {
             self.color_custom_cone();
+        }
+
+        if clicks.delete {
+            self.delete_custom_cone();
         }
 
         if clicks.diamond_filter {
@@ -150,23 +156,35 @@ impl Net {
         }
     }
 
-    fn update_cone_coloring(&mut self, cone_coloring_settings: ConeColoringSettings) {
-        if self.cone_coloring_settings == cone_coloring_settings {
+    fn update_cone_coloring(&mut self, cone_coloring_settings: ConeSettings) {
+        if self.cone_settings == cone_coloring_settings {
             return;
         }
 
-        self.cone_coloring_settings = cone_coloring_settings
+        self.cone_settings = cone_coloring_settings
     }
 
     fn color_custom_cone(&mut self) {
         self.dot = self.data.dot_with_custom_cone(
-            self.cone_coloring_settings.node_name.clone(),
-            match self.cone_coloring_settings.cone_type.clone() {
+            self.cone_settings.node_name.clone(),
+            match self.cone_settings.cone_type.clone() {
                 ConeType::Minus => Incoming,
                 ConeType::Plus => Outgoing,
             },
-            self.cone_coloring_settings.max_steps,
+            self.cone_settings.max_steps,
         )
+    }
+
+    fn delete_custom_cone(&mut self) {
+        self.data.remove_cone(
+            self.cone_settings.node_name.clone(),
+            match self.cone_settings.cone_type.clone() {
+                ConeType::Minus => Incoming,
+                ConeType::Plus => Outgoing,
+            },
+            self.cone_settings.max_steps,
+        );
+        self.dot = self.data.dot();
     }
 
     fn color_ini_cones(&mut self) {
@@ -188,7 +206,7 @@ impl AppWindow for Net {
     fn show(&mut self, ui: &mut Ui) {
         let mut visible = self.visible;
         let mut graph_settings = self.graph_settings.clone();
-        let mut cone_coloring_settings = self.cone_coloring_settings.clone();
+        let mut cone_coloring_settings = self.cone_settings.clone();
         let mut dot = self.dot.clone();
         let mut clicks = FrameClicks::default();
 
@@ -206,6 +224,7 @@ impl AppWindow for Net {
                 ui.add(
                     Slider::new(&mut graph_settings.max_out_degree, 2..=10).text("max_out_degree"),
                 );
+                ui.checkbox(&mut graph_settings.no_twin_edges, "no twin edges");
                 ui.horizontal_top(|ui| {
                     if ui.button("create").clicked() {
                         clicks.create = true;
@@ -216,7 +235,7 @@ impl AppWindow for Net {
                 });
             });
 
-            ui.collapsing("Visual", |ui| {
+            ui.collapsing("Cone Edit", |ui| {
                 ui.horizontal_top(|ui| {
                     if ui.button("color ini cone").clicked() {
                         clicks.color_ini_cones = true;
@@ -226,7 +245,7 @@ impl AppWindow for Net {
                     }
                 });
                 ui.add_space(10.0);
-                ui.label("Custom cone coloring");
+                ui.label("Custom cone");
                 ui.add(
                     TextEdit::singleline(&mut cone_coloring_settings.node_name)
                         .hint_text("Node name"),
@@ -242,12 +261,17 @@ impl AppWindow for Net {
                     "Plus",
                 );
                 ui.add(Slider::new(&mut cone_coloring_settings.max_steps, -1..=10).text("Steps"));
-                if ui.button("apply").clicked() {
-                    clicks.color = true;
-                };
+                ui.horizontal_top(|ui| {
+                    if ui.button("color").clicked() {
+                        clicks.color = true;
+                    };
+                    if ui.button("delete").clicked() {
+                        clicks.delete = true;
+                    }
+                });
             });
 
-            ui.collapsing("Edit", |ui| {
+            ui.collapsing("Graph Edit", |ui| {
                 if ui.button("diamond filter").clicked() {
                     clicks.diamond_filter = true;
                 }
@@ -276,13 +300,13 @@ impl AppWindow for Net {
 }
 
 #[derive(PartialEq, Eq, Clone)]
-struct ConeColoringSettings {
+struct ConeSettings {
     node_name: String,
     cone_type: ConeType,
     max_steps: i32,
 }
 
-impl Default for ConeColoringSettings {
+impl Default for ConeSettings {
     fn default() -> Self {
         Self {
             cone_type: ConeType::Plus,
@@ -305,6 +329,7 @@ struct GraphSettings {
     ini_cnt: usize,
     fin_cnt: usize,
     total_cnt: usize,
+    no_twin_edges: bool,
     max_out_degree: usize,
 }
 
@@ -314,6 +339,7 @@ impl Default for GraphSettings {
             ini_cnt: 5,
             fin_cnt: 5,
             total_cnt: 20,
+            no_twin_edges: false,
             max_out_degree: 3,
         }
     }
@@ -328,4 +354,5 @@ struct FrameClicks {
     color_fin_cones: bool,
     color: bool,
     export_dot: bool,
+    delete: bool,
 }
