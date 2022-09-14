@@ -24,10 +24,12 @@ pub struct Net {
 
 impl Net {
     pub fn new(visible: bool) -> Self {
+        let data = Net::reset_data();
+        let dot = data.dot();
         Self {
             visible,
-            data: Net::reset_data(),
-            dot: Net::reset_data().dot(),
+            data,
+            dot,
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             graph_settings: Default::default(),
             cone_coloring_settings: Default::default(),
@@ -96,7 +98,7 @@ impl Net {
             self.reset()
         }
 
-        if clicks.apply {
+        if clicks.create {
             self.create()
         }
 
@@ -206,7 +208,7 @@ impl AppWindow for Net {
                 );
                 ui.horizontal_top(|ui| {
                     if ui.button("create").clicked() {
-                        clicks.apply = true;
+                        clicks.create = true;
                     }
                     if ui.button("reset").clicked() {
                         clicks.reset = true;
@@ -320,7 +322,7 @@ impl Default for GraphSettings {
 #[derive(Default)]
 struct FrameClicks {
     reset: bool,
-    apply: bool,
+    create: bool,
     diamond_filter: bool,
     color_ini_cones: bool,
     color_fin_cones: bool,
