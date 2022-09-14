@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use petgraph::dot::Dot;
 use petgraph::graph::{Node, NodeIndex};
 use petgraph::prelude::{EdgeIndex, EdgeRef, StableDiGraph, StableGraph};
@@ -5,7 +7,6 @@ use petgraph::visit::IntoNodeReferences;
 use petgraph::{Direction, Graph, Incoming, Outgoing};
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
-use std::collections::HashSet;
 
 pub struct Data {
     graph: StableDiGraph<String, f64>,
@@ -14,7 +15,13 @@ pub struct Data {
 }
 
 impl Data {
-    pub fn new(ini_cnt: usize, fin_cnt: usize, total_cnt: usize, max_out_degree: usize) -> Self {
+    pub fn new(
+        ini_cnt: usize,
+        fin_cnt: usize,
+        total_cnt: usize,
+        max_out_degree: usize,
+        no_twin_edges: bool,
+    ) -> Self {
         let mut seed = StableDiGraph::with_capacity(total_cnt, total_cnt * total_cnt);
         let mut all_nodes = HashSet::with_capacity(total_cnt);
         for i in 0..total_cnt {
@@ -47,6 +54,7 @@ impl Data {
         let mut ends = vec![];
         let max_degree_pool = Uniform::from(0..max_out_degree);
         let max_degree_pool_ini = Uniform::from(1..max_out_degree);
+        let mut edges_map = HashSet::<[usize; 2]>::new();
 
         // add edges
         loop {
@@ -67,7 +75,14 @@ impl Data {
                 };
                 for _i in 0..curr_degree {
                     let end = all_nodes.iter().choose(&mut rng).unwrap();
+
+                    if no_twin_edges && edges_map.contains(&[last_end.index(), end.index()]) {
+                        continue;
+                    }
+
                     seed.add_edge(*last_end, *end, 1.0);
+
+                    edges_map.insert([last_end.index(), end.index()]);
 
                     next_last_ends.push(*end);
                     ends.push(*end);
@@ -159,6 +174,20 @@ impl Data {
         }
 
         Dot::new(&self.graph).to_string()
+    }
+
+    pub fn remove_cone(&mut self, root_weight: String, dir: Direction, max_steps: i32) {
+        if let Some(root) = self
+            .graph
+            .node_references()
+            .find(|node| *node.1 == root_weight)
+        {
+            let cone = self.get_cone(root.0, dir, max_steps);
+
+            cone.nodes.iter().for_each(|node| {
+                self.graph.remove_node(*node).unwrap();
+            });
+        }
     }
 
     fn color_dot(
