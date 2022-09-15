@@ -1,4 +1,3 @@
-use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -20,7 +19,6 @@ pub struct Net {
     dot: String,
     visible: bool,
     toasts: Toasts,
-    edge_weight_input: String,
 }
 
 impl Net {
@@ -34,7 +32,6 @@ impl Net {
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             graph_settings: Default::default(),
             cone_settings: Default::default(),
-            edge_weight_input: "1.0".to_string(),
         }
     }
 
@@ -47,7 +44,6 @@ impl Net {
         self.dot = data.dot();
         self.data = data;
         self.graph_settings = Settings::default();
-        self.edge_weight_input = "1.0".to_string();
     }
 
     fn create(&mut self) {
@@ -67,22 +63,12 @@ impl Net {
         }
     }
 
-    fn update_graph_settings(&mut self, graph_settings: Settings, edge_weight_input: String) {
-        let mut settings = graph_settings.clone();
-        if edge_weight_input != self.edge_weight_input {
-            self.edge_weight_input = edge_weight_input;
-            settings.edge_weight = self
-                .edge_weight_input
-                .as_str()
-                .parse::<f64>()
-                .unwrap_or(1.0);
-        }
-
-        if self.graph_settings == settings {
+    fn update_graph_settings(&mut self, graph_settings: Settings) {
+        if self.graph_settings == graph_settings {
             return;
         }
 
-        self.graph_settings = settings;
+        self.graph_settings = graph_settings;
     }
 
     fn update(
@@ -91,10 +77,9 @@ impl Net {
         graph_settings: Settings,
         cone_coloring_settings: ConeSettings,
         clicks: FrameClicks,
-        edge_weight_input: String,
     ) {
         self.update_visible(visible);
-        self.update_graph_settings(graph_settings, edge_weight_input);
+        self.update_graph_settings(graph_settings);
         self.update_cone_coloring(cone_coloring_settings);
         self.handle_clicks(clicks);
     }
@@ -228,7 +213,6 @@ impl AppWindow for Net {
         let mut cone_coloring_settings = self.cone_settings.clone();
         let mut dot = self.dot.clone();
         let mut clicks = FrameClicks::default();
-        let mut edge_weight_input = self.edge_weight_input.clone();
 
         Window::new("net").open(&mut visible).show(ui.ctx(), |ui| {
             ui.collapsing("Create", |ui| {
@@ -245,7 +229,7 @@ impl AppWindow for Net {
                     Slider::new(&mut graph_settings.max_out_degree, 2..=10).text("max_out_degree"),
                 );
                 ui.add_space(10.0);
-                ui.checkbox(&mut graph_settings.no_twin_edges, "no twin edges");
+                ui.checkbox(&mut graph_settings.no_twin_edges, "No twin edges");
                 ui.add_space(10.0);
                 ui.label("Edge weights");
                 ui.radio_value(
@@ -259,11 +243,7 @@ impl AppWindow for Net {
                         EdgeWeight::Fixed,
                         "Fixed",
                     );
-                    ui.add(
-                        TextEdit::singleline(&mut edge_weight_input)
-                            .interactive(graph_settings.edge_weight_type == EdgeWeight::Fixed)
-                            .desired_width(50.0),
-                    );
+                    ui.add(Slider::new(&mut graph_settings.edge_weight, 0.0..=1.0));
                 });
                 ui.add_space(10.0);
                 ui.horizontal_top(|ui| {
@@ -338,13 +318,7 @@ impl AppWindow for Net {
             self.toasts.show(ui.ctx());
         });
 
-        self.update(
-            visible,
-            graph_settings,
-            cone_coloring_settings,
-            clicks,
-            edge_weight_input,
-        );
+        self.update(visible, graph_settings, cone_coloring_settings, clicks);
     }
 }
 
