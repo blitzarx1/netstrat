@@ -10,16 +10,17 @@ use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
-use crate::netstrat::net::Data;
+use crate::netstrat::net::{Data, EdgeWeight, Settings};
 use crate::AppWindow;
 
 pub struct Net {
     data: Data,
-    graph_settings: GraphSettings,
+    graph_settings: Settings,
     cone_settings: ConeSettings,
     dot: String,
     visible: bool,
     toasts: Toasts,
+    edge_weight_input: String,
 }
 
 impl Net {
@@ -33,35 +34,24 @@ impl Net {
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             graph_settings: Default::default(),
             cone_settings: Default::default(),
+            edge_weight_input: "1.0".to_string(),
         }
     }
 
     fn reset_data() -> Data {
-        let settings = GraphSettings::default();
-        Data::new(
-            settings.ini_cnt,
-            settings.fin_cnt,
-            settings.total_cnt,
-            settings.max_out_degree,
-            settings.no_twin_edges,
-        )
+        Data::new(Settings::default())
     }
 
     fn reset(&mut self) {
         let data = Net::reset_data();
         self.dot = data.dot();
         self.data = data;
-        self.graph_settings = GraphSettings::default();
+        self.graph_settings = Settings::default();
+        self.edge_weight_input = "1.0".to_string();
     }
 
     fn create(&mut self) {
-        let data = Data::new(
-            self.graph_settings.ini_cnt,
-            self.graph_settings.fin_cnt,
-            self.graph_settings.total_cnt,
-            self.graph_settings.max_out_degree,
-            self.graph_settings.no_twin_edges,
-        );
+        let data = Data::new(self.graph_settings.clone());
         self.dot = data.dot();
         self.data = data;
     }
@@ -77,55 +67,84 @@ impl Net {
         }
     }
 
-    fn update_graph_settings(&mut self, graph_settings: GraphSettings) {
-        if self.graph_settings == graph_settings {
+    fn update_graph_settings(&mut self, graph_settings: Settings, edge_weight_input: String) {
+        let mut settings = graph_settings.clone();
+        if edge_weight_input != self.edge_weight_input {
+            self.edge_weight_input = edge_weight_input;
+            settings.edge_weight = self
+                .edge_weight_input
+                .as_str()
+                .parse::<f64>()
+                .unwrap_or(1.0);
+        }
+
+        if self.graph_settings == settings {
             return;
         }
 
-        self.graph_settings = graph_settings;
+        self.graph_settings = settings;
     }
 
     fn update(
         &mut self,
         visible: bool,
-        graph_settings: GraphSettings,
+        graph_settings: Settings,
         cone_coloring_settings: ConeSettings,
         clicks: FrameClicks,
+        edge_weight_input: String,
     ) {
         self.update_visible(visible);
-        self.update_graph_settings(graph_settings);
+        self.update_graph_settings(graph_settings, edge_weight_input);
         self.update_cone_coloring(cone_coloring_settings);
+        self.handle_clicks(clicks);
+    }
+
+    fn handle_clicks(&mut self, clicks: FrameClicks) {
+        let mut changed = false;
 
         if clicks.reset {
-            self.reset()
+            self.reset();
+            changed = true;
         }
 
         if clicks.create {
-            self.create()
+            self.create();
+            changed = true;
         }
 
         if clicks.color_ini_cones {
-            self.color_ini_cones()
+            self.color_ini_cones();
+            changed = true;
         }
 
         if clicks.color_fin_cones {
-            self.color_fin_cones()
+            self.color_fin_cones();
+            changed = true;
         }
 
         if clicks.color {
             self.color_custom_cone();
+            changed = true;
         }
 
         if clicks.delete {
             self.delete_custom_cone();
+            changed = true;
         }
 
         if clicks.diamond_filter {
-            self.diamond_filter()
+            self.diamond_filter();
+            changed = true;
         }
 
         if clicks.export_dot {
             self.export_dot();
+        }
+
+        if changed {
+            self.toasts
+                .success("Graph changed")
+                .set_duration(Some(Duration::from_secs(3)));
         }
     }
 
@@ -209,6 +228,7 @@ impl AppWindow for Net {
         let mut cone_coloring_settings = self.cone_settings.clone();
         let mut dot = self.dot.clone();
         let mut clicks = FrameClicks::default();
+        let mut edge_weight_input = self.edge_weight_input.clone();
 
         Window::new("net").open(&mut visible).show(ui.ctx(), |ui| {
             ui.collapsing("Create", |ui| {
@@ -224,7 +244,28 @@ impl AppWindow for Net {
                 ui.add(
                     Slider::new(&mut graph_settings.max_out_degree, 2..=10).text("max_out_degree"),
                 );
+                ui.add_space(10.0);
                 ui.checkbox(&mut graph_settings.no_twin_edges, "no twin edges");
+                ui.add_space(10.0);
+                ui.label("Edge weights");
+                ui.radio_value(
+                    &mut graph_settings.edge_weight_type,
+                    EdgeWeight::Random,
+                    "Random",
+                );
+                ui.horizontal_top(|ui| {
+                    ui.radio_value(
+                        &mut graph_settings.edge_weight_type,
+                        EdgeWeight::Fixed,
+                        "Fixed",
+                    );
+                    ui.add(
+                        TextEdit::singleline(&mut edge_weight_input)
+                            .interactive(graph_settings.edge_weight_type == EdgeWeight::Fixed)
+                            .desired_width(50.0),
+                    );
+                });
+                ui.add_space(10.0);
                 ui.horizontal_top(|ui| {
                     if ui.button("create").clicked() {
                         clicks.create = true;
@@ -261,6 +302,7 @@ impl AppWindow for Net {
                     "Plus",
                 );
                 ui.add(Slider::new(&mut cone_coloring_settings.max_steps, -1..=10).text("Steps"));
+                ui.add_space(10.0);
                 ui.horizontal_top(|ui| {
                     if ui.button("color").clicked() {
                         clicks.color = true;
@@ -277,6 +319,7 @@ impl AppWindow for Net {
                 }
             });
 
+            ui.add_space(10.0);
             ui.horizontal_top(|ui| {
                 if ui.button("show").clicked() {
                     open::that(format!(
@@ -289,13 +332,19 @@ impl AppWindow for Net {
                     clicks.export_dot = true;
                 };
             });
-
+            ui.add_space(10.0);
             ScrollArea::vertical().show(ui, |ui| ui.text_edit_multiline(&mut dot));
 
             self.toasts.show(ui.ctx());
         });
 
-        self.update(visible, graph_settings, cone_coloring_settings, clicks);
+        self.update(
+            visible,
+            graph_settings,
+            cone_coloring_settings,
+            clicks,
+            edge_weight_input,
+        );
     }
 }
 
@@ -322,27 +371,6 @@ enum ConeType {
     Minus,
     /// Go along arrow from tail to head
     Plus,
-}
-
-#[derive(PartialEq, Eq, Clone)]
-struct GraphSettings {
-    ini_cnt: usize,
-    fin_cnt: usize,
-    total_cnt: usize,
-    no_twin_edges: bool,
-    max_out_degree: usize,
-}
-
-impl Default for GraphSettings {
-    fn default() -> Self {
-        Self {
-            ini_cnt: 5,
-            fin_cnt: 5,
-            total_cnt: 20,
-            no_twin_edges: false,
-            max_out_degree: 3,
-        }
-    }
 }
 
 #[derive(Default)]

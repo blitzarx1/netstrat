@@ -7,31 +7,64 @@ use petgraph::visit::IntoNodeReferences;
 use petgraph::{Direction, Graph, Incoming, Outgoing};
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
+use tracing::debug;
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum EdgeWeight {
+    /// Fixed weight
+    Fixed,
+    /// Random weigh in range 0..1
+    Random,
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct Settings {
+    pub ini_cnt: usize,
+    pub fin_cnt: usize,
+    pub total_cnt: usize,
+    pub no_twin_edges: bool,
+    pub max_out_degree: usize,
+    pub edge_weight_type: EdgeWeight,
+    pub edge_weight: f64,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            ini_cnt: 5,
+            fin_cnt: 5,
+            total_cnt: 20,
+            max_out_degree: 3,
+            no_twin_edges: true,
+            edge_weight_type: EdgeWeight::Fixed,
+            edge_weight: 1.0,
+        }
+    }
+}
 
 pub struct Data {
     graph: StableDiGraph<String, f64>,
+    settings: Settings,
     ini_set: HashSet<NodeIndex>,
     fin_set: HashSet<NodeIndex>,
 }
 
 impl Data {
-    pub fn new(
-        ini_cnt: usize,
-        fin_cnt: usize,
-        total_cnt: usize,
-        max_out_degree: usize,
-        no_twin_edges: bool,
-    ) -> Self {
-        let mut seed = StableDiGraph::with_capacity(total_cnt, total_cnt * total_cnt);
-        let mut all_nodes = HashSet::with_capacity(total_cnt);
-        for i in 0..total_cnt {
+    pub fn new(settings: Settings) -> Self {
+        debug!("creating graph with settings: {settings:?}");
+        let mut seed = StableDiGraph::with_capacity(
+            settings.total_cnt,
+            settings.total_cnt * settings.total_cnt,
+        );
+        let mut all_nodes = HashSet::with_capacity(settings.total_cnt);
+        for i in 0..settings.total_cnt {
             let node_idx = seed.add_node(format!("{i}"));
             all_nodes.insert(node_idx);
         }
 
         let mut rng = rand::thread_rng();
-        let mut ini_set = HashSet::with_capacity(ini_cnt);
-        let mut ini_to_add = ini_cnt;
+        let mut ini_set = HashSet::with_capacity(settings.ini_cnt);
+        let mut ini_to_add = settings.ini_cnt;
 
         // pick inis
         while ini_to_add > 0 {
@@ -52,8 +85,9 @@ impl Data {
         let mut last_ends = ini_set.iter().cloned().collect::<Vec<NodeIndex>>();
         let mut starts = HashSet::new();
         let mut ends = vec![];
-        let max_degree_pool = Uniform::from(0..max_out_degree);
-        let max_degree_pool_ini = Uniform::from(1..max_out_degree);
+        let max_degree_pool = Uniform::from(0..settings.max_out_degree);
+        let max_degree_pool_ini = Uniform::from(1..settings.max_out_degree);
+        let edge_weight_pool = Uniform::from(0.0..1.0);
         let mut edges_map = HashSet::<[usize; 2]>::new();
 
         // add edges
@@ -76,11 +110,18 @@ impl Data {
                 for _i in 0..curr_degree {
                     let end = all_nodes.iter().choose(&mut rng).unwrap();
 
-                    if no_twin_edges && edges_map.contains(&[last_end.index(), end.index()]) {
+                    if settings.no_twin_edges
+                        && edges_map.contains(&[last_end.index(), end.index()])
+                    {
                         continue;
                     }
 
-                    seed.add_edge(*last_end, *end, 1.0);
+                    let mut weight = settings.edge_weight;
+                    if settings.edge_weight_type == EdgeWeight::Random {
+                        weight = edge_weight_pool.sample(&mut rng);
+                    }
+
+                    seed.add_edge(*last_end, *end, weight);
 
                     edges_map.insert([last_end.index(), end.index()]);
 
@@ -96,9 +137,9 @@ impl Data {
             }
         }
 
-        let mut fin_set = HashSet::with_capacity(fin_cnt);
+        let mut fin_set = HashSet::with_capacity(settings.fin_cnt);
         // define fins
-        for _i in 0..fin_cnt {
+        for _i in 0..settings.fin_cnt {
             let idx = ends.iter().choose(&mut rng).unwrap();
 
             if fin_set.contains(idx) {
@@ -114,13 +155,20 @@ impl Data {
 
         Self {
             graph: seed,
+            settings,
             ini_set,
             fin_set,
         }
     }
 
     pub fn dot(&self) -> String {
-        Dot::new(&self.graph).to_string()
+        let dot = Dot::new(&self.graph).to_string();
+
+        if self.settings.edge_weight_type == EdgeWeight::Fixed {
+            return dot;
+        }
+
+        self.weight_dot(dot)
     }
 
     pub fn dot_with_ini_cones(&mut self) -> String {
@@ -133,11 +181,7 @@ impl Data {
             nodes_to_color = nodes_to_color.union(&cone.nodes).cloned().collect();
         }
 
-        self.color_dot(
-            Dot::new(&self.graph).to_string(),
-            nodes_to_color,
-            edges_to_color,
-        )
+        self.color_dot(self.dot(), nodes_to_color, edges_to_color)
     }
 
     pub fn dot_with_fin_cones(&mut self) -> String {
@@ -150,11 +194,7 @@ impl Data {
             nodes_to_color = nodes_to_color.union(&cone.nodes).cloned().collect();
         }
 
-        self.color_dot(
-            Dot::new(&self.graph).to_string(),
-            nodes_to_color,
-            edges_to_color,
-        )
+        self.color_dot(self.dot(), nodes_to_color, edges_to_color)
     }
 
     pub fn dot_with_custom_cone(
@@ -170,10 +210,10 @@ impl Data {
         {
             let cone = self.get_cone(root.0, dir, max_steps);
 
-            return self.color_dot(Dot::new(&self.graph).to_string(), cone.nodes, cone.edges);
+            return self.color_dot(self.dot(), cone.nodes, cone.edges);
         }
 
-        Dot::new(&self.graph).to_string()
+        self.dot()
     }
 
     pub fn remove_cone(&mut self, root_weight: String, dir: Direction, max_steps: i32) {
@@ -222,6 +262,52 @@ impl Data {
                             && parsed_end == end.index().to_string().as_str()
                         {
                             res = color_line(l.to_string());
+                        }
+                    });
+                }
+
+                format!("{res}\n")
+            })
+            .collect()
+    }
+
+    fn weight_dot(&self, dot: String) -> String {
+        let max_weight_index = self
+            .graph
+            .edge_indices()
+            .max_by(|left, right| {
+                self.graph
+                    .edge_weight(*left)
+                    .unwrap()
+                    .partial_cmp(self.graph.edge_weight(*right).unwrap())
+                    .unwrap()
+            })
+            .unwrap();
+
+        let max_weight = *self.graph.edge_weight(max_weight_index).unwrap();
+
+        dot.lines()
+            .map(|l| -> String {
+                let mut res = l.to_string();
+                if l.contains("->") {
+                    // line is edge
+                    self.graph.edge_indices().for_each(|edge| {
+                        let (start, end) = self.graph.edge_endpoints(edge).unwrap();
+
+                        let mut parts = l.split("->");
+                        let parsed_start = parts.next().unwrap().trim();
+                        let parsed_end = parts.next().unwrap().split('[').next().unwrap().trim();
+
+                        if parsed_start == start.index().to_string().as_str()
+                            && parsed_end == end.index().to_string().as_str()
+                        {
+                            let weight = *self.graph.edge_weight(edge).unwrap();
+                            let mut normed = (weight / max_weight) * 10.0;
+                            if normed < 0.5 {
+                                normed = 0.5
+                            }
+
+                            res = weight_line(l.to_string(), normed);
                         }
                     });
                 }
@@ -359,6 +445,11 @@ impl Data {
 fn color_line(line: String) -> String {
     let first_part = line.replace(']', "");
     format!("{first_part}, color=red ]")
+}
+
+fn weight_line(line: String, weight: f64) -> String {
+    let first_part = line.replace(']', "");
+    format!("{first_part}, penwidth={weight} ]")
 }
 
 struct Cone {
