@@ -319,7 +319,7 @@ impl Data {
 
     pub fn diamond_filter(&mut self) {
         let mut ini_union_cone = HashSet::new();
-        // gather diamond of all children of inis
+        // gather cone of all children of inis
         for el in self.ini_set.clone() {
             ini_union_cone = ini_union_cone
                 .union(&self.get_cone(el, Outgoing, -1).nodes)
@@ -328,7 +328,7 @@ impl Data {
         }
 
         let mut fin_union_cone = HashSet::new();
-        // gather diamond of all parents of fins
+        // gather cone of all parents of fins
         for el in self.fin_set.clone() {
             fin_union_cone = fin_union_cone
                 .union(&self.get_cone(el, Incoming, -1).nodes)
