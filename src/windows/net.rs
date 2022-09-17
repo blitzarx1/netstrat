@@ -76,7 +76,7 @@ impl Net {
         visible: bool,
         graph_settings: Settings,
         cone_coloring_settings: ConeSettings,
-        clicks: FrameClicks,
+        clicks: ButtonClicks,
     ) {
         self.update_visible(visible);
         self.update_graph_settings(graph_settings);
@@ -84,7 +84,7 @@ impl Net {
         self.handle_clicks(clicks);
     }
 
-    fn handle_clicks(&mut self, clicks: FrameClicks) {
+    fn handle_clicks(&mut self, clicks: ButtonClicks) {
         let mut changed = false;
 
         if clicks.reset {
@@ -97,18 +97,8 @@ impl Net {
             changed = true;
         }
 
-        if clicks.color_ini_cones {
-            self.color_ini_cones();
-            changed = true;
-        }
-
-        if clicks.color_fin_cones {
-            self.color_fin_cones();
-            changed = true;
-        }
-
-        if clicks.color {
-            self.color_custom_cone();
+        if clicks.color_cones {
+            self.color_cone();
             changed = true;
         }
 
@@ -119,6 +109,11 @@ impl Net {
 
         if clicks.diamond_filter {
             self.diamond_filter();
+            changed = true;
+        }
+
+        if clicks.color_cycles {
+            self.color_cycles();
             changed = true;
         }
 
@@ -168,12 +163,20 @@ impl Net {
         self.cone_settings = cone_coloring_settings
     }
 
+    fn color_cone(&mut self) {
+        match self.cone_settings.cone_type {
+            ConeType::Custom => self.color_custom_cone(),
+            ConeType::Initial => self.color_ini_cones(),
+            ConeType::Final => self.color_fin_cones(),
+        }
+    }
+
     fn color_custom_cone(&mut self) {
         self.dot = self.data.dot_with_custom_cone(
             self.cone_settings.node_name.clone(),
-            match self.cone_settings.cone_type.clone() {
-                ConeType::Minus => Incoming,
-                ConeType::Plus => Outgoing,
+            match self.cone_settings.cone_dir.clone() {
+                ConeDir::Minus => Incoming,
+                ConeDir::Plus => Outgoing,
             },
             self.cone_settings.max_steps,
         )
@@ -182,9 +185,9 @@ impl Net {
     fn delete_custom_cone(&mut self) {
         self.data.remove_cone(
             self.cone_settings.node_name.clone(),
-            match self.cone_settings.cone_type.clone() {
-                ConeType::Minus => Incoming,
-                ConeType::Plus => Outgoing,
+            match self.cone_settings.cone_dir.clone() {
+                ConeDir::Minus => Incoming,
+                ConeDir::Plus => Outgoing,
             },
             self.cone_settings.max_steps,
         );
@@ -197,6 +200,10 @@ impl Net {
 
     fn color_fin_cones(&mut self) {
         self.dot = self.data.dot_with_fin_cones();
+    }
+
+    fn color_cycles(&mut self) {
+        self.dot = self.data.dot_with_cycles();
     }
 }
 
@@ -212,7 +219,7 @@ impl AppWindow for Net {
         let mut graph_settings = self.graph_settings.clone();
         let mut cone_coloring_settings = self.cone_settings.clone();
         let mut dot = self.dot.clone();
-        let mut clicks = FrameClicks::default();
+        let mut clicks = ButtonClicks::default();
 
         Window::new("net").open(&mut visible).show(ui.ctx(), |ui| {
             ui.collapsing("Create", |ui| {
@@ -256,36 +263,45 @@ impl AppWindow for Net {
                 });
             });
 
-            ui.collapsing("Cone Edit", |ui| {
-                ui.horizontal_top(|ui| {
-                    if ui.button("color ini cone").clicked() {
-                        clicks.color_ini_cones = true;
-                    }
-                    if ui.button("color fin cone").clicked() {
-                        clicks.color_fin_cones = true;
-                    }
-                });
+            ui.collapsing("Edit", |ui| {
+                if ui.button("diamond filter").clicked() {
+                    clicks.diamond_filter = true;
+                }
+            });
+
+            ui.collapsing("Cones", |ui| {
+                ui.radio_value(
+                    &mut cone_coloring_settings.cone_type,
+                    ConeType::Initial,
+                    "Initial",
+                );
                 ui.add_space(10.0);
-                ui.label("Custom cone");
+                ui.radio_value(
+                    &mut cone_coloring_settings.cone_type,
+                    ConeType::Final,
+                    "Final",
+                );
+                ui.add_space(10.0);
+                ui.radio_value(
+                    &mut cone_coloring_settings.cone_type,
+                    ConeType::Custom,
+                    "Custom",
+                );
                 ui.add(
                     TextEdit::singleline(&mut cone_coloring_settings.node_name)
                         .hint_text("Node name"),
                 );
                 ui.radio_value(
-                    &mut cone_coloring_settings.cone_type,
-                    ConeType::Minus,
+                    &mut cone_coloring_settings.cone_dir,
+                    ConeDir::Minus,
                     "Minus",
                 );
-                ui.radio_value(
-                    &mut cone_coloring_settings.cone_type,
-                    ConeType::Plus,
-                    "Plus",
-                );
+                ui.radio_value(&mut cone_coloring_settings.cone_dir, ConeDir::Plus, "Plus");
                 ui.add(Slider::new(&mut cone_coloring_settings.max_steps, -1..=10).text("Steps"));
                 ui.add_space(10.0);
                 ui.horizontal_top(|ui| {
                     if ui.button("color").clicked() {
-                        clicks.color = true;
+                        clicks.color_cones = true;
                     };
                     if ui.button("delete").clicked() {
                         clicks.delete = true;
@@ -293,10 +309,10 @@ impl AppWindow for Net {
                 });
             });
 
-            ui.collapsing("Graph Edit", |ui| {
-                if ui.button("diamond filter").clicked() {
-                    clicks.diamond_filter = true;
-                }
+            ui.collapsing("Cycles", |ui| {
+                if ui.button("color").clicked() {
+                    clicks.color_cycles = true;
+                };
             });
 
             ui.add_space(10.0);
@@ -322,9 +338,10 @@ impl AppWindow for Net {
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Clone)]
 struct ConeSettings {
     node_name: String,
+    cone_dir: ConeDir,
     cone_type: ConeType,
     max_steps: i32,
 }
@@ -332,29 +349,36 @@ struct ConeSettings {
 impl Default for ConeSettings {
     fn default() -> Self {
         Self {
-            cone_type: ConeType::Plus,
+            cone_dir: ConeDir::Plus,
             max_steps: -1,
+            cone_type: ConeType::Custom,
             node_name: Default::default(),
         }
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
-enum ConeType {
+#[derive(PartialEq, Clone)]
+enum ConeDir {
     /// Go along arrow from head to tail
     Minus,
     /// Go along arrow from tail to head
     Plus,
 }
 
+#[derive(PartialEq, Clone)]
+enum ConeType {
+    Custom,
+    Initial,
+    Final,
+}
+
 #[derive(Default)]
-struct FrameClicks {
+struct ButtonClicks {
     reset: bool,
     create: bool,
     diamond_filter: bool,
-    color_ini_cones: bool,
-    color_fin_cones: bool,
-    color: bool,
+    color_cones: bool,
+    color_cycles: bool,
     export_dot: bool,
     delete: bool,
 }

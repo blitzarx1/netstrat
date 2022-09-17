@@ -4,7 +4,7 @@ use std::time::Duration;
 use chrono::Utc;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use egui::{ScrollArea, TextEdit, Ui, Window};
-use tracing::{debug, info};
+use tracing::{info, trace};
 
 use crate::{netstrat::line_filter_highlight_layout::line_filter_highlight_layout, AppWindow};
 
@@ -142,10 +142,10 @@ impl Debug {
             return;
         }
 
-        info!("applying filter: {new_filter}");
+        trace!("applying filter: {new_filter}");
 
         if filter_normalized.contains(self.filter.as_str()) {
-            debug!("using optimized version");
+            trace!("using optimized version");
 
             self.filtered = self
                 .filtered
@@ -158,7 +158,7 @@ impl Debug {
             return;
         }
 
-        debug!("using heavy version");
+        trace!("using heavy version");
 
         self.filtered = self
             .buff
