@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use lazy_static::lazy_static;
+use petgraph::data::Build;
+use petgraph::data::FromElements;
 use petgraph::dot::Dot;
 use petgraph::graph::node_index;
 use petgraph::graph::NodeIndex;
@@ -11,7 +14,8 @@ use petgraph::visit::IntoNodeReferences;
 use petgraph::{Direction, Incoming, Outgoing};
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
-use tracing::debug;
+use regex::Regex;
+use tracing::{debug, error};
 
 const MAX_DOT_WEIGHT: f64 = 5.0;
 
@@ -165,6 +169,65 @@ impl Data {
             ini_set,
             fin_set,
         }
+    }
+
+    pub fn from_dot(dot_data: String) -> Option<Self> {
+        let mut data = Data {
+            graph: StableDiGraph::new(),
+            settings: Settings::default(),
+            ini_set: HashSet::new(),
+            fin_set: HashSet::new(),
+        };
+        let mut has_errors = false;
+        let mut node_weight_to_index = HashMap::new();
+        dot_data.lines().for_each(|l| {
+            if !l.contains("->") && !l.contains('{') && !l.contains('}') {
+                if let Some((_, props)) = parse_node(l.to_string()) {
+                    if let Some(weight) = parse_label(props) {
+                        let node_idx = data.graph.add_node(weight.clone());
+                        let digit_weight = weight.split('_').last().unwrap();
+                        node_weight_to_index.insert(digit_weight.to_string(), node_idx);
+
+                        if weight.contains("ini") {
+                            data.ini_set.insert(node_idx);
+                        }
+                        if weight.contains("fin") {
+                            data.fin_set.insert(node_idx);
+                        }
+
+                        return;
+                    }
+                }
+
+                error!("failed to parse node from line: {l}");
+                has_errors = true;
+            }
+        });
+
+        dot_data.lines().for_each(|l| {
+            if l.contains("->") {
+                if let Some((s, e, p)) = parse_edge(l.to_string()) {
+                    if let Some(label) = parse_label(p) {
+                        let weight = label.parse::<f64>().unwrap();
+
+                        let start = *node_weight_to_index.get(&s).unwrap();
+                        let end = *node_weight_to_index.get(&e).unwrap();
+
+                        data.graph.add_edge(start, end, weight);
+                        return;
+                    }
+                }
+
+                error!("failed to parse edge from line: {l}");
+                has_errors = true;
+            }
+        });
+
+        if has_errors {
+            return None;
+        }
+
+        Some(data)
     }
 
     pub fn dot(&self) -> String {
@@ -344,12 +407,15 @@ impl Data {
                 let mut res = l.to_string();
                 if !l.contains("->") && !l.contains('{') && !l.contains('}') {
                     // line is node
-                    let parsed_node_id = l.split('[').next().unwrap().trim();
-                    nodes.iter().for_each(|node| {
-                        if parsed_node_id == node.index().to_string().as_str() {
-                            res = color_line(l.to_string());
-                        }
-                    });
+                    if let Some((node_id, _)) = parse_node(l.to_string()) {
+                        nodes.iter().for_each(|node| {
+                            if node_id == node.index().to_string() {
+                                res = color_line(l.to_string());
+                            }
+                        });
+                    } else {
+                        error!("failed to parse node from line: {l}");
+                    }
                 }
 
                 if l.contains("->") {
@@ -357,14 +423,12 @@ impl Data {
                     edges.iter().for_each(|edge| {
                         let (start, end) = self.graph.edge_endpoints(*edge).unwrap();
 
-                        let mut parts = l.split("->");
-                        let parsed_start = parts.next().unwrap().trim();
-                        let parsed_end = parts.next().unwrap().split('[').next().unwrap().trim();
-
-                        if parsed_start == start.index().to_string().as_str()
-                            && parsed_end == end.index().to_string().as_str()
-                        {
-                            res = color_line(l.to_string());
+                        if let Some((s, e, _)) = parse_edge(l.to_string()) {
+                            if s == start.index().to_string() && e == end.index().to_string() {
+                                res = color_line(l.to_string());
+                            }
+                        } else {
+                            error!("failed to parse edge from line: {l}");
                         }
                     });
                 }
@@ -397,20 +461,18 @@ impl Data {
                     self.graph.edge_indices().for_each(|edge| {
                         let (start, end) = self.graph.edge_endpoints(edge).unwrap();
 
-                        let mut parts = l.split("->");
-                        let parsed_start = parts.next().unwrap().trim();
-                        let parsed_end = parts.next().unwrap().split('[').next().unwrap().trim();
+                        if let Some((s, e, _)) = parse_edge(l.to_string()) {
+                            if s == start.index().to_string() && e == end.index().to_string() {
+                                let weight = *self.graph.edge_weight(edge).unwrap();
+                                let mut normed = (weight / max_weight) * MAX_DOT_WEIGHT;
+                                if normed < 0.5 {
+                                    normed = 0.5
+                                }
 
-                        if parsed_start == start.index().to_string().as_str()
-                            && parsed_end == end.index().to_string().as_str()
-                        {
-                            let weight = *self.graph.edge_weight(edge).unwrap();
-                            let mut normed = (weight / max_weight) * MAX_DOT_WEIGHT;
-                            if normed < 0.5 {
-                                normed = 0.5
+                                res = weight_line(l.to_string(), normed);
                             }
-
-                            res = weight_line(l.to_string(), normed);
+                        } else {
+                            error!("failed to parse edge from line: {l}")
                         }
                     });
                 }
@@ -522,6 +584,48 @@ fn color_line(line: String) -> String {
 fn weight_line(line: String, weight: f64) -> String {
     let first_part = line.replace(']', "");
     format!("{first_part}, penwidth={weight} ]")
+}
+
+fn parse_edge(line: String) -> Option<(String, String, String)> {
+    lazy_static! {
+        static ref EDGE_RE: Regex = Regex::new(r"(\d{1,}) -> (\d{1,}).*\[(.*)\]").unwrap();
+    }
+
+    let found = EDGE_RE.captures(line.as_str())?;
+    let start = found.get(1)?.as_str();
+    let end = found.get(2)?.as_str();
+    let props = found.get(3)?.as_str();
+
+    debug!("parsed edge: {start} -> {end}, with props: {props}");
+
+    Some((start.to_string(), end.to_string(), props.to_string()))
+}
+
+fn parse_node(line: String) -> Option<(String, String)> {
+    lazy_static! {
+        static ref NODE_RE: Regex = Regex::new(r"(\d{1,}) \[(.*)\]").unwrap();
+    }
+
+    let found = NODE_RE.captures(line.as_str())?;
+    let node = found.get(1)?.as_str();
+    let props = found.get(2)?.as_str();
+
+    debug!("parsed node: {node}, with props: {props}");
+
+    Some((node.to_string(), props.to_string()))
+}
+
+fn parse_label(props: String) -> Option<String> {
+    lazy_static! {
+        static ref LABEL_RE: Regex = Regex::new(r#"label = "(.*)" "#).unwrap();
+    }
+
+    let found = LABEL_RE.captures(props.as_str())?;
+    let label = found.get(1)?.as_str();
+
+    debug!("parsed label: {label}");
+
+    Some(label.to_string())
 }
 
 fn remove_last_el(path: Vec<[usize; 2]>) -> Vec<[usize; 2]> {
