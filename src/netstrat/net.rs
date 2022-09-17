@@ -1,13 +1,19 @@
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 use petgraph::dot::Dot;
-use petgraph::graph::{Node, NodeIndex};
-use petgraph::prelude::{EdgeIndex, EdgeRef, StableDiGraph, StableGraph};
+use petgraph::graph::node_index;
+use petgraph::graph::NodeIndex;
+use petgraph::prelude::{EdgeIndex, EdgeRef, StableDiGraph};
+use petgraph::visit::depth_first_search;
+use petgraph::visit::Control;
 use petgraph::visit::IntoNodeReferences;
-use petgraph::{Direction, Graph, Incoming, Outgoing};
+use petgraph::{Direction, Incoming, Outgoing};
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use tracing::debug;
+
+const MAX_DOT_WEIGHT: f64 = 5.0;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum EdgeWeight {
@@ -216,6 +222,42 @@ impl Data {
         self.dot()
     }
 
+    pub fn diamond_filter(&mut self) {
+        let mut ini_union_cone = HashSet::new();
+        // gather cone of all children of inis
+        for el in self.ini_set.clone() {
+            ini_union_cone = ini_union_cone
+                .union(&self.get_cone(el, Outgoing, -1).nodes)
+                .cloned()
+                .collect();
+        }
+
+        let mut fin_union_cone = HashSet::new();
+        // gather cone of all parents of fins
+        for el in self.fin_set.clone() {
+            fin_union_cone = fin_union_cone
+                .union(&self.get_cone(el, Incoming, -1).nodes)
+                .cloned()
+                .collect();
+        }
+
+        let intersection = ini_union_cone
+            .intersection(&fin_union_cone)
+            .cloned()
+            .collect::<HashSet<NodeIndex>>();
+
+        self.graph
+            .retain_nodes(|_, node| intersection.contains(&node));
+
+        self.ini_set = self.collect_ini_set();
+        self.fin_set = self.collect_fin_set();
+    }
+
+    pub fn dot_with_cycles(&self) -> String {
+        let subgraph = self.get_cycles();
+        self.color_dot(self.dot(), subgraph.nodes, subgraph.edges)
+    }
+
     pub fn remove_cone(&mut self, root_weight: String, dir: Direction, max_steps: i32) {
         if let Some(root) = self
             .graph
@@ -228,6 +270,67 @@ impl Data {
                 self.graph.remove_node(*node).unwrap();
             });
         }
+    }
+
+    fn get_cycles(&self) -> Subgraph {
+        let mut nodes = HashSet::new();
+        let mut edges = HashSet::new();
+
+        let mut path = vec![];
+
+        depth_first_search(
+            &self.graph,
+            self.ini_set.iter().cloned(),
+            |event| match event {
+                petgraph::visit::DfsEvent::TreeEdge(s, e) => {
+                    debug!("visited edge {} -> {}", s.index(), e.index());
+                    path.push([s.index(), e.index()]);
+                    debug!("continuing path: {path:?}");
+                }
+                petgraph::visit::DfsEvent::BackEdge(s, e) => {
+                    debug!("visited edge {} -> {}; cycle found!", s.index(), e.index());
+                    path.push([s.index(), e.index()]);
+
+                    let mut first_cycle_el: [usize; 2] = [0, 0];
+                    let mut path_cycle = path.rsplit(|el| {
+                        if *el.first().unwrap() == e.index() {
+                            (first_cycle_el[0], first_cycle_el[1]) =
+                                (*el.first().unwrap(), *el.last().unwrap());
+
+                            return true;
+                        }
+
+                        false
+                    });
+
+                    let mut cycle = path_cycle.next().unwrap().to_vec();
+                    cycle.insert(0, first_cycle_el);
+                    debug!("discovered cycle: {cycle:?}");
+
+                    cycle.iter().for_each(|el| {
+                        let (first, last) = (
+                            NodeIndex::new(*el.first().unwrap()),
+                            NodeIndex::new(*el.last().unwrap()),
+                        );
+
+                        nodes.insert(first);
+                        nodes.insert(last);
+                        edges.insert(self.graph.find_edge(first, last).unwrap());
+                    });
+
+                    path = remove_last_el(path.clone());
+                    debug!("shortened path: {path:?}");
+                }
+                petgraph::visit::DfsEvent::Finish(n, _) => {
+                    debug!("finished path on node: {}", n.index());
+                    path = remove_last_el(path.clone());
+                    debug!("shortened path: {path:?}");
+                }
+                _ => (),
+            },
+        );
+
+        Subgraph { nodes, edges }
     }
 
     fn color_dot(
@@ -302,7 +405,7 @@ impl Data {
                             && parsed_end == end.index().to_string().as_str()
                         {
                             let weight = *self.graph.edge_weight(edge).unwrap();
-                            let mut normed = (weight / max_weight) * 10.0;
+                            let mut normed = (weight / max_weight) * MAX_DOT_WEIGHT;
                             if normed < 0.5 {
                                 normed = 0.5
                             }
@@ -315,37 +418,6 @@ impl Data {
                 format!("{res}\n")
             })
             .collect()
-    }
-
-    pub fn diamond_filter(&mut self) {
-        let mut ini_union_cone = HashSet::new();
-        // gather cone of all children of inis
-        for el in self.ini_set.clone() {
-            ini_union_cone = ini_union_cone
-                .union(&self.get_cone(el, Outgoing, -1).nodes)
-                .cloned()
-                .collect();
-        }
-
-        let mut fin_union_cone = HashSet::new();
-        // gather cone of all parents of fins
-        for el in self.fin_set.clone() {
-            fin_union_cone = fin_union_cone
-                .union(&self.get_cone(el, Incoming, -1).nodes)
-                .cloned()
-                .collect();
-        }
-
-        let intersection = ini_union_cone
-            .intersection(&fin_union_cone)
-            .cloned()
-            .collect::<HashSet<NodeIndex>>();
-
-        self.graph
-            .retain_nodes(|_, node| intersection.contains(&node));
-
-        self.ini_set = self.collect_ini_set();
-        self.fin_set = self.collect_fin_set();
     }
 
     fn collect_ini_set(&self) -> HashSet<NodeIndex> {
@@ -376,14 +448,14 @@ impl Data {
         result
     }
 
-    fn get_cone(&self, root: NodeIndex, dir: Direction, max_steps: i32) -> Cone {
+    fn get_cone(&self, root: NodeIndex, dir: Direction, max_steps: i32) -> Subgraph {
         let mut nodes = HashSet::new();
         let mut edges = HashSet::new();
 
         nodes.insert(root);
 
         if max_steps == 0 {
-            return Cone { nodes, edges };
+            return Subgraph { nodes, edges };
         }
 
         let mut steps_cnt = 0;
@@ -438,7 +510,7 @@ impl Data {
             });
         }
 
-        Cone { nodes, edges }
+        Subgraph { nodes, edges }
     }
 }
 
@@ -452,7 +524,16 @@ fn weight_line(line: String, weight: f64) -> String {
     format!("{first_part}, penwidth={weight} ]")
 }
 
-struct Cone {
+fn remove_last_el(path: Vec<[usize; 2]>) -> Vec<[usize; 2]> {
+    if path.is_empty() {
+        return path;
+    }
+
+    let (_, path_arr) = path.split_last().unwrap();
+    path_arr.to_vec()
+}
+
+struct Subgraph {
     nodes: HashSet<NodeIndex>,
     edges: HashSet<EdgeIndex>,
 }
