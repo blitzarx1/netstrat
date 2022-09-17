@@ -1,9 +1,8 @@
 use std::sync::Mutex;
-use std::time::SystemTime;
 
 use crossbeam::channel::{unbounded, Sender};
 use eframe::{run_native, App, CreationContext, NativeOptions};
-use egui::{Align, CentralPanel, Context, Layout, TopBottomPanel, Window};
+use egui::{Align, CentralPanel, Context, Layout, TopBottomPanel};
 
 use tracing::{info, Level};
 use tracing_subscriber::EnvFilter;
@@ -92,7 +91,10 @@ impl App for TemplateApp {
 async fn main() {
     run_native(
         "netstrat",
-        NativeOptions::default(),
+        NativeOptions {
+            drag_and_drop_support: true,
+            ..Default::default()
+        },
         Box::new(|cc| Box::new(TemplateApp::new(cc))),
     );
 }

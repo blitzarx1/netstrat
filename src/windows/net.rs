@@ -1,7 +1,7 @@
-use std::fs::File;
+use std::fs::{read_to_string, File};
 use std::io::Write;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use egui::{ScrollArea, Slider, TextEdit, Ui, Window};
 use egui_notify::{Anchor, Toasts};
@@ -10,12 +10,14 @@ use tracing::{debug, error, info};
 use urlencoding::encode;
 
 use crate::netstrat::net::{Data, EdgeWeight, Settings};
+use crate::widgets::OpenDropFile;
 use crate::AppWindow;
 
 pub struct Net {
     data: Data,
     graph_settings: Settings,
     cone_settings: ConeSettings,
+    open_drop_file: OpenDropFile,
     dot: String,
     visible: bool,
     toasts: Toasts,
@@ -29,6 +31,7 @@ impl Net {
             visible,
             data,
             dot,
+            open_drop_file: Default::default(),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             graph_settings: Default::default(),
             cone_settings: Default::default(),
@@ -82,37 +85,70 @@ impl Net {
         self.update_graph_settings(graph_settings);
         self.update_cone_coloring(cone_coloring_settings);
         self.handle_clicks(clicks);
+        self.handle_opened_file();
+    }
+
+    fn handle_opened_file(&mut self) {
+        if let Some(path) = self.open_drop_file.path() {
+            debug!("opening file: {path}");
+            let p = Path::new(path.as_str());
+            let extension = p.extension();
+
+            if extension.is_none() || !extension.unwrap().eq_ignore_ascii_case("dot") {
+                self.toasts
+                    .error("Invalid file extension. Only '.dot' files are allowed.")
+                    .set_duration(Some(Duration::from_secs(5)));
+                return;
+            }
+
+            let dot_data = read_to_string(p).unwrap();
+            let data = Data::from_dot(dot_data.clone());
+            if data.is_none() {
+                self.toasts.error("Failed to parse imported file");
+                return;
+            }
+
+            self.dot = dot_data;
+            self.data = data.unwrap();
+            self.toasts.success("File imported");
+        }
     }
 
     fn handle_clicks(&mut self, clicks: ButtonClicks) {
         let mut changed = false;
 
         if clicks.reset {
+            info!("resetting graph params");
             self.reset();
             changed = true;
         }
 
         if clicks.create {
+            info!("generatin graph");
             self.create();
             changed = true;
         }
 
         if clicks.color_cones {
+            info!("coloring cones");
             self.color_cone();
             changed = true;
         }
 
         if clicks.delete {
+            info!("deleting cone");
             self.delete_custom_cone();
             changed = true;
         }
 
         if clicks.diamond_filter {
+            info!("applying diamond filter");
             self.diamond_filter();
             changed = true;
         }
 
         if clicks.color_cycles {
+            info!("coloring cycles");
             self.color_cycles();
             changed = true;
         }
@@ -129,7 +165,14 @@ impl Net {
     }
 
     fn export_dot(&mut self) {
-        let path = Path::new("graph_export.dot");
+        let name = format!(
+            "graph_{:?}.dot",
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+        );
+        let path = Path::new(name.as_str());
         let f_res = File::create(&path);
         match f_res {
             Ok(mut f) => {
@@ -263,6 +306,14 @@ impl AppWindow for Net {
                 });
             });
 
+            ui.collapsing("Import/Export", |ui| {
+                ui.add(&mut self.open_drop_file);
+                ui.add_space(10.0);
+                if ui.button("export dot").clicked() {
+                    clicks.export_dot = true;
+                };
+            });
+
             ui.collapsing("Edit", |ui| {
                 if ui.button("diamond filter").clicked() {
                     clicks.diamond_filter = true;
@@ -324,9 +375,6 @@ impl AppWindow for Net {
                     ))
                     .unwrap();
                 }
-                if ui.button("export dot").clicked() {
-                    clicks.export_dot = true;
-                };
             });
             ui.add_space(10.0);
             ScrollArea::vertical().show(ui, |ui| ui.text_edit_multiline(&mut dot));

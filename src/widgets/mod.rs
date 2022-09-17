@@ -1,9 +1,11 @@
 mod candles;
+mod open_drop_file;
 mod graph;
 mod symbols;
 mod theme;
 mod time_input;
 
+pub use self::open_drop_file::OpenDropFile;
 pub use self::graph::Graph;
 pub use self::symbols::Symbols;
 pub use self::theme::Theme;

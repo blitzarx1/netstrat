@@ -1,10 +1,9 @@
 use chrono::{DateTime, Utc};
 use crossbeam::channel::{unbounded, Sender};
 use egui::{
-    plot::{BoxElem, BoxPlot, BoxSpread, LinkedAxisGroup, Plot, PlotBounds},
-    Color32, Response, Stroke, Vec2, Widget,
+    plot::{BoxElem, BoxPlot, BoxSpread, Plot},
+    Color32, Response, Stroke, Widget,
 };
-use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
 use crate::{
