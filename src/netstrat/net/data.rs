@@ -142,12 +142,17 @@ impl Data {
 
         let mut data = Self {
             graph: seed,
-            settings,
+            settings: settings.clone(),
             ini_set,
             fin_set,
             cycles: Default::default(),
             dot: Default::default(),
         };
+
+        if settings.diamond_filter {
+            data.diamond_filter()
+        }
+
         data.update();
 
         data
