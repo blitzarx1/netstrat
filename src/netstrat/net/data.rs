@@ -13,6 +13,7 @@ use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use regex::Regex;
 use tracing::info;
+use tracing::trace;
 use tracing::warn;
 use tracing::{debug, error};
 
@@ -249,20 +250,25 @@ impl Data {
         self.dot = self.color_dot(self.calc_dot(), elements);
     }
 
-    pub fn color_custom_cone(&mut self, root_weight: String, dir: Direction, max_steps: i32) {
-        if let Some(root) = self
-            .graph
-            .node_references()
-            .find(|node| *node.1 == root_weight)
-        {
-            self.dot = self.color_dot(
-                self.calc_dot(),
-                self.get_cone_elements(root.0, dir, max_steps),
-            );
-            return;
-        }
+    pub fn color_custom_cone(
+        &mut self,
+        roots_weights: Vec<String>,
+        dir: Direction,
+        max_steps: i32,
+    ) {
+        let mut elements = Elements::default();
+        roots_weights.iter().for_each(|weight| {
+            let root_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
+            if root_find_result.is_none() {
+                warn!("node with weight {} not found", *weight);
+                return;
+            }
 
-        warn!("failed to find given root: {root_weight}");
+            let root = root_find_result.unwrap();
+            elements.union(&self.get_cone_elements(root.0, dir, max_steps))
+        });
+
+        self.dot = self.color_dot(self.calc_dot(), elements);
     }
 
     pub fn color_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
@@ -319,15 +325,18 @@ impl Data {
         self.delete_elements(elements);
     }
 
-    pub fn delete_cone(&mut self, root_weight: String, dir: Direction, max_steps: i32) {
+    pub fn delete_cone(&mut self, roots_weights: Vec<String>, dir: Direction, max_steps: i32) {
         let mut elements = Elements::default();
-        if let Some(root) = self
-            .graph
-            .node_references()
-            .find(|node| *node.1 == root_weight)
-        {
+        roots_weights.iter().for_each(|weight| {
+            let root_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
+            if root_find_result.is_none() {
+                warn!("node with weight {} not found", *weight);
+                return;
+            }
+
+            let root = root_find_result.unwrap();
             elements.union(&self.get_cone_elements(root.0, dir, max_steps))
-        }
+        });
 
         self.delete_elements(elements)
     }
@@ -623,7 +632,7 @@ fn parse_edge(line: String) -> Option<(String, String, String)> {
     let end = found.get(2)?.as_str();
     let props = found.get(3)?.as_str();
 
-    debug!("parsed edge: {start} -> {end}, with props: {props}");
+    trace!("parsed edge: {start} -> {end}, with props: {props}");
 
     Some((start.to_string(), end.to_string(), props.to_string()))
 }
@@ -637,7 +646,7 @@ fn parse_node(line: String) -> Option<(String, String)> {
     let node = found.get(1)?.as_str();
     let props = found.get(2)?.as_str();
 
-    debug!("parsed node: {node}, with props: {props}");
+    trace!("parsed node: {node}, with props: {props}");
 
     Some((node.to_string(), props.to_string()))
 }

@@ -15,7 +15,8 @@ use crate::widgets::OpenDropFile;
 
 #[derive(PartialEq, Clone)]
 struct ConeSettings {
-    node_name: String,
+    nodes_names_input: String,
+    nodes_names: Vec<String>,
     cone_dir: ConeDir,
     cone_type: ConeType,
     max_steps: i32,
@@ -24,10 +25,11 @@ struct ConeSettings {
 impl Default for ConeSettings {
     fn default() -> Self {
         Self {
+            nodes_names_input: String::default(),
             cone_dir: ConeDir::Plus,
             max_steps: -1,
             cone_type: ConeType::Custom,
-            node_name: Default::default(),
+            nodes_names: Default::default(),
         }
     }
 }
@@ -113,7 +115,7 @@ impl Net {
         selected_cycles: HashSet<usize>,
     ) {
         self.update_graph_settings(graph_settings);
-        self.update_cone_coloring(cone_coloring_settings);
+        self.update_cone_settings(cone_coloring_settings);
         self.handle_selected_cycles(selected_cycles);
         self.handle_clicks(clicks);
         self.handle_opened_file();
@@ -237,12 +239,21 @@ impl Net {
         }
     }
 
-    fn update_cone_coloring(&mut self, cone_coloring_settings: ConeSettings) {
-        if self.cone_settings == cone_coloring_settings {
+    fn update_cone_settings(&mut self, cone_settings: ConeSettings) {
+        if self.cone_settings == cone_settings {
             return;
         }
 
-        self.cone_settings = cone_coloring_settings
+        let mut cone_settings_mut = cone_settings.clone();
+        if self.cone_settings.nodes_names_input != cone_settings.nodes_names_input {
+            cone_settings_mut.nodes_names = cone_settings
+                .nodes_names_input
+                .split(',')
+                .map(|el| el.trim().to_string())
+                .collect();
+        }
+
+        self.cone_settings = cone_settings_mut;
     }
 
     fn color_cone(&mut self) {
@@ -255,7 +266,7 @@ impl Net {
 
     fn color_custom_cone(&mut self) {
         self.data.color_custom_cone(
-            self.cone_settings.node_name.clone(),
+            self.cone_settings.nodes_names.clone(),
             match self.cone_settings.cone_dir.clone() {
                 ConeDir::Minus => Incoming,
                 ConeDir::Plus => Outgoing,
@@ -266,7 +277,7 @@ impl Net {
 
     fn delete_custom_cone(&mut self) {
         self.data.delete_cone(
-            self.cone_settings.node_name.clone(),
+            self.cone_settings.nodes_names.clone(),
             match self.cone_settings.cone_dir.clone() {
                 ConeDir::Minus => Incoming,
                 ConeDir::Plus => Outgoing,
@@ -291,7 +302,7 @@ impl Net {
 impl Widget for &mut Net {
     fn ui(self, ui: &mut Ui) -> Response {
         let mut graph_settings = self.graph_settings.clone();
-        let mut cone_coloring_settings = self.cone_settings.clone();
+        let mut cone_settings = self.cone_settings.clone();
         let mut dot = self.data.dot();
         let mut selected_cycles = self.selected_cycles.clone();
         let mut clicks = ButtonClicks::default();
@@ -344,34 +355,22 @@ impl Widget for &mut Net {
             };
         });
 
+        ui.collapsing("Nodes", |ui| {});
+
+        ui.collapsing("Edges", |ui| {});
+
         ui.collapsing("Cones", |ui| {
-            ui.radio_value(
-                &mut cone_coloring_settings.cone_type,
-                ConeType::Initial,
-                "Initial",
-            );
+            ui.radio_value(&mut cone_settings.cone_type, ConeType::Initial, "Initial");
             ui.add_space(10.0);
-            ui.radio_value(
-                &mut cone_coloring_settings.cone_type,
-                ConeType::Final,
-                "Final",
-            );
+            ui.radio_value(&mut cone_settings.cone_type, ConeType::Final, "Final");
             ui.add_space(10.0);
-            ui.radio_value(
-                &mut cone_coloring_settings.cone_type,
-                ConeType::Custom,
-                "Custom",
-            );
+            ui.radio_value(&mut cone_settings.cone_type, ConeType::Custom, "Custom");
             ui.add(
-                TextEdit::singleline(&mut cone_coloring_settings.node_name).hint_text("Node name"),
+                TextEdit::singleline(&mut cone_settings.nodes_names_input).hint_text("Node name"),
             );
-            ui.radio_value(
-                &mut cone_coloring_settings.cone_dir,
-                ConeDir::Minus,
-                "Minus",
-            );
-            ui.radio_value(&mut cone_coloring_settings.cone_dir, ConeDir::Plus, "Plus");
-            ui.add(Slider::new(&mut cone_coloring_settings.max_steps, -1..=10).text("Steps"));
+            ui.radio_value(&mut cone_settings.cone_dir, ConeDir::Minus, "Minus");
+            ui.radio_value(&mut cone_settings.cone_dir, ConeDir::Plus, "Plus");
+            ui.add(Slider::new(&mut cone_settings.max_steps, -1..=10).text("Steps"));
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
                 if ui.button("color").clicked() {
@@ -432,12 +431,7 @@ impl Widget for &mut Net {
             .response;
 
         self.toasts.show(ui.ctx());
-        self.update(
-            graph_settings,
-            cone_coloring_settings,
-            clicks,
-            selected_cycles,
-        );
+        self.update(graph_settings, cone_settings, clicks, selected_cycles);
 
         response
     }
