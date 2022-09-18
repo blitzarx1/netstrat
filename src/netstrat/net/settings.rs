@@ -11,6 +11,7 @@ pub struct Settings {
     pub ini_cnt: usize,
     pub fin_cnt: usize,
     pub total_cnt: usize,
+    pub diamond_filter: bool,
     pub no_twin_edges: bool,
     pub max_out_degree: usize,
     pub edge_weight_type: EdgeWeight,
@@ -25,6 +26,7 @@ impl Default for Settings {
             total_cnt: 20,
             max_out_degree: 3,
             no_twin_edges: true,
+            diamond_filter: true,
             edge_weight_type: EdgeWeight::Fixed,
             edge_weight: 1.0,
         }

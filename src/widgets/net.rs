@@ -51,7 +51,6 @@ enum ConeType {
 struct ButtonClicks {
     reset: bool,
     create: bool,
-    diamond_filter: bool,
     color_cones: bool,
     color_cycles: bool,
     export_dot: bool,
@@ -96,10 +95,6 @@ impl Net {
     fn create(&mut self) {
         let data = Data::new(self.graph_settings.clone());
         self.data = data;
-    }
-
-    fn diamond_filter(&mut self) {
-        self.data.diamond_filter();
     }
 
     fn update_graph_settings(&mut self, graph_settings: Settings) {
@@ -179,12 +174,6 @@ impl Net {
         if clicks.delete_cone {
             info!("deleting cone");
             self.delete_custom_cone();
-            self.trigger_changed_toast();
-        }
-
-        if clicks.diamond_filter {
-            info!("applying diamond filter");
-            self.diamond_filter();
             self.trigger_changed_toast();
         }
 
@@ -320,6 +309,7 @@ impl Widget for &mut Net {
             ui.add(Slider::new(&mut graph_settings.max_out_degree, 2..=10).text("max_out_degree"));
             ui.add_space(10.0);
             ui.checkbox(&mut graph_settings.no_twin_edges, "No twin edges");
+            ui.checkbox(&mut graph_settings.diamond_filter, "Apply diamond filter");
             ui.add_space(10.0);
             ui.label("Edge weights");
             ui.radio_value(
@@ -352,12 +342,6 @@ impl Widget for &mut Net {
             if ui.button("export dot").clicked() {
                 clicks.export_dot = true;
             };
-        });
-
-        ui.collapsing("Edit", |ui| {
-            if ui.button("diamond filter").clicked() {
-                clicks.diamond_filter = true;
-            }
         });
 
         ui.collapsing("Cones", |ui| {
