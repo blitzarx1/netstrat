@@ -1,62 +1,39 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::vec;
 
 use lazy_static::lazy_static;
-use petgraph::data::Build;
-use petgraph::data::FromElements;
 use petgraph::dot::Dot;
-use petgraph::graph::node_index;
 use petgraph::graph::NodeIndex;
-use petgraph::prelude::{EdgeIndex, EdgeRef, StableDiGraph};
+use petgraph::prelude::{EdgeRef, StableDiGraph};
 use petgraph::visit::depth_first_search;
-use petgraph::visit::Control;
 use petgraph::visit::IntoNodeReferences;
 use petgraph::{Direction, Incoming, Outgoing};
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use regex::Regex;
+use tracing::info;
+use tracing::warn;
 use tracing::{debug, error};
+
+use crate::netstrat::net::path::Path;
+use crate::netstrat::net::EdgeWeight;
+
+use super::cycle::Cycle;
+use super::elements;
+use super::elements::Elements;
+use super::Settings;
 
 const MAX_DOT_WEIGHT: f64 = 5.0;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub enum EdgeWeight {
-    /// Fixed weight
-    Fixed,
-    /// Random weigh in range 0..1
-    Random,
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub struct Settings {
-    pub ini_cnt: usize,
-    pub fin_cnt: usize,
-    pub total_cnt: usize,
-    pub no_twin_edges: bool,
-    pub max_out_degree: usize,
-    pub edge_weight_type: EdgeWeight,
-    pub edge_weight: f64,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            ini_cnt: 5,
-            fin_cnt: 5,
-            total_cnt: 20,
-            max_out_degree: 3,
-            no_twin_edges: true,
-            edge_weight_type: EdgeWeight::Fixed,
-            edge_weight: 1.0,
-        }
-    }
-}
-
+#[derive(Clone)]
 pub struct Data {
     graph: StableDiGraph<String, f64>,
     settings: Settings,
     ini_set: HashSet<NodeIndex>,
     fin_set: HashSet<NodeIndex>,
+    cycles: Vec<Cycle>,
+    dot: String,
 }
 
 impl Data {
@@ -163,12 +140,17 @@ impl Data {
             fin_set.insert(*idx);
         }
 
-        Self {
+        let mut data = Self {
             graph: seed,
             settings,
             ini_set,
             fin_set,
-        }
+            cycles: Default::default(),
+            dot: Default::default(),
+        };
+        data.update();
+
+        data
     }
 
     pub fn from_dot(dot_data: String) -> Option<Self> {
@@ -177,6 +159,8 @@ impl Data {
             settings: Settings::default(),
             ini_set: HashSet::new(),
             fin_set: HashSet::new(),
+            cycles: Default::default(),
+            dot: Default::default(),
         };
         let mut has_errors = false;
         let mut node_weight_to_index = HashMap::new();
@@ -227,12 +211,13 @@ impl Data {
             return None;
         }
 
+        data.update();
+
         Some(data)
     }
 
-    pub fn dot(&self) -> String {
+    pub fn calc_dot(&self) -> String {
         let dot = Dot::new(&self.graph).to_string();
-
         if self.settings.edge_weight_type == EdgeWeight::Fixed {
             return dot;
         }
@@ -240,49 +225,50 @@ impl Data {
         self.weight_dot(dot)
     }
 
-    pub fn dot_with_ini_cones(&mut self) -> String {
-        let mut edges_to_color = HashSet::new();
-        let mut nodes_to_color = HashSet::new();
+    pub fn color_ini_cones(&mut self) {
+        let mut elements = Elements::default();
 
         for el in self.ini_set.clone() {
-            let cone = self.get_cone(el, Outgoing, -1);
-            edges_to_color = edges_to_color.union(&cone.edges).cloned().collect();
-            nodes_to_color = nodes_to_color.union(&cone.nodes).cloned().collect();
+            elements.union(&self.get_cone_elements(el, Outgoing, -1));
         }
 
-        self.color_dot(self.dot(), nodes_to_color, edges_to_color)
+        self.dot = self.color_dot(self.calc_dot(), elements);
     }
 
-    pub fn dot_with_fin_cones(&mut self) -> String {
-        let mut edges_to_color = HashSet::new();
-        let mut nodes_to_color = HashSet::new();
-
+    pub fn color_fin_cones(&mut self) {
+        let mut elements = Elements::default();
         for el in self.fin_set.clone() {
-            let cone = self.get_cone(el, Incoming, -1);
-            edges_to_color = edges_to_color.union(&cone.edges).cloned().collect();
-            nodes_to_color = nodes_to_color.union(&cone.nodes).cloned().collect();
+            elements.union(&self.get_cone_elements(el, Incoming, -1));
         }
 
-        self.color_dot(self.dot(), nodes_to_color, edges_to_color)
+        self.dot = self.color_dot(self.calc_dot(), elements);
     }
 
-    pub fn dot_with_custom_cone(
-        &mut self,
-        root_weight: String,
-        dir: Direction,
-        max_steps: i32,
-    ) -> String {
+    pub fn color_custom_cone(&mut self, root_weight: String, dir: Direction, max_steps: i32) {
         if let Some(root) = self
             .graph
             .node_references()
             .find(|node| *node.1 == root_weight)
         {
-            let cone = self.get_cone(root.0, dir, max_steps);
-
-            return self.color_dot(self.dot(), cone.nodes, cone.edges);
+            self.dot = self.color_dot(
+                self.calc_dot(),
+                self.get_cone_elements(root.0, dir, max_steps),
+            );
+            return;
         }
 
-        self.dot()
+        warn!("failed to find given root: {root_weight}");
+    }
+
+    pub fn color_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
+        let mut elements = Elements::default();
+        self.cycles.iter().enumerate().for_each(|(i, c)| {
+            if cycle_idxs.contains(&i) {
+                elements.union(&c.elements())
+            }
+        });
+
+        self.dot = self.color_dot(self.calc_dot(), elements);
     }
 
     pub fn diamond_filter(&mut self) {
@@ -290,7 +276,7 @@ impl Data {
         // gather cone of all children of inis
         for el in self.ini_set.clone() {
             ini_union_cone = ini_union_cone
-                .union(&self.get_cone(el, Outgoing, -1).nodes)
+                .union(&self.get_cone_elements(el, Outgoing, -1).nodes())
                 .cloned()
                 .collect();
         }
@@ -299,7 +285,7 @@ impl Data {
         // gather cone of all parents of fins
         for el in self.fin_set.clone() {
             fin_union_cone = fin_union_cone
-                .union(&self.get_cone(el, Incoming, -1).nodes)
+                .union(&self.get_cone_elements(el, Incoming, -1).nodes())
                 .cloned()
                 .collect();
         }
@@ -312,35 +298,69 @@ impl Data {
         self.graph
             .retain_nodes(|_, node| intersection.contains(&node));
 
-        self.ini_set = self.collect_ini_set();
-        self.fin_set = self.collect_fin_set();
+        self.update();
     }
 
-    pub fn dot_with_cycles(&self) -> String {
-        let subgraph = self.get_cycles();
-        self.color_dot(self.dot(), subgraph.nodes, subgraph.edges)
+    pub fn delete_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
+        let mut elements = Elements::default();
+        self.cycles.iter().enumerate().for_each(|(i, c)| {
+            if !cycle_idxs.contains(&i) {
+                return;
+            }
+
+            elements.union(&c.elements());
+        });
+
+        self.delete_elements(elements);
     }
 
-    pub fn remove_cone(&mut self, root_weight: String, dir: Direction, max_steps: i32) {
+    pub fn delete_cone(&mut self, root_weight: String, dir: Direction, max_steps: i32) {
+        let mut elements = Elements::default();
         if let Some(root) = self
             .graph
             .node_references()
             .find(|node| *node.1 == root_weight)
         {
-            let cone = self.get_cone(root.0, dir, max_steps);
-
-            cone.nodes.iter().for_each(|node| {
-                self.graph.remove_node(*node).unwrap();
-            });
+            elements.union(&self.get_cone_elements(root.0, dir, max_steps))
         }
+
+        self.delete_elements(elements)
     }
 
-    fn get_cycles(&self) -> Subgraph {
-        let mut nodes = HashSet::new();
-        let mut edges = HashSet::new();
+    pub fn cycles(self) -> Vec<Cycle> {
+        self.cycles
+    }
 
+    pub fn dot(&self) -> String {
+        self.dot.clone()
+    }
+
+    fn delete_elements(&mut self, elements: Elements) {
+        if elements.is_empty() {
+            return;
+        }
+
+        elements.nodes().iter().for_each(|node| {
+            self.graph.remove_node(*node).unwrap();
+        });
+        elements.edges().iter().for_each(|edge| {
+            self.graph.remove_edge(*edge);
+        });
+
+        self.update();
+    }
+
+    fn update(&mut self) {
+        self.cycles = self.calc_cycles();
+        self.dot = self.calc_dot();
+        self.ini_set = self.collect_ini_set();
+        self.fin_set = self.collect_fin_set();
+    }
+
+    fn calc_cycles(&self) -> Vec<Cycle> {
+        debug!("getting cycles");
+        let mut cycles: Vec<Cycle> = vec![];
         let mut path = vec![];
-
         depth_first_search(
             &self.graph,
             self.ini_set.iter().cloned(),
@@ -366,20 +386,25 @@ impl Data {
                         false
                     });
 
-                    let mut cycle = path_cycle.next().unwrap().to_vec();
-                    cycle.insert(0, first_cycle_el);
-                    debug!("discovered cycle: {cycle:?}");
+                    let mut cycle_proto = path_cycle.next().unwrap().to_vec();
+                    cycle_proto.insert(0, first_cycle_el);
+                    debug!("discovered cycle: {cycle_proto:?}");
 
-                    cycle.iter().for_each(|el| {
+                    let mut cycle = Cycle::new();
+                    cycle_proto.iter().for_each(|el| {
                         let (first, last) = (
                             NodeIndex::new(*el.first().unwrap()),
                             NodeIndex::new(*el.last().unwrap()),
                         );
 
-                        nodes.insert(first);
-                        nodes.insert(last);
-                        edges.insert(self.graph.find_edge(first, last).unwrap());
+                        cycle.add_path(Path::new(
+                            first,
+                            last,
+                            self.graph.find_edge(first, last).unwrap(),
+                        ));
                     });
+
+                    cycles.push(cycle);
 
                     path = remove_last_el(path.clone());
                     debug!("shortened path: {path:?}");
@@ -393,22 +418,19 @@ impl Data {
             },
         );
 
-        Subgraph { nodes, edges }
+        info!("found {} cycles", cycles.len());
+
+        cycles
     }
 
-    fn color_dot(
-        &self,
-        dot: String,
-        nodes: HashSet<NodeIndex>,
-        edges: HashSet<EdgeIndex>,
-    ) -> String {
+    fn color_dot(&self, dot: String, elements: Elements) -> String {
         dot.lines()
             .map(|l| -> String {
                 let mut res = l.to_string();
                 if !l.contains("->") && !l.contains('{') && !l.contains('}') {
                     // line is node
                     if let Some((node_id, _)) = parse_node(l.to_string()) {
-                        nodes.iter().for_each(|node| {
+                        elements.nodes().iter().for_each(|node| {
                             if node_id == node.index().to_string() {
                                 res = color_line(l.to_string());
                             }
@@ -420,7 +442,7 @@ impl Data {
 
                 if l.contains("->") {
                     // line is edge
-                    edges.iter().for_each(|edge| {
+                    elements.edges().iter().for_each(|edge| {
                         let (start, end) = self.graph.edge_endpoints(*edge).unwrap();
 
                         if let Some((s, e, _)) = parse_edge(l.to_string()) {
@@ -510,14 +532,14 @@ impl Data {
         result
     }
 
-    fn get_cone(&self, root: NodeIndex, dir: Direction, max_steps: i32) -> Subgraph {
+    fn get_cone_elements(&self, root: NodeIndex, dir: Direction, max_steps: i32) -> Elements {
         let mut nodes = HashSet::new();
         let mut edges = HashSet::new();
 
         nodes.insert(root);
 
         if max_steps == 0 {
-            return Subgraph { nodes, edges };
+            return Elements::new(nodes, edges);
         }
 
         let mut steps_cnt = 0;
@@ -572,7 +594,7 @@ impl Data {
             });
         }
 
-        Subgraph { nodes, edges }
+        Elements::new(nodes, edges)
     }
 }
 
@@ -635,9 +657,4 @@ fn remove_last_el(path: Vec<[usize; 2]>) -> Vec<[usize; 2]> {
 
     let (_, path_arr) = path.split_last().unwrap();
     path_arr.to_vec()
-}
-
-struct Subgraph {
-    nodes: HashSet<NodeIndex>,
-    edges: HashSet<EdgeIndex>,
 }
