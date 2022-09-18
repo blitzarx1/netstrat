@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use egui::{CentralPanel, LayerId, Response, ScrollArea, Slider, TextEdit, Ui, Widget};
+use egui::{Response, ScrollArea, Slider, TextEdit, Ui, Widget};
 use egui_notify::{Anchor, Toasts};
 use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
@@ -13,10 +13,54 @@ use urlencoding::encode;
 use crate::netstrat::net::{Data, EdgeWeight, Settings};
 use crate::widgets::OpenDropFile;
 
+#[derive(PartialEq, Clone, Default)]
+struct NodesInput {
+    input: String,
+}
+
+impl NodesInput {
+    fn splitted(&self) -> Vec<String> {
+        if self.input.is_empty() {
+            return vec![];
+        }
+        self.input
+            .split(',')
+            .map(|el| el.trim().to_string())
+            .collect()
+    }
+}
+
+#[derive(PartialEq, Clone, Default)]
+struct EdgesInput {
+    input: String,
+}
+
+impl EdgesInput {
+    fn splitted(&self) -> Vec<[String; 2]> {
+        if self.input.is_empty() {
+            return vec![];
+        }
+        self.input
+            .split(',')
+            .map(|el| {
+                let mut splitted = el.split("->");
+                let s = splitted.next().unwrap().trim().to_string();
+                let e = splitted.next().unwrap().trim().to_string();
+                [s, e]
+            })
+            .collect()
+    }
+}
+
+#[derive(PartialEq, Clone, Default)]
+struct NodesAndEdgeSettings {
+    nodes_input: NodesInput,
+    edges_input: EdgesInput,
+}
+
 #[derive(PartialEq, Clone)]
 struct ConeSettings {
-    nodes_names_input: String,
-    nodes_names: Vec<String>,
+    nodes_names: NodesInput,
     cone_dir: ConeDir,
     cone_type: ConeType,
     max_steps: i32,
@@ -25,7 +69,6 @@ struct ConeSettings {
 impl Default for ConeSettings {
     fn default() -> Self {
         Self {
-            nodes_names_input: String::default(),
             cone_dir: ConeDir::Plus,
             max_steps: -1,
             cone_type: ConeType::Custom,
@@ -58,12 +101,15 @@ struct ButtonClicks {
     export_dot: bool,
     delete_cone: bool,
     delete_cycles: bool,
+    color_nodes_and_edges: bool,
+    delete_nodes_and_edges: bool,
 }
 
 pub struct Net {
     data: Data,
     graph_settings: Settings,
     cone_settings: ConeSettings,
+    nodes_and_edges_settings: NodesAndEdgeSettings,
     open_drop_file: OpenDropFile,
     toasts: Toasts,
     selected_cycles: HashSet<usize>,
@@ -79,6 +125,7 @@ impl Default for Net {
             graph_settings: Default::default(),
             cone_settings: Default::default(),
             selected_cycles: Default::default(),
+            nodes_and_edges_settings: Default::default(),
         }
     }
 }
@@ -113,12 +160,20 @@ impl Net {
         cone_coloring_settings: ConeSettings,
         clicks: ButtonClicks,
         selected_cycles: HashSet<usize>,
+        nodes_and_edges_settings: NodesAndEdgeSettings,
     ) {
         self.update_graph_settings(graph_settings);
         self.update_cone_settings(cone_coloring_settings);
         self.handle_selected_cycles(selected_cycles);
+        self.handle_nodes_and_edges_settings(nodes_and_edges_settings);
         self.handle_clicks(clicks);
         self.handle_opened_file();
+    }
+
+    fn handle_nodes_and_edges_settings(&mut self, nodes_and_edges_settings: NodesAndEdgeSettings) {
+        if self.nodes_and_edges_settings != nodes_and_edges_settings {
+            self.nodes_and_edges_settings = nodes_and_edges_settings
+        }
     }
 
     fn handle_opened_file(&mut self) {
@@ -190,6 +245,22 @@ impl Net {
             self.trigger_changed_toast();
         }
 
+        if clicks.delete_nodes_and_edges {
+            self.data.delete_nodes_and_edges(
+                self.nodes_and_edges_settings.nodes_input.splitted(),
+                self.nodes_and_edges_settings.edges_input.splitted(),
+            );
+            self.trigger_changed_toast();
+        }
+
+        if clicks.color_nodes_and_edges {
+            self.data.color_nodes_and_edges(
+                self.nodes_and_edges_settings.nodes_input.splitted(),
+                self.nodes_and_edges_settings.edges_input.splitted(),
+            );
+            self.trigger_changed_toast();
+        }
+
         if clicks.export_dot {
             self.export_dot();
         }
@@ -244,16 +315,7 @@ impl Net {
             return;
         }
 
-        let mut cone_settings_mut = cone_settings.clone();
-        if self.cone_settings.nodes_names_input != cone_settings.nodes_names_input {
-            cone_settings_mut.nodes_names = cone_settings
-                .nodes_names_input
-                .split(',')
-                .map(|el| el.trim().to_string())
-                .collect();
-        }
-
-        self.cone_settings = cone_settings_mut;
+        self.cone_settings = cone_settings;
     }
 
     fn color_cone(&mut self) {
@@ -266,7 +328,7 @@ impl Net {
 
     fn color_custom_cone(&mut self) {
         self.data.color_custom_cone(
-            self.cone_settings.nodes_names.clone(),
+            self.cone_settings.nodes_names.splitted(),
             match self.cone_settings.cone_dir.clone() {
                 ConeDir::Minus => Incoming,
                 ConeDir::Plus => Outgoing,
@@ -277,7 +339,7 @@ impl Net {
 
     fn delete_custom_cone(&mut self) {
         self.data.delete_cone(
-            self.cone_settings.nodes_names.clone(),
+            self.cone_settings.nodes_names.splitted(),
             match self.cone_settings.cone_dir.clone() {
                 ConeDir::Minus => Incoming,
                 ConeDir::Plus => Outgoing,
@@ -306,6 +368,7 @@ impl Widget for &mut Net {
         let mut dot = self.data.dot();
         let mut selected_cycles = self.selected_cycles.clone();
         let mut clicks = ButtonClicks::default();
+        let mut nodes_and_edges_settings = self.nodes_and_edges_settings.clone();
 
         ui.collapsing("Create", |ui| {
             ui.add(Slider::new(&mut graph_settings.ini_cnt, 1..=25).text("ini_cnt"));
@@ -355,9 +418,26 @@ impl Widget for &mut Net {
             };
         });
 
-        ui.collapsing("Nodes", |ui| {});
-
-        ui.collapsing("Edges", |ui| {});
+        ui.collapsing("Nodes and Edges", |ui| {
+            ui.add(
+                TextEdit::singleline(&mut nodes_and_edges_settings.nodes_input.input)
+                    .hint_text("ini_1, 5, 10"),
+            );
+            ui.add_space(5.0);
+            ui.add(
+                TextEdit::singleline(&mut nodes_and_edges_settings.edges_input.input)
+                    .hint_text("ini_1 -> 5, 10 -> fin_3"),
+            );
+            ui.add_space(10.0);
+            ui.horizontal_top(|ui| {
+                if ui.button("color").clicked() {
+                    clicks.color_nodes_and_edges = true;
+                };
+                if ui.button("delete").clicked() {
+                    clicks.delete_nodes_and_edges = true;
+                }
+            });
+        });
 
         ui.collapsing("Cones", |ui| {
             ui.radio_value(&mut cone_settings.cone_type, ConeType::Initial, "Initial");
@@ -366,7 +446,8 @@ impl Widget for &mut Net {
             ui.add_space(10.0);
             ui.radio_value(&mut cone_settings.cone_type, ConeType::Custom, "Custom");
             ui.add(
-                TextEdit::singleline(&mut cone_settings.nodes_names_input).hint_text("Node name"),
+                TextEdit::singleline(&mut cone_settings.nodes_names.input)
+                    .hint_text("ini_1, 5, 10"),
             );
             ui.radio_value(&mut cone_settings.cone_dir, ConeDir::Minus, "Minus");
             ui.radio_value(&mut cone_settings.cone_dir, ConeDir::Plus, "Plus");
@@ -431,7 +512,13 @@ impl Widget for &mut Net {
             .response;
 
         self.toasts.show(ui.ctx());
-        self.update(graph_settings, cone_settings, clicks, selected_cycles);
+        self.update(
+            graph_settings,
+            cone_settings,
+            clicks,
+            selected_cycles,
+            nodes_and_edges_settings,
+        );
 
         response
     }

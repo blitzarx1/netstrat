@@ -341,12 +341,71 @@ impl Data {
         self.delete_elements(elements)
     }
 
+    pub fn color_nodes_and_edges(&mut self, nodes: Vec<String>, edges: Vec<[String; 2]>) {
+        self.dot = self.color_dot(self.calc_dot(), self.find_nodes_and_edges(nodes, edges));
+    }
+
+    pub fn delete_nodes_and_edges(&mut self, nodes: Vec<String>, edges: Vec<[String; 2]>) {
+        self.delete_elements(self.find_nodes_and_edges(nodes, edges));
+    }
+
     pub fn cycles(self) -> Vec<Cycle> {
         self.cycles
     }
 
     pub fn dot(&self) -> String {
         self.dot.clone()
+    }
+
+    fn find_nodes_and_edges(&self, nodes: Vec<String>, edges: Vec<[String; 2]>) -> Elements {
+        let mut nodes_set = HashSet::with_capacity(nodes.len());
+        let mut edges_set = HashSet::with_capacity(edges.len());
+
+        nodes.iter().for_each(|weight| {
+            let node_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
+            if node_find_result.is_none() {
+                warn!("node with weight {} not found", *weight);
+                return;
+            }
+
+            let (node_idx, _) = node_find_result.unwrap();
+            nodes_set.insert(node_idx);
+        });
+
+        edges.iter().for_each(|edge| {
+            let start_weight = edge.first().unwrap();
+            let start_result = self
+                .graph
+                .node_references()
+                .find(|node| *node.1 == *start_weight);
+            if start_result.is_none() {
+                warn!("node with weight {} not found", start_weight);
+                return;
+            }
+            let (start, _) = start_result.unwrap();
+
+            let end_weight = edge.last().unwrap();
+            let end_result = self
+                .graph
+                .node_references()
+                .find(|node| *node.1 == *end_weight);
+            if end_result.is_none() {
+                warn!("node with weight {} not found", end_weight);
+                return;
+            }
+            let (end, _) = end_result.unwrap();
+
+            let edge_find_result = self.graph.find_edge(start, end);
+            if edge_find_result.is_none() {
+                warn!("edge {edge:?} not found");
+                return;
+            }
+
+            let edge_idx = edge_find_result.unwrap();
+            edges_set.insert(edge_idx);
+        });
+
+        Elements::new(nodes_set, edges_set)
     }
 
     fn delete_elements(&mut self, elements: Elements) {
