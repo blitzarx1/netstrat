@@ -5,9 +5,7 @@ use std::{cmp::Ordering, fs::File};
 
 use chrono::{Date, NaiveDateTime, Utc};
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use egui::{
-    plot::LinkedAxisGroup, CentralPanel, ProgressBar, Response, TopBottomPanel, Ui, Widget,
-};
+use egui::{CentralPanel, ProgressBar, Response, TopBottomPanel, Ui, Widget};
 use egui_extras::{Size, StripBuilder};
 use egui_notify::{Anchor, Toasts};
 use poll_promise::Promise;
