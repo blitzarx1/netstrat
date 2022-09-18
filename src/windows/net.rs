@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs::{read_to_string, File};
 use std::io::Write;
 use std::path::Path;
@@ -18,9 +19,9 @@ pub struct Net {
     graph_settings: Settings,
     cone_settings: ConeSettings,
     open_drop_file: OpenDropFile,
-    dot: String,
     visible: bool,
     toasts: Toasts,
+    selected_cycles: HashSet<usize>,
 }
 
 impl Net {
@@ -30,11 +31,11 @@ impl Net {
         Self {
             visible,
             data,
-            dot,
             open_drop_file: Default::default(),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             graph_settings: Default::default(),
             cone_settings: Default::default(),
+            selected_cycles: Default::default(),
         }
     }
 
@@ -44,20 +45,17 @@ impl Net {
 
     fn reset(&mut self) {
         let data = Net::reset_data();
-        self.dot = data.dot();
         self.data = data;
         self.graph_settings = Settings::default();
     }
 
     fn create(&mut self) {
         let data = Data::new(self.graph_settings.clone());
-        self.dot = data.dot();
         self.data = data;
     }
 
     fn diamond_filter(&mut self) {
         self.data.diamond_filter();
-        self.dot = self.data.dot();
     }
 
     fn update_visible(&mut self, visible: bool) {
@@ -80,10 +78,12 @@ impl Net {
         graph_settings: Settings,
         cone_coloring_settings: ConeSettings,
         clicks: ButtonClicks,
+        selected_cycles: HashSet<usize>,
     ) {
         self.update_visible(visible);
         self.update_graph_settings(graph_settings);
         self.update_cone_coloring(cone_coloring_settings);
+        self.handle_selected_cycles(selected_cycles);
         self.handle_clicks(clicks);
         self.handle_opened_file();
     }
@@ -108,60 +108,74 @@ impl Net {
                 return;
             }
 
-            self.dot = dot_data;
             self.data = data.unwrap();
             self.toasts.success("File imported");
         }
     }
 
-    fn handle_clicks(&mut self, clicks: ButtonClicks) {
-        let mut changed = false;
+    fn handle_selected_cycles(&mut self, selected_cycles: HashSet<usize>) {
+        if self.selected_cycles == selected_cycles {
+            return;
+        }
 
+        self.selected_cycles = selected_cycles;
+    }
+
+    fn handle_clicks(&mut self, clicks: ButtonClicks) {
         if clicks.reset {
             info!("resetting graph params");
             self.reset();
-            changed = true;
+            self.trigger_changed_toast();
         }
 
         if clicks.create {
             info!("generatin graph");
             self.create();
-            changed = true;
+            self.trigger_changed_toast();
         }
 
         if clicks.color_cones {
             info!("coloring cones");
             self.color_cone();
-            changed = true;
+            self.trigger_changed_toast();
         }
 
-        if clicks.delete {
+        if clicks.delete_cone {
             info!("deleting cone");
             self.delete_custom_cone();
-            changed = true;
+            self.trigger_changed_toast();
         }
 
         if clicks.diamond_filter {
             info!("applying diamond filter");
             self.diamond_filter();
-            changed = true;
+            self.trigger_changed_toast();
         }
 
         if clicks.color_cycles {
             info!("coloring cycles");
             self.color_cycles();
-            changed = true;
+            self.trigger_changed_toast();
+        }
+
+        if clicks.delete_cycles {
+            self.delete_cycles();
+            self.trigger_changed_toast();
         }
 
         if clicks.export_dot {
             self.export_dot();
         }
+    }
 
-        if changed {
-            self.toasts
-                .success("Graph changed")
-                .set_duration(Some(Duration::from_secs(3)));
-        }
+    fn delete_cycles(&mut self) {
+        self.data.delete_cycles(&self.selected_cycles);
+    }
+
+    fn trigger_changed_toast(&mut self) {
+        self.toasts
+            .success("Graph changed")
+            .set_duration(Some(Duration::from_secs(3)));
     }
 
     fn export_dot(&mut self) {
@@ -179,7 +193,7 @@ impl Net {
                 let abs_path = path.canonicalize().unwrap();
                 debug!("exporting graph to file: {}", abs_path.display());
 
-                if f.write_all(self.dot.as_bytes()).is_err() {
+                if f.write_all(self.data.dot().as_bytes()).is_err() {
                     error!("failed to export graph")
                 }
 
@@ -215,7 +229,7 @@ impl Net {
     }
 
     fn color_custom_cone(&mut self) {
-        self.dot = self.data.dot_with_custom_cone(
+        self.data.color_custom_cone(
             self.cone_settings.node_name.clone(),
             match self.cone_settings.cone_dir.clone() {
                 ConeDir::Minus => Incoming,
@@ -226,7 +240,7 @@ impl Net {
     }
 
     fn delete_custom_cone(&mut self) {
-        self.data.remove_cone(
+        self.data.delete_cone(
             self.cone_settings.node_name.clone(),
             match self.cone_settings.cone_dir.clone() {
                 ConeDir::Minus => Incoming,
@@ -234,19 +248,18 @@ impl Net {
             },
             self.cone_settings.max_steps,
         );
-        self.dot = self.data.dot();
     }
 
     fn color_ini_cones(&mut self) {
-        self.dot = self.data.dot_with_ini_cones();
+        self.data.color_ini_cones();
     }
 
     fn color_fin_cones(&mut self) {
-        self.dot = self.data.dot_with_fin_cones();
+        self.data.color_fin_cones();
     }
 
     fn color_cycles(&mut self) {
-        self.dot = self.data.dot_with_cycles();
+        self.data.color_cycles(&self.selected_cycles);
     }
 }
 
@@ -261,128 +274,166 @@ impl AppWindow for Net {
         let mut visible = self.visible;
         let mut graph_settings = self.graph_settings.clone();
         let mut cone_coloring_settings = self.cone_settings.clone();
-        let mut dot = self.dot.clone();
+        let mut dot = self.data.dot();
+        let mut selected_cycles = self.selected_cycles.clone();
         let mut clicks = ButtonClicks::default();
 
         Window::new("net").open(&mut visible).show(ui.ctx(), |ui| {
-            ui.collapsing("Create", |ui| {
-                ui.add(Slider::new(&mut graph_settings.ini_cnt, 1..=25).text("ini_cnt"));
-                ui.add(Slider::new(&mut graph_settings.fin_cnt, 1..=25).text("fin_cnt"));
-                ui.add(
-                    Slider::new(
-                        &mut graph_settings.total_cnt,
-                        graph_settings.ini_cnt + graph_settings.fin_cnt..=100,
-                    )
-                    .text("total_cnt"),
-                );
-                ui.add(
-                    Slider::new(&mut graph_settings.max_out_degree, 2..=10).text("max_out_degree"),
-                );
-                ui.add_space(10.0);
-                ui.checkbox(&mut graph_settings.no_twin_edges, "No twin edges");
-                ui.add_space(10.0);
-                ui.label("Edge weights");
-                ui.radio_value(
-                    &mut graph_settings.edge_weight_type,
-                    EdgeWeight::Random,
-                    "Random",
-                );
-                ui.horizontal_top(|ui| {
+            ScrollArea::vertical().show(ui, |ui| {
+                ui.collapsing("Create", |ui| {
+                    ui.add(Slider::new(&mut graph_settings.ini_cnt, 1..=25).text("ini_cnt"));
+                    ui.add(Slider::new(&mut graph_settings.fin_cnt, 1..=25).text("fin_cnt"));
+                    ui.add(
+                        Slider::new(
+                            &mut graph_settings.total_cnt,
+                            graph_settings.ini_cnt + graph_settings.fin_cnt..=100,
+                        )
+                        .text("total_cnt"),
+                    );
+                    ui.add(
+                        Slider::new(&mut graph_settings.max_out_degree, 2..=10)
+                            .text("max_out_degree"),
+                    );
+                    ui.add_space(10.0);
+                    ui.checkbox(&mut graph_settings.no_twin_edges, "No twin edges");
+                    ui.add_space(10.0);
+                    ui.label("Edge weights");
                     ui.radio_value(
                         &mut graph_settings.edge_weight_type,
-                        EdgeWeight::Fixed,
-                        "Fixed",
+                        EdgeWeight::Random,
+                        "Random",
                     );
-                    ui.add(Slider::new(&mut graph_settings.edge_weight, 0.0..=1.0));
+                    ui.horizontal_top(|ui| {
+                        ui.radio_value(
+                            &mut graph_settings.edge_weight_type,
+                            EdgeWeight::Fixed,
+                            "Fixed",
+                        );
+                        ui.add(Slider::new(&mut graph_settings.edge_weight, 0.0..=1.0));
+                    });
+                    ui.add_space(10.0);
+                    ui.horizontal_top(|ui| {
+                        if ui.button("create").clicked() {
+                            clicks.create = true;
+                        }
+                        if ui.button("reset").clicked() {
+                            clicks.reset = true;
+                        }
+                    });
                 });
-                ui.add_space(10.0);
-                ui.horizontal_top(|ui| {
-                    if ui.button("create").clicked() {
-                        clicks.create = true;
-                    }
-                    if ui.button("reset").clicked() {
-                        clicks.reset = true;
-                    }
-                });
-            });
 
-            ui.collapsing("Import/Export", |ui| {
-                ui.add(&mut self.open_drop_file);
-                ui.add_space(10.0);
-                if ui.button("export dot").clicked() {
-                    clicks.export_dot = true;
-                };
-            });
-
-            ui.collapsing("Edit", |ui| {
-                if ui.button("diamond filter").clicked() {
-                    clicks.diamond_filter = true;
-                }
-            });
-
-            ui.collapsing("Cones", |ui| {
-                ui.radio_value(
-                    &mut cone_coloring_settings.cone_type,
-                    ConeType::Initial,
-                    "Initial",
-                );
-                ui.add_space(10.0);
-                ui.radio_value(
-                    &mut cone_coloring_settings.cone_type,
-                    ConeType::Final,
-                    "Final",
-                );
-                ui.add_space(10.0);
-                ui.radio_value(
-                    &mut cone_coloring_settings.cone_type,
-                    ConeType::Custom,
-                    "Custom",
-                );
-                ui.add(
-                    TextEdit::singleline(&mut cone_coloring_settings.node_name)
-                        .hint_text("Node name"),
-                );
-                ui.radio_value(
-                    &mut cone_coloring_settings.cone_dir,
-                    ConeDir::Minus,
-                    "Minus",
-                );
-                ui.radio_value(&mut cone_coloring_settings.cone_dir, ConeDir::Plus, "Plus");
-                ui.add(Slider::new(&mut cone_coloring_settings.max_steps, -1..=10).text("Steps"));
-                ui.add_space(10.0);
-                ui.horizontal_top(|ui| {
-                    if ui.button("color").clicked() {
-                        clicks.color_cones = true;
+                ui.collapsing("Import/Export", |ui| {
+                    ui.add(&mut self.open_drop_file);
+                    ui.add_space(10.0);
+                    if ui.button("export dot").clicked() {
+                        clicks.export_dot = true;
                     };
-                    if ui.button("delete").clicked() {
-                        clicks.delete = true;
+                });
+
+                ui.collapsing("Edit", |ui| {
+                    if ui.button("diamond filter").clicked() {
+                        clicks.diamond_filter = true;
                     }
                 });
-            });
 
-            ui.collapsing("Cycles", |ui| {
-                if ui.button("color").clicked() {
-                    clicks.color_cycles = true;
-                };
-            });
+                ui.collapsing("Cones", |ui| {
+                    ui.radio_value(
+                        &mut cone_coloring_settings.cone_type,
+                        ConeType::Initial,
+                        "Initial",
+                    );
+                    ui.add_space(10.0);
+                    ui.radio_value(
+                        &mut cone_coloring_settings.cone_type,
+                        ConeType::Final,
+                        "Final",
+                    );
+                    ui.add_space(10.0);
+                    ui.radio_value(
+                        &mut cone_coloring_settings.cone_type,
+                        ConeType::Custom,
+                        "Custom",
+                    );
+                    ui.add(
+                        TextEdit::singleline(&mut cone_coloring_settings.node_name)
+                            .hint_text("Node name"),
+                    );
+                    ui.radio_value(
+                        &mut cone_coloring_settings.cone_dir,
+                        ConeDir::Minus,
+                        "Minus",
+                    );
+                    ui.radio_value(&mut cone_coloring_settings.cone_dir, ConeDir::Plus, "Plus");
+                    ui.add(
+                        Slider::new(&mut cone_coloring_settings.max_steps, -1..=10).text("Steps"),
+                    );
+                    ui.add_space(10.0);
+                    ui.horizontal_top(|ui| {
+                        if ui.button("color").clicked() {
+                            clicks.color_cones = true;
+                        };
+                        if ui.button("delete").clicked() {
+                            clicks.delete_cone = true;
+                        }
+                    });
+                });
 
-            ui.add_space(10.0);
-            ui.horizontal_top(|ui| {
-                if ui.button("show").clicked() {
-                    open::that(format!(
-                        "https://dreampuf.github.io/GraphvizOnline/#{}",
-                        encode(self.dot.as_str())
-                    ))
-                    .unwrap();
-                }
-            });
-            ui.add_space(10.0);
-            ScrollArea::vertical().show(ui, |ui| ui.text_edit_multiline(&mut dot));
+                ui.collapsing("Cycles", |ui| {
+                    ScrollArea::vertical().show(ui, |ui| {
+                        self.data
+                            .clone()
+                            .cycles()
+                            .iter()
+                            .enumerate()
+                            .for_each(|(i, c)| {
+                                let checked = selected_cycles.contains(&i);
+                                if ui
+                                    .selectable_label(checked, format!("{} steps", c.len()))
+                                    .clicked()
+                                {
+                                    match checked {
+                                        true => selected_cycles.remove(&i),
+                                        false => selected_cycles.insert(i),
+                                    };
+                                };
+                            });
+                    });
+                    ui.horizontal_top(|ui| {
+                        if ui.button("color").clicked() {
+                            clicks.color_cycles = true;
+                        };
+                        if ui.button("delete").clicked() {
+                            clicks.delete_cycles = true;
+                        }
+                    });
+                });
 
-            self.toasts.show(ui.ctx());
+                ui.collapsing("Dot preview", |ui| {
+                    ScrollArea::vertical().show(ui, |ui| ui.text_edit_multiline(&mut dot));
+                });
+
+                ui.add_space(10.0);
+                ui.horizontal_top(|ui| {
+                    if ui.button("show").clicked() {
+                        open::that(format!(
+                            "https://dreampuf.github.io/GraphvizOnline/#{}",
+                            encode(self.data.dot().as_str())
+                        ))
+                        .unwrap();
+                    }
+                });
+
+                self.toasts.show(ui.ctx());
+            });
         });
 
-        self.update(visible, graph_settings, cone_coloring_settings, clicks);
+        self.update(
+            visible,
+            graph_settings,
+            cone_coloring_settings,
+            clicks,
+            selected_cycles,
+        );
     }
 }
 
@@ -428,5 +479,6 @@ struct ButtonClicks {
     color_cones: bool,
     color_cycles: bool,
     export_dot: bool,
-    delete: bool,
+    delete_cone: bool,
+    delete_cycles: bool,
 }
