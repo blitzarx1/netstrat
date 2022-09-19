@@ -230,7 +230,7 @@ impl Net {
 
         if clicks.delete_cone {
             info!("deleting cone");
-            self.delete_custom_cone();
+            self.delete_cone();
             self.trigger_changed_toast();
         }
 
@@ -337,15 +337,19 @@ impl Net {
         )
     }
 
-    fn delete_custom_cone(&mut self) {
-        self.data.delete_cone(
-            self.cone_settings.nodes_names.splitted(),
-            match self.cone_settings.cone_dir.clone() {
-                ConeDir::Minus => Incoming,
-                ConeDir::Plus => Outgoing,
-            },
-            self.cone_settings.max_steps,
-        );
+    fn delete_cone(&mut self) {
+        match self.cone_settings.cone_type {
+            ConeType::Custom => self.data.delete_cone(
+                self.cone_settings.nodes_names.splitted(),
+                match self.cone_settings.cone_dir.clone() {
+                    ConeDir::Minus => Incoming,
+                    ConeDir::Plus => Outgoing,
+                },
+                self.cone_settings.max_steps,
+            ),
+            ConeType::Initial => self.data.delete_initial_cone(),
+            ConeType::Final => self.data.delete_final_cone(),
+        };
     }
 
     fn color_ini_cones(&mut self) {
