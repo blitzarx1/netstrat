@@ -23,6 +23,7 @@ use crate::netstrat::net::EdgeWeight;
 use super::cycle::Cycle;
 use super::elements;
 use super::elements::Elements;
+use super::settings::ConeSettings;
 use super::Settings;
 
 const MAX_DOT_WEIGHT: f64 = 5.0;
@@ -250,25 +251,40 @@ impl Data {
         self.dot = self.color_dot(self.calc_dot(), elements);
     }
 
-    pub fn color_custom_cone(
-        &mut self,
-        roots_weights: Vec<String>,
-        dir: Direction,
-        max_steps: i32,
-    ) {
+    pub fn color_cones(&mut self, cones_settings: Vec<ConeSettings>) {
         let mut elements = Elements::default();
-        roots_weights.iter().for_each(|weight| {
-            let root_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
-            if root_find_result.is_none() {
-                warn!("node with weight {} not found", *weight);
-                return;
-            }
+        cones_settings.iter().for_each(|settings| {
+            settings.roots_weights.iter().for_each(|weight| {
+                let root_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
+                if root_find_result.is_none() {
+                    warn!("node with weight {} not found", *weight);
+                    return;
+                }
 
-            let root = root_find_result.unwrap();
-            elements.union(&self.get_cone_elements(root.0, dir, max_steps))
+                let root = root_find_result.unwrap();
+                elements.union(&self.get_cone_elements(root.0, settings.dir, settings.max_steps))
+            });
         });
 
         self.dot = self.color_dot(self.calc_dot(), elements);
+    }
+
+    pub fn delete_cones(&mut self, cones_settings: Vec<ConeSettings>) {
+        let mut elements = Elements::default();
+        cones_settings.iter().for_each(|settings| {
+            settings.roots_weights.iter().for_each(|weight| {
+                let root_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
+                if root_find_result.is_none() {
+                    warn!("node with weight {} not found", *weight);
+                    return;
+                }
+
+                let (root_idx, _) = root_find_result.unwrap();
+                elements.union(&self.get_cone_elements(root_idx, settings.dir, settings.max_steps))
+            });
+        });
+
+        self.delete_elements(elements)
     }
 
     pub fn color_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
@@ -339,22 +355,6 @@ impl Data {
         self.fin_set
             .iter()
             .for_each(|node_idx| elements.union(&self.get_cone_elements(*node_idx, Incoming, -1)));
-
-        self.delete_elements(elements)
-    }
-
-    pub fn delete_cone(&mut self, roots_weights: Vec<String>, dir: Direction, max_steps: i32) {
-        let mut elements = Elements::default();
-        roots_weights.iter().for_each(|weight| {
-            let root_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
-            if root_find_result.is_none() {
-                warn!("node with weight {} not found", *weight);
-                return;
-            }
-
-            let (root_idx, _) = root_find_result.unwrap();
-            elements.union(&self.get_cone_elements(root_idx, dir, max_steps))
-        });
 
         self.delete_elements(elements)
     }
