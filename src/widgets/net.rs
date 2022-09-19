@@ -397,7 +397,10 @@ impl Widget for &mut Net {
                     EdgeWeight::Fixed,
                     "Fixed",
                 );
-                ui.add(Slider::new(&mut graph_settings.edge_weight, 0.0..=1.0));
+                ui.add_enabled(
+                    graph_settings.edge_weight_type == EdgeWeight::Fixed,
+                    Slider::new(&mut graph_settings.edge_weight, 0.0..=1.0),
+                );
             });
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
@@ -441,17 +444,21 @@ impl Widget for &mut Net {
 
         ui.collapsing("Cones", |ui| {
             ui.radio_value(&mut cone_settings.cone_type, ConeType::Initial, "Initial");
-            ui.add_space(10.0);
             ui.radio_value(&mut cone_settings.cone_type, ConeType::Final, "Final");
-            ui.add_space(10.0);
             ui.radio_value(&mut cone_settings.cone_type, ConeType::Custom, "Custom");
-            ui.add(
-                TextEdit::singleline(&mut cone_settings.nodes_names.input)
-                    .hint_text("ini_1, 5, 10"),
-            );
-            ui.radio_value(&mut cone_settings.cone_dir, ConeDir::Minus, "Minus");
-            ui.radio_value(&mut cone_settings.cone_dir, ConeDir::Plus, "Plus");
-            ui.add(Slider::new(&mut cone_settings.max_steps, -1..=10).text("Steps"));
+            ui.add_enabled_ui(cone_settings.cone_type == ConeType::Custom, |ui| {
+                ScrollArea::vertical()
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.add(
+                            TextEdit::singleline(&mut cone_settings.nodes_names.input)
+                                .hint_text("ini_1, 5, 10"),
+                        );
+                        ui.radio_value(&mut cone_settings.cone_dir, ConeDir::Minus, "Minus");
+                        ui.radio_value(&mut cone_settings.cone_dir, ConeDir::Plus, "Plus");
+                        ui.add(Slider::new(&mut cone_settings.max_steps, -1..=10).text("Steps"));
+                    });
+            });
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
                 if ui.button("color").clicked() {
@@ -465,25 +472,27 @@ impl Widget for &mut Net {
 
         ui.collapsing("Cycles", |ui| {
             ui.label("Cycles which are reachable from ini nodes");
-            ScrollArea::vertical().show(ui, |ui| {
-                self.data
-                    .clone()
-                    .cycles()
-                    .iter()
-                    .enumerate()
-                    .for_each(|(i, c)| {
-                        let checked = selected_cycles.contains(&i);
-                        if ui
-                            .selectable_label(checked, format!("{} steps", c.len()))
-                            .clicked()
-                        {
-                            match checked {
-                                true => selected_cycles.remove(&i),
-                                false => selected_cycles.insert(i),
+            ScrollArea::vertical()
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    self.data
+                        .clone()
+                        .cycles()
+                        .iter()
+                        .enumerate()
+                        .for_each(|(i, c)| {
+                            let checked = selected_cycles.contains(&i);
+                            if ui
+                                .selectable_label(checked, format!("{} steps", c.len()))
+                                .clicked()
+                            {
+                                match checked {
+                                    true => selected_cycles.remove(&i),
+                                    false => selected_cycles.insert(i),
+                                };
                             };
-                        };
-                    });
-            });
+                        });
+                });
             ui.horizontal_top(|ui| {
                 if ui.button("color").clicked() {
                     clicks.color_cycles = true;
@@ -495,7 +504,9 @@ impl Widget for &mut Net {
         });
 
         ui.collapsing("Dot preview", |ui| {
-            ScrollArea::vertical().show(ui, |ui| ui.text_edit_multiline(&mut dot));
+            ScrollArea::vertical()
+                .auto_shrink([false, true])
+                .show(ui, |ui| ui.text_edit_multiline(&mut dot));
         });
 
         ui.add_space(10.0);
