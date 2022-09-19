@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use egui::{Response, ScrollArea, Slider, TextEdit, Ui, Widget, Button};
+use egui::{Button, Response, ScrollArea, Slider, TextEdit, Ui, Widget};
 use egui_notify::{Anchor, Toasts};
 use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
@@ -280,6 +280,7 @@ impl Net {
 
     fn delete_cycles(&mut self) {
         self.data.delete_cycles(&self.selected_cycles);
+        self.selected_cycles = Default::default();
     }
 
     fn trigger_changed_toast(&mut self) {
@@ -356,6 +357,7 @@ impl Net {
             ConeType::Initial => self.data.delete_initial_cone(),
             ConeType::Final => self.data.delete_final_cone(),
         };
+        self.cone_settings = Default::default();
     }
 
     fn color_cycles(&mut self) {
@@ -479,7 +481,6 @@ impl Widget for &mut Net {
                         }
                     });
                 });
-
             });
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
