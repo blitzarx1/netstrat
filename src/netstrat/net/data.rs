@@ -325,6 +325,24 @@ impl Data {
         self.delete_elements(elements);
     }
 
+    pub fn delete_initial_cone(&mut self) {
+        let mut elements = Elements::default();
+        self.ini_set
+            .iter()
+            .for_each(|node_idx| elements.union(&self.get_cone_elements(*node_idx, Outgoing, -1)));
+
+        self.delete_elements(elements)
+    }
+
+    pub fn delete_final_cone(&mut self) {
+        let mut elements = Elements::default();
+        self.fin_set
+            .iter()
+            .for_each(|node_idx| elements.union(&self.get_cone_elements(*node_idx, Incoming, -1)));
+
+        self.delete_elements(elements)
+    }
+
     pub fn delete_cone(&mut self, roots_weights: Vec<String>, dir: Direction, max_steps: i32) {
         let mut elements = Elements::default();
         roots_weights.iter().for_each(|weight| {
@@ -334,8 +352,8 @@ impl Data {
                 return;
             }
 
-            let root = root_find_result.unwrap();
-            elements.union(&self.get_cone_elements(root.0, dir, max_steps))
+            let (root_idx, _) = root_find_result.unwrap();
+            elements.union(&self.get_cone_elements(root_idx, dir, max_steps))
         });
 
         self.delete_elements(elements)
@@ -409,6 +427,8 @@ impl Data {
     }
 
     fn delete_elements(&mut self, elements: Elements) {
+        debug!("deleting elements");
+
         if elements.is_empty() {
             return;
         }
@@ -420,14 +440,17 @@ impl Data {
             self.graph.remove_edge(*edge);
         });
 
+        info!("elements deleted");
         self.update();
     }
 
     fn update(&mut self) {
-        self.cycles = self.calc_cycles();
-        self.dot = self.calc_dot();
         self.ini_set = self.collect_ini_set();
         self.fin_set = self.collect_fin_set();
+        self.cycles = self.calc_cycles();
+        self.dot = self.calc_dot();
+
+        info!("graph metadata recalculated");
     }
 
     fn calc_cycles(&self) -> Vec<Cycle> {
