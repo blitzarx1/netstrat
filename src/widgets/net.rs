@@ -4,13 +4,13 @@ use std::io::Write;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use egui::{Response, ScrollArea, Slider, TextEdit, Ui, Widget};
+use egui::{Button, Response, ScrollArea, Slider, TextEdit, Ui, Widget};
 use egui_notify::{Anchor, Toasts};
 use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
-use crate::netstrat::net::{Data, EdgeWeight, Settings};
+use crate::netstrat::net::{ConeSettings, Data, EdgeWeight, Settings};
 use crate::widgets::OpenDropFile;
 
 #[derive(PartialEq, Clone, Default)]
@@ -59,20 +59,32 @@ struct NodesAndEdgeSettings {
 }
 
 #[derive(PartialEq, Clone)]
-struct ConeSettings {
-    nodes_names: NodesInput,
-    cone_dir: ConeDir,
+struct ConeSettingsInputs {
     cone_type: ConeType,
-    max_steps: i32,
+    settings: Vec<ConeInput>,
 }
 
-impl Default for ConeSettings {
+impl Default for ConeSettingsInputs {
     fn default() -> Self {
         Self {
-            cone_dir: ConeDir::Plus,
-            max_steps: -1,
             cone_type: ConeType::Custom,
-            nodes_names: Default::default(),
+            settings: vec![ConeInput::default()],
+        }
+    }
+}
+
+#[derive(PartialEq, Clone, Default)]
+struct ConeInput {
+    nodes_names: NodesInput,
+    cone_settings: ConeSettings,
+}
+
+impl ConeInput {
+    fn prepare_settings(&self) -> ConeSettings {
+        ConeSettings {
+            roots_weights: self.nodes_names.splitted(),
+            dir: self.cone_settings.dir,
+            max_steps: self.cone_settings.max_steps,
         }
     }
 }
@@ -108,7 +120,7 @@ struct ButtonClicks {
 pub struct Net {
     data: Data,
     graph_settings: Settings,
-    cone_settings: ConeSettings,
+    cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
     open_drop_file: OpenDropFile,
     toasts: Toasts,
@@ -157,7 +169,7 @@ impl Net {
     fn update(
         &mut self,
         graph_settings: Settings,
-        cone_coloring_settings: ConeSettings,
+        cone_coloring_settings: ConeSettingsInputs,
         clicks: ButtonClicks,
         selected_cycles: HashSet<usize>,
         nodes_and_edges_settings: NodesAndEdgeSettings,
@@ -224,13 +236,13 @@ impl Net {
 
         if clicks.color_cones {
             info!("coloring cones");
-            self.color_cone();
+            self.color_cones();
             self.trigger_changed_toast();
         }
 
         if clicks.delete_cone {
             info!("deleting cone");
-            self.delete_cone();
+            self.delete_cones();
             self.trigger_changed_toast();
         }
 
@@ -268,6 +280,7 @@ impl Net {
 
     fn delete_cycles(&mut self) {
         self.data.delete_cycles(&self.selected_cycles);
+        self.selected_cycles = Default::default();
     }
 
     fn trigger_changed_toast(&mut self) {
@@ -310,7 +323,7 @@ impl Net {
         }
     }
 
-    fn update_cone_settings(&mut self, cone_settings: ConeSettings) {
+    fn update_cone_settings(&mut self, cone_settings: ConeSettingsInputs) {
         if self.cone_settings == cone_settings {
             return;
         }
@@ -318,46 +331,33 @@ impl Net {
         self.cone_settings = cone_settings;
     }
 
-    fn color_cone(&mut self) {
+    fn color_cones(&mut self) {
         match self.cone_settings.cone_type {
-            ConeType::Custom => self.color_custom_cone(),
-            ConeType::Initial => self.color_ini_cones(),
-            ConeType::Final => self.color_fin_cones(),
+            ConeType::Custom => self.data.color_cones(
+                self.cone_settings
+                    .settings
+                    .iter_mut()
+                    .map(|input| input.prepare_settings())
+                    .collect(),
+            ),
+            ConeType::Initial => self.data.color_ini_cones(),
+            ConeType::Final => self.data.color_fin_cones(),
         }
     }
 
-    fn color_custom_cone(&mut self) {
-        self.data.color_custom_cone(
-            self.cone_settings.nodes_names.splitted(),
-            match self.cone_settings.cone_dir.clone() {
-                ConeDir::Minus => Incoming,
-                ConeDir::Plus => Outgoing,
-            },
-            self.cone_settings.max_steps,
-        )
-    }
-
-    fn delete_cone(&mut self) {
+    fn delete_cones(&mut self) {
         match self.cone_settings.cone_type {
-            ConeType::Custom => self.data.delete_cone(
-                self.cone_settings.nodes_names.splitted(),
-                match self.cone_settings.cone_dir.clone() {
-                    ConeDir::Minus => Incoming,
-                    ConeDir::Plus => Outgoing,
-                },
-                self.cone_settings.max_steps,
+            ConeType::Custom => self.data.delete_cones(
+                self.cone_settings
+                    .settings
+                    .iter_mut()
+                    .map(|input| input.prepare_settings())
+                    .collect(),
             ),
             ConeType::Initial => self.data.delete_initial_cone(),
             ConeType::Final => self.data.delete_final_cone(),
         };
-    }
-
-    fn color_ini_cones(&mut self) {
-        self.data.color_ini_cones();
-    }
-
-    fn color_fin_cones(&mut self) {
-        self.data.color_fin_cones();
+        self.cone_settings = Default::default();
     }
 
     fn color_cycles(&mut self) {
@@ -454,14 +454,33 @@ impl Widget for &mut Net {
                 ScrollArea::vertical()
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
-                        ui.add(
-                            TextEdit::singleline(&mut cone_settings.nodes_names.input)
-                                .hint_text("ini_1, 5, 10"),
-                        );
-                        ui.radio_value(&mut cone_settings.cone_dir, ConeDir::Minus, "Minus");
-                        ui.radio_value(&mut cone_settings.cone_dir, ConeDir::Plus, "Plus");
-                        ui.add(Slider::new(&mut cone_settings.max_steps, -1..=10).text("Steps"));
+                        cone_settings.settings.iter_mut().for_each(|cone_input| {
+                            ui.add_space(5.0);
+                            ui.add(
+                                TextEdit::singleline(&mut cone_input.nodes_names.input)
+                                    .hint_text("ini_1, 5, 10"),
+                            );
+                            ui.radio_value(&mut cone_input.cone_settings.dir, Incoming, "Minus");
+                            ui.radio_value(&mut cone_input.cone_settings.dir, Outgoing, "Plus");
+                            ui.add(
+                                Slider::new(&mut cone_input.cone_settings.max_steps, -1..=10)
+                                    .text("Steps"),
+                            );
+                        });
                     });
+                ui.add_space(10.0);
+                ui.horizontal_top(|ui| {
+                    if ui.button("+").clicked() {
+                        cone_settings.settings.push(ConeInput::default())
+                    };
+                    ui.add_enabled_ui(cone_settings.settings.len() > 1, |ui| {
+                        if ui.button("-").clicked() {
+                            cone_settings
+                                .settings
+                                .remove(cone_settings.settings.len() - 1);
+                        }
+                    });
+                });
             });
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {

@@ -1,3 +1,6 @@
+use petgraph::Direction;
+use Direction::Outgoing;
+
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum EdgeWeight {
     /// Fixed weight
@@ -29,6 +32,23 @@ impl Default for Settings {
             diamond_filter: true,
             edge_weight_type: EdgeWeight::Fixed,
             edge_weight: 1.0,
+        }
+    }
+}
+
+#[derive(PartialEq, Clone)]
+pub struct ConeSettings {
+    pub roots_weights: Vec<String>,
+    pub dir: Direction,
+    pub max_steps: i32,
+}
+
+impl Default for ConeSettings {
+    fn default() -> Self {
+        Self {
+            roots_weights: Default::default(),
+            dir: Outgoing,
+            max_steps: -1,
         }
     }
 }

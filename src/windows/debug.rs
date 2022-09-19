@@ -196,6 +196,7 @@ impl AppWindow for Debug {
 
                 ScrollArea::new([true, true])
                     .stick_to_bottom(true)
+                    .auto_shrink([false, true])
                     .show(ui, |ui| {
                         let mut lines = self.filtered.concat();
                         let mut layouter = |ui: &egui::Ui, string: &str, _: f32| {
