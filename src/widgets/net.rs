@@ -1,3 +1,6 @@
+use graphviz_rust::cmd::{CommandArg, Format};
+use graphviz_rust::printer::PrinterContext;
+use graphviz_rust::{exec, parse};
 use std::collections::HashSet;
 use std::fs::{read_to_string, File};
 use std::io::Write;
@@ -90,19 +93,12 @@ impl ConeInput {
 }
 
 #[derive(PartialEq, Clone)]
-enum ConeDir {
-    /// Go along arrow from head to tail
-    Minus,
-    /// Go along arrow from tail to head
-    Plus,
-}
-
-#[derive(PartialEq, Clone)]
 enum ConeType {
     Custom,
     Initial,
     Final,
 }
+
 
 #[derive(Default)]
 struct ButtonClicks {
@@ -111,6 +107,7 @@ struct ButtonClicks {
     color_cones: bool,
     color_cycles: bool,
     export_dot: bool,
+    export_svg: bool,
     delete_cone: bool,
     delete_cycles: bool,
     color_nodes_and_edges: bool,
@@ -276,6 +273,10 @@ impl Net {
         if clicks.export_dot {
             self.export_dot();
         }
+
+        if clicks.export_svg {
+            self.export_svg();
+        }
     }
 
     fn delete_cycles(&mut self) {
@@ -290,13 +291,27 @@ impl Net {
     }
 
     fn export_dot(&mut self) {
-        let name = format!(
-            "graph_{:?}.dot",
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_millis(),
+        let name = format!("{}.dot", generate_unique_export_name());
+        self.write_to_file(name, self.data.dot().as_bytes())
+    }
+
+    fn export_svg(&mut self) {
+        let name = format!("{}.svg", generate_unique_export_name());
+        let graph_svg = exec(
+            parse(self.data.dot().as_str()).unwrap(),
+            &mut PrinterContext::default(),
+            vec![CommandArg::Format(Format::Svg)],
         );
+        if let Ok(data) = graph_svg {
+            self.write_to_file(name, data.as_bytes());
+            return;
+        }
+
+        error!("failed to create svg: {}", graph_svg.err().unwrap());
+        self.toasts.error("Failed to export to file");
+    }
+
+    fn write_to_file(&mut self, name: String, data: &[u8]) {
         let path = Path::new(name.as_str());
         let f_res = File::create(&path);
         match f_res {
@@ -304,7 +319,7 @@ impl Net {
                 let abs_path = path.canonicalize().unwrap();
                 debug!("exporting graph to file: {}", abs_path.display());
 
-                if f.write_all(self.data.dot().as_bytes()).is_err() {
+                if f.write_all(data).is_err() {
                     error!("failed to export graph")
                 }
 
@@ -420,9 +435,14 @@ impl Widget for &mut Net {
         ui.collapsing("Import/Export", |ui| {
             ui.add(&mut self.open_drop_file);
             ui.add_space(10.0);
-            if ui.button("export dot").clicked() {
-                clicks.export_dot = true;
-            };
+            ui.horizontal_top(|ui| {
+                if ui.button("export dot").clicked() {
+                    clicks.export_dot = true;
+                };
+                if ui.button("export svg").clicked() {
+                    clicks.export_svg = true;
+                }
+            });
         });
 
         ui.collapsing("Nodes and Edges", |ui| {
@@ -535,7 +555,7 @@ impl Widget for &mut Net {
         ui.add_space(10.0);
         let response = ui
             .horizontal_top(|ui| {
-                if ui.button("show").clicked() {
+                if ui.button("Open in Explorer").clicked() {
                     open::that(format!(
                         "https://dreampuf.github.io/GraphvizOnline/#{}",
                         encode(self.data.dot().as_str())
@@ -556,4 +576,14 @@ impl Widget for &mut Net {
 
         response
     }
+}
+
+fn generate_unique_export_name() -> String {
+    format!(
+        "graph_{:?}",
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis(),
+    )
 }

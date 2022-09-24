@@ -3,6 +3,9 @@
 
 <img width="1728" alt="Screen Shot 2022-08-23 at 14 06 58" src="https://user-images.githubusercontent.com/32969427/186132111-9bce80c2-fe13-4208-9d02-2ede064d5ed5.png">
 
+### depedencies
+You need to have [graphviz binary](https://graphviz.org/download/) installed
+
 ### build
 ```bash
 # windows 10
