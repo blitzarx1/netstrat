@@ -1,9 +1,9 @@
-use egui::{
-    Color32, CursorIcon, FontSelection, Rect, Rounding, Sense, Stroke, TextEdit, TextStyle, Widget,
-};
+use egui::{CursorIcon, FontSelection, Sense, TextEdit, TextStyle};
 use tracing::debug;
 
-const HINT: &str = "Drop a file here or click to open a file dialog";
+use super::AppWidget;
+
+const HINT: &str = "Drop a .dot file here or click to open a file dialog";
 
 #[derive(Default)]
 pub struct OpenDropFile {
@@ -30,8 +30,8 @@ impl OpenDropFile {
     }
 }
 
-impl Widget for &mut OpenDropFile {
-    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+impl AppWidget for OpenDropFile {
+    fn show(&mut self, ui: &mut egui::Ui) {
         let mut file_path = "".to_string();
         if let Some(path) = self.file_path.clone() {
             file_path = path;
@@ -92,7 +92,5 @@ impl Widget for &mut OpenDropFile {
         }
 
         self.update(file_path);
-
-        response
     }
 }

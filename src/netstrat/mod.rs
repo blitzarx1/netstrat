@@ -7,3 +7,4 @@ pub mod pages;
 pub mod props;
 pub mod state;
 pub mod thread_pool;
+pub mod image_state;

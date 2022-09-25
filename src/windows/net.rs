@@ -2,7 +2,8 @@ use crate::widgets::Net as NetWidget;
 use egui::{ScrollArea, Ui, Window};
 use tracing::info;
 
-use crate::AppWindow;
+use super::AppWindow;
+use crate::widgets::AppWidget;
 
 pub struct Net {
     visible: bool,
@@ -21,7 +22,7 @@ impl AppWindow for Net {
 
         Window::new("net").open(&mut visible).show(ui.ctx(), |ui| {
             ScrollArea::vertical().show(ui, |ui| {
-                ui.add(&mut self.net);
+                self.net.show(ui);
             })
         });
 

@@ -21,7 +21,6 @@ use crate::netstrat::net::path::Path;
 use crate::netstrat::net::EdgeWeight;
 
 use super::cycle::Cycle;
-use super::elements;
 use super::elements::Elements;
 use super::settings::ConeSettings;
 use super::Settings;
@@ -223,7 +222,7 @@ impl Data {
         Some(data)
     }
 
-    pub fn calc_dot(&self) -> String {
+    fn calc_dot(&self) -> String {
         let dot = Dot::new(&self.graph).to_string();
         if self.settings.edge_weight_type == EdgeWeight::Fixed {
             return dot;
