@@ -1,3 +1,4 @@
+use egui_extras::image::load_svg_bytes;
 use graphviz_rust::cmd::{CommandArg, Format};
 use graphviz_rust::printer::PrinterContext;
 use graphviz_rust::{exec, parse};
@@ -7,13 +8,15 @@ use std::io::Write;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use egui::{Button, Response, ScrollArea, Slider, TextEdit, Ui, Widget};
+use egui::{ScrollArea, Slider, TextEdit, TextureHandle, Ui};
 use egui_notify::{Anchor, Toasts};
 use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
+use crate::netstrat::image_state::ImageState;
 use crate::netstrat::net::{ConeSettings, Data, EdgeWeight, Settings};
+use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
 
 #[derive(PartialEq, Clone, Default)]
@@ -99,8 +102,7 @@ enum ConeType {
     Final,
 }
 
-
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct ButtonClicks {
     reset: bool,
     create: bool,
@@ -120,6 +122,8 @@ pub struct Net {
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
     open_drop_file: OpenDropFile,
+    current_image: ImageState,
+    current_texture: Option<TextureHandle>,
     toasts: Toasts,
     selected_cycles: HashSet<usize>,
 }
@@ -127,15 +131,20 @@ pub struct Net {
 impl Default for Net {
     fn default() -> Self {
         let data = Net::reset_data();
-        Self {
+        let mut s = Self {
             data,
+            current_image: Default::default(),
+            current_texture: None,
             open_drop_file: Default::default(),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             graph_settings: Default::default(),
             cone_settings: Default::default(),
             selected_cycles: Default::default(),
             nodes_and_edges_settings: Default::default(),
-        }
+        };
+
+        s.update_frame();
+        s
     }
 }
 
@@ -175,8 +184,16 @@ impl Net {
         self.update_cone_settings(cone_coloring_settings);
         self.handle_selected_cycles(selected_cycles);
         self.handle_nodes_and_edges_settings(nodes_and_edges_settings);
-        self.handle_clicks(clicks);
+        self.handle_update_clicks(clicks.clone());
         self.handle_opened_file();
+
+        if clicks.export_dot {
+            self.export_dot();
+        }
+
+        if clicks.export_svg {
+            self.export_svg();
+        }
     }
 
     fn handle_nodes_and_edges_settings(&mut self, nodes_and_edges_settings: NodesAndEdgeSettings) {
@@ -207,6 +224,8 @@ impl Net {
 
             self.data = data.unwrap();
             self.toasts.success("File imported");
+
+            self.update_state();
         }
     }
 
@@ -218,70 +237,82 @@ impl Net {
         self.selected_cycles = selected_cycles;
     }
 
-    fn handle_clicks(&mut self, clicks: ButtonClicks) {
+    fn update_state(&mut self) {
+        debug!("updating grah state");
+        self.update_frame();
+        self.trigger_changed_toast();
+    }
+
+    fn handle_update_clicks(&mut self, clicks: ButtonClicks) {
         if clicks.reset {
             info!("resetting graph params");
             self.reset();
-            self.trigger_changed_toast();
         }
 
         if clicks.create {
             info!("generatin graph");
             self.create();
-            self.trigger_changed_toast();
+            self.update_state();
         }
 
         if clicks.color_cones {
             info!("coloring cones");
             self.color_cones();
-            self.trigger_changed_toast();
+            self.update_state();
         }
 
         if clicks.delete_cone {
             info!("deleting cone");
             self.delete_cones();
-            self.trigger_changed_toast();
+            self.update_state();
         }
 
         if clicks.color_cycles {
             info!("coloring cycles");
             self.color_cycles();
-            self.trigger_changed_toast();
+            self.update_state();
         }
 
         if clicks.delete_cycles {
+            info!("deleting cycles");
             self.delete_cycles();
-            self.trigger_changed_toast();
+            self.update_state();
         }
 
         if clicks.delete_nodes_and_edges {
+            info!("deleting nodes and edges");
             self.data.delete_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
-            self.trigger_changed_toast();
+            self.update_state();
         }
 
         if clicks.color_nodes_and_edges {
+            info!("coloring nodes and edges");
             self.data.color_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
-            self.trigger_changed_toast();
-        }
-
-        if clicks.export_dot {
-            self.export_dot();
-        }
-
-        if clicks.export_svg {
-            self.export_svg();
+            self.update_state();
         }
     }
 
     fn delete_cycles(&mut self) {
         self.data.delete_cycles(&self.selected_cycles);
         self.selected_cycles = Default::default();
+    }
+
+    fn update_frame(&mut self) {
+        let graph_svg = exec(
+            parse(self.data.dot().as_str()).unwrap(),
+            &mut PrinterContext::default(),
+            vec![CommandArg::Format(Format::Svg)],
+        )
+        .unwrap();
+
+        let image = load_svg_bytes(graph_svg.as_bytes()).unwrap();
+        self.current_image.update(image);
     }
 
     fn trigger_changed_toast(&mut self) {
@@ -380,8 +411,8 @@ impl Net {
     }
 }
 
-impl Widget for &mut Net {
-    fn ui(self, ui: &mut Ui) -> Response {
+impl AppWidget for Net {
+    fn show(&mut self, ui: &mut Ui) {
         let mut graph_settings = self.graph_settings.clone();
         let mut cone_settings = self.cone_settings.clone();
         let mut dot = self.data.dot();
@@ -433,7 +464,7 @@ impl Widget for &mut Net {
         });
 
         ui.collapsing("Import/Export", |ui| {
-            ui.add(&mut self.open_drop_file);
+            self.open_drop_file.show(ui);
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
                 if ui.button("export dot").clicked() {
@@ -536,6 +567,7 @@ impl Widget for &mut Net {
                             };
                         });
                 });
+
             ui.horizontal_top(|ui| {
                 if ui.button("color").clicked() {
                     clicks.color_cycles = true;
@@ -553,17 +585,26 @@ impl Widget for &mut Net {
         });
 
         ui.add_space(10.0);
-        let response = ui
-            .horizontal_top(|ui| {
-                if ui.button("Open in Explorer").clicked() {
-                    open::that(format!(
-                        "https://dreampuf.github.io/GraphvizOnline/#{}",
-                        encode(self.data.dot().as_str())
-                    ))
-                    .unwrap();
-                }
-            })
-            .response;
+        ui.horizontal_top(|ui| {
+            if ui.button("Open in Explorer").clicked() {
+                open::that(format!(
+                    "https://dreampuf.github.io/GraphvizOnline/#{}",
+                    encode(self.data.dot().as_str())
+                ))
+                .unwrap();
+            }
+        });
+
+        if self.current_image.changed() {
+            self.current_texture = Some(ui.ctx().load_texture(
+                "net",
+                self.current_image.image(),
+                egui::TextureFilter::Linear,
+            ))
+        }
+
+        let texture = self.current_texture.clone().unwrap();
+        ui.add(egui::Image::new(&texture, texture.size_vec2()));
 
         self.toasts.show(ui.ctx());
         self.update(
@@ -573,8 +614,6 @@ impl Widget for &mut Net {
             selected_cycles,
             nodes_and_edges_settings,
         );
-
-        response
     }
 }
 
