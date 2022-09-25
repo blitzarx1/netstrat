@@ -1,4 +1,7 @@
+use std::sync::Mutex;
+
 use crate::widgets::Net as NetWidget;
+use crossbeam::channel::Sender;
 use egui::{ScrollArea, Ui, Window};
 use tracing::info;
 
@@ -31,17 +34,21 @@ impl AppWindow for Net {
 }
 
 impl Net {
-    pub fn new(visible: bool) -> Self {
-        info!("initing window graph");
+    pub fn new(widget_pub: Sender<Mutex<Box<dyn AppWidget>>>, visible: bool) -> Self {
+        info!("initing window net");
         Self {
-            net: NetWidget::default(),
+            net: NetWidget::new(widget_pub),
             visible,
         }
     }
 
     fn update_visible(&mut self, visible: bool) {
         if visible != self.visible {
-            self.visible = visible
+            self.visible = visible;
+            match visible {
+                true => info!("opening net window..."),
+                false => info!("closing net window..."),
+            }
         }
     }
 }

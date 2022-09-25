@@ -1,6 +1,6 @@
 use egui::ColorImage;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ImageState {
     changed: bool,
     image: ColorImage,

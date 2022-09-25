@@ -1,5 +1,5 @@
 use crossbeam::channel::{unbounded, Sender};
-use egui::{Layout, Response, ScrollArea, TextEdit, Widget, WidgetText};
+use egui::{Layout, ScrollArea, TextEdit, WidgetText};
 use poll_promise::Promise;
 use tracing::{debug, error, info};
 
@@ -7,6 +7,8 @@ use crate::{
     netstrat::line_filter_highlight_layout::line_filter_highlight_layout,
     sources::binance::{Client, Info, Symbol},
 };
+
+use super::AppWidget;
 
 #[derive(Default)]
 struct FilterProps {
@@ -112,8 +114,8 @@ impl Symbols {
     }
 }
 
-impl Widget for &mut Symbols {
-    fn ui(self, ui: &mut egui::Ui) -> Response {
+impl AppWidget for Symbols {
+    fn show(&mut self, ui: &mut egui::Ui) {
         let mut filter_value = self.filter.value.clone();
         let mut active_only = self.filter.active_only;
         let mut selected_symbol = self.selected_symbol.clone();
@@ -130,67 +132,62 @@ impl Widget for &mut Symbols {
         }
 
         if self.loading {
-            return ui
-                .centered_and_justified(|ui| {
-                    ui.spinner();
-                })
-                .response;
+            ui.centered_and_justified(|ui| {
+                ui.spinner();
+            });
+            return;
         }
 
-        let resp = ui
-            .with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
-                ui.add(
-                    TextEdit::singleline(&mut filter_value)
-                        .hint_text(WidgetText::from("filter symbols").italics()),
+        ui.with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
+            ui.add(
+                TextEdit::singleline(&mut filter_value)
+                    .hint_text(WidgetText::from("filter symbols").italics()),
+            );
+
+            ui.with_layout(Layout::top_down(egui::Align::RIGHT), |ui| {
+                ui.checkbox(&mut active_only, "active only");
+                ui.label(
+                    WidgetText::from(format!("{}/{}", self.filtered.len(), self.symbols.len()))
+                        .small(),
                 );
+            });
 
-                ui.with_layout(Layout::top_down(egui::Align::RIGHT), |ui| {
-                    ui.checkbox(&mut active_only, "active only");
-                    ui.label(
-                        WidgetText::from(format!("{}/{}", self.filtered.len(), self.symbols.len()))
-                            .small(),
-                    );
-                });
+            ui.add_space(5f32);
 
-                ui.add_space(5f32);
+            ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .max_height(ui.available_height())
+                .show(ui, |ui| {
+                    ui.with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
+                        self.filtered.iter().for_each(|s| {
+                            let label = ui.selectable_label(
+                                s.symbol == selected_symbol,
+                                WidgetText::from(line_filter_highlight_layout(
+                                    ui,
+                                    &s.symbol,
+                                    &self.filter.value,
+                                    !s.active(),
+                                )),
+                            );
 
-                ScrollArea::vertical()
-                    .auto_shrink([false; 2])
-                    .max_height(ui.available_height())
-                    .show(ui, |ui| {
-                        ui.with_layout(Layout::top_down(egui::Align::LEFT), |ui| {
-                            self.filtered.iter().for_each(|s| {
-                                let label = ui.selectable_label(
-                                    s.symbol == selected_symbol,
-                                    WidgetText::from(line_filter_highlight_layout(
-                                        ui,
-                                        &s.symbol,
-                                        &self.filter.value,
-                                        !s.active(),
-                                    )),
-                                );
-
-                                if label.clicked() {
-                                    let send_result = self.symbol_pub.send(s.symbol.clone());
-                                    match send_result {
-                                        Ok(_) => {
-                                            debug!("sent symbol: {}", s.symbol);
-                                        }
-                                        Err(err) => {
-                                            error!("failed to send symbol: {err}");
-                                        }
+                            if label.clicked() {
+                                let send_result = self.symbol_pub.send(s.symbol.clone());
+                                match send_result {
+                                    Ok(_) => {
+                                        debug!("sent symbol: {}", s.symbol);
                                     }
+                                    Err(err) => {
+                                        error!("failed to send symbol: {err}");
+                                    }
+                                }
 
-                                    selected_symbol = s.symbol.clone();
-                                };
-                            });
-                        })
-                    });
-            })
-            .response;
+                                selected_symbol = s.symbol.clone();
+                            };
+                        });
+                    })
+                });
+        });
 
         self.update(filter_value, active_only, selected_symbol);
-
-        resp
     }
 }

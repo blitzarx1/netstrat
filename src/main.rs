@@ -1,14 +1,14 @@
-use std::sync::Mutex;
+use std::{sync::Mutex, time::Duration};
 
-use crossbeam::channel::{unbounded, Sender};
+use crossbeam::channel::{unbounded, Receiver, Sender};
 use eframe::{run_native, App, CreationContext, NativeOptions};
 use egui::{Align, CentralPanel, Context, Layout, TopBottomPanel};
 
-use tracing::{info, Level};
+use tracing::{debug, info, Level};
 use tracing_subscriber::EnvFilter;
 
 use crate::windows::{BuffWriter, Net};
-use widgets::Theme;
+use widgets::{AppWidget, Theme};
 use windows::{AppWindow, Debug, SymbolsGraph};
 
 mod netstrat;
@@ -19,6 +19,8 @@ mod windows;
 
 struct TemplateApp {
     windows: Vec<Box<dyn AppWindow>>,
+    active_widget: Option<Mutex<Box<dyn AppWidget>>>,
+    active_widget_sub: Receiver<Mutex<Box<dyn AppWidget>>>,
     theme: Theme,
 }
 
@@ -57,14 +59,27 @@ impl TemplateApp {
         init_logger(buffer_s);
 
         info!("starting app");
-        let (s, r) = unbounded();
+        let (widget_s, widget_r) = unbounded();
         Self {
             windows: vec![
-                Box::new(Net::new(true)),
-                Box::new(SymbolsGraph::new(s, r, false)),
+                Box::new(Net::new(widget_s, false)),
+                Box::new(SymbolsGraph::new(false)),
                 Box::new(Debug::new(buffer_r, false)),
             ],
+            active_widget: None,
+            active_widget_sub: widget_r,
             theme: Theme::new(),
+        }
+    }
+
+    fn check_widget_event(&mut self) {
+        let widget_wrapped = self
+            .active_widget_sub
+            .recv_timeout(Duration::from_millis(1));
+        if let Ok(widget) = widget_wrapped {
+            debug!("got active widget event");
+
+            self.active_widget = Some(widget);
         }
     }
 }
@@ -82,8 +97,14 @@ impl App for TemplateApp {
         });
 
         CentralPanel::default().show(ctx, |ui| {
+            if let Some(w) = &mut self.active_widget {
+                w.get_mut().unwrap().show(ui);
+            }
+
             self.windows.iter_mut().for_each(|w| w.show(ui));
         });
+
+        self.check_widget_event();
     }
 }
 

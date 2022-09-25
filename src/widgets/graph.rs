@@ -5,8 +5,7 @@ use std::{cmp::Ordering, fs::File};
 
 use chrono::{Date, NaiveDateTime, Utc};
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use egui::{CentralPanel, ProgressBar, Response, TopBottomPanel, Ui, Widget};
-use egui_extras::{Size, StripBuilder};
+use egui::{CentralPanel, ProgressBar, TopBottomPanel, Ui};
 use egui_notify::{Anchor, Toasts};
 use poll_promise::Promise;
 use tracing::{debug, error, info, trace};
@@ -23,6 +22,7 @@ use crate::{
 };
 
 use super::candles::Candles;
+use super::AppWidget;
 
 #[derive(Default)]
 struct ExportState {
@@ -326,14 +326,15 @@ impl Graph {
     }
 }
 
-impl Widget for &mut Graph {
-    fn ui(self, ui: &mut Ui) -> Response {
+impl AppWidget for Graph {
+    fn show(&mut self, ui: &mut Ui) {
         self.update();
 
         self.draw_data(ui);
 
         if self.symbol.is_empty() {
-            return ui.label("Select a symbol");
+            ui.label("Select a symbol");
+            return;
         }
 
         self.toasts.show(ui.ctx());
@@ -351,11 +352,9 @@ impl Widget for &mut Graph {
             });
         });
 
-        CentralPanel::default()
-            .show_inside(ui, |ui| {
-                self.time_range_window.show(ui);
-                ui.add(&mut self.candles);
-            })
-            .response
+        CentralPanel::default().show_inside(ui, |ui| {
+            self.time_range_window.show(ui);
+            ui.add(&mut self.candles);
+        });
     }
 }
