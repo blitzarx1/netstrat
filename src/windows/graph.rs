@@ -1,11 +1,11 @@
-use crossbeam::channel::{Receiver, Sender};
+use crossbeam::channel::unbounded;
 use eframe::emath::Align;
 use egui::{Layout, Ui, Window};
 use egui_extras::{Size, StripBuilder};
 use tracing::info;
 
 use super::window::AppWindow;
-use crate::widgets::{Graph, Symbols};
+use crate::widgets::{AppWidget, Graph, Symbols};
 
 pub struct SymbolsGraph {
     graph: Graph,
@@ -33,10 +33,10 @@ impl AppWindow for SymbolsGraph {
                         .size(Size::remainder())
                         .horizontal(|mut strip| {
                             strip.cell(|ui| {
-                                ui.add(&mut self.symbols);
+                                self.symbols.show(ui);
                             });
                             strip.cell(|ui| {
-                                ui.add(&mut self.graph);
+                                self.graph.show(ui);
                             });
                         })
                 })
@@ -47,8 +47,10 @@ impl AppWindow for SymbolsGraph {
 }
 
 impl SymbolsGraph {
-    pub fn new(s: Sender<String>, r: Receiver<String>, visible: bool) -> Self {
+    pub fn new(visible: bool) -> Self {
         info!("initing window graph");
+
+        let (s, r) = unbounded();
         Self {
             graph: Graph::new(r),
             symbols: Symbols::new(s),

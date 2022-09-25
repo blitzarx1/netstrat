@@ -1,3 +1,4 @@
+use crossbeam::channel::Sender;
 use egui_extras::image::load_svg_bytes;
 use graphviz_rust::cmd::{CommandArg, Format};
 use graphviz_rust::printer::PrinterContext;
@@ -6,18 +7,20 @@ use std::collections::HashSet;
 use std::fs::{read_to_string, File};
 use std::io::Write;
 use std::path::Path;
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
-use egui::{ScrollArea, Slider, TextEdit, TextureHandle, Ui};
+use egui::{ScrollArea, Slider, TextEdit, Ui};
 use egui_notify::{Anchor, Toasts};
 use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
-use crate::netstrat::image_state::ImageState;
 use crate::netstrat::net::{ConeSettings, Data, EdgeWeight, Settings};
 use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
+
+use super::NetVisualizer;
 
 #[derive(PartialEq, Clone, Default)]
 struct NodesInput {
@@ -122,33 +125,32 @@ pub struct Net {
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
     open_drop_file: OpenDropFile,
-    current_image: ImageState,
-    current_texture: Option<TextureHandle>,
+    net_visualizer: NetVisualizer,
+    widget_pub: Sender<Mutex<Box<dyn AppWidget>>>,
     toasts: Toasts,
     selected_cycles: HashSet<usize>,
 }
 
-impl Default for Net {
-    fn default() -> Self {
+impl Net {
+    pub fn new(widget_pub: Sender<Mutex<Box<dyn AppWidget>>>) -> Self {
         let data = Net::reset_data();
         let mut s = Self {
             data,
-            current_image: Default::default(),
-            current_texture: None,
+            widget_pub,
             open_drop_file: Default::default(),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             graph_settings: Default::default(),
+            net_visualizer: NetVisualizer::default(),
             cone_settings: Default::default(),
             selected_cycles: Default::default(),
             nodes_and_edges_settings: Default::default(),
         };
 
         s.update_frame();
+
         s
     }
-}
 
-impl Net {
     fn reset_data() -> Data {
         Data::new(Settings::default())
     }
@@ -312,7 +314,7 @@ impl Net {
         .unwrap();
 
         let image = load_svg_bytes(graph_svg.as_bytes()).unwrap();
-        self.current_image.update(image);
+        self.net_visualizer.update_image(image);
     }
 
     fn trigger_changed_toast(&mut self) {
@@ -595,16 +597,11 @@ impl AppWidget for Net {
             }
         });
 
-        if self.current_image.changed() {
-            self.current_texture = Some(ui.ctx().load_texture(
-                "net",
-                self.current_image.image(),
-                egui::TextureFilter::Linear,
-            ))
+        if self.net_visualizer.changed() {
+            self.widget_pub
+                .send(Mutex::new(Box::new(self.net_visualizer.clone())))
+                .unwrap();
         }
-
-        let texture = self.current_texture.clone().unwrap();
-        ui.add(egui::Image::new(&texture, texture.size_vec2()));
 
         self.toasts.show(ui.ctx());
         self.update(
