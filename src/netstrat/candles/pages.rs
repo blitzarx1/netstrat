@@ -1,6 +1,6 @@
 use tracing::{debug, error};
 
-use crate::netstrat::bounds::BoundsSet;
+use super::BoundsSet;
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Page(pub i64, pub i64);
@@ -28,18 +28,18 @@ impl Pages {
 
         let mut vals = vec![];
         bounds.vals().iter_mut().for_each(|b| {
-            if b.len() <= limit*step as usize  {
+            if b.len() <= limit * step as usize {
                 debug!("not splitting bounds to pages; bounds: {b:?}; step: {step}");
 
                 vals.push(Page(b.0, b.1));
-                return ;
+                return;
             }
 
             debug!("iterating inside bounds constructing pages: bounds: {b:?}; step: {step}");
 
             let mut page_start = b.0;
             loop {
-                let mut page_end = page_start + (step*limit) as i64;
+                let mut page_end = page_start + (step * limit) as i64;
                 if page_end > b.1 {
                     page_end = b.1;
                 }
@@ -81,7 +81,7 @@ impl Pages {
 
 #[cfg(test)]
 mod pages_tests {
-    use crate::netstrat::bounds::Bounds;
+    use crate::netstrat::candles::Bounds;
 
     use super::*;
 

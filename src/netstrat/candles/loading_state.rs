@@ -1,8 +1,9 @@
 use tracing::debug;
 
-use crate::netstrat::bounds::BoundsSet;
-
-use super::pages::{Page, Pages};
+use super::{
+    pages::{Page, Pages},
+    BoundsSet,
+};
 
 #[derive(Default, Debug, Clone)]
 pub struct LoadingState {
@@ -32,7 +33,7 @@ impl LoadingState {
             self.curr_page = p.clone();
             return Some(p);
         };
-        
+
         None
     }
 

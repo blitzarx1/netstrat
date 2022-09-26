@@ -1,9 +1,10 @@
 use chrono::{Date, DateTime, Duration, NaiveTime, Timelike, Utc};
 
 use crate::{
-    netstrat::bounds::{Bounds, BoundsSet},
     sources::binance::Interval,
 };
+
+use super::{BoundsSet, Bounds};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Props {

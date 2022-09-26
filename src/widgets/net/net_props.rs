@@ -20,46 +20,9 @@ use crate::netstrat::net::{ConeSettings, Data, EdgeWeight, Settings};
 use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
 
+use super::edges_input::EdgesInput;
+use super::nodes_input::NodesInput;
 use super::NetVisualizer;
-
-#[derive(PartialEq, Clone, Default)]
-struct NodesInput {
-    input: String,
-}
-
-impl NodesInput {
-    fn splitted(&self) -> Vec<String> {
-        if self.input.is_empty() {
-            return vec![];
-        }
-        self.input
-            .split(',')
-            .map(|el| el.trim().to_string())
-            .collect()
-    }
-}
-
-#[derive(PartialEq, Clone, Default)]
-struct EdgesInput {
-    input: String,
-}
-
-impl EdgesInput {
-    fn splitted(&self) -> Vec<[String; 2]> {
-        if self.input.is_empty() {
-            return vec![];
-        }
-        self.input
-            .split(',')
-            .map(|el| {
-                let mut splitted = el.split("->");
-                let s = splitted.next().unwrap().trim().to_string();
-                let e = splitted.next().unwrap().trim().to_string();
-                [s, e]
-            })
-            .collect()
-    }
-}
 
 #[derive(PartialEq, Clone, Default)]
 struct NodesAndEdgeSettings {
@@ -119,7 +82,7 @@ struct ButtonClicks {
     delete_nodes_and_edges: bool,
 }
 
-pub struct Net {
+pub struct NetProps {
     data: Data,
     graph_settings: Settings,
     cone_settings: ConeSettingsInputs,
@@ -131,9 +94,9 @@ pub struct Net {
     selected_cycles: HashSet<usize>,
 }
 
-impl Net {
+impl NetProps {
     pub fn new(widget_pub: Sender<Mutex<Box<dyn AppWidget>>>) -> Self {
-        let data = Net::reset_data();
+        let data = NetProps::reset_data();
         let mut s = Self {
             data,
             widget_pub,
@@ -156,7 +119,7 @@ impl Net {
     }
 
     fn reset(&mut self) {
-        let data = Net::reset_data();
+        let data = NetProps::reset_data();
         self.data = data;
         self.graph_settings = Settings::default();
     }
@@ -413,7 +376,7 @@ impl Net {
     }
 }
 
-impl AppWidget for Net {
+impl AppWidget for NetProps {
     fn show(&mut self, ui: &mut Ui) {
         let mut graph_settings = self.graph_settings.clone();
         let mut cone_settings = self.cone_settings.clone();

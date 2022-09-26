@@ -7,8 +7,7 @@ use egui::{
 use tracing::{error, info};
 
 use crate::{
-    netstrat::{bounds::Bounds, data::Data},
-    sources::binance::Kline,
+    sources::binance::Kline, netstrat::candles::{Data, Bounds},
 };
 
 const BOUNDS_SEND_DELAY_MILLIS: i64 = 300;
