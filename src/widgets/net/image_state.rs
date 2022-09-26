@@ -7,13 +7,6 @@ pub struct ImageState {
 }
 
 impl ImageState {
-    pub fn new(image: ColorImage) -> Self {
-        Self {
-            changed: true,
-            image,
-        }
-    }
-
     pub fn update(&mut self, new_image: ColorImage) {
         self.image = new_image;
         self.changed = true;

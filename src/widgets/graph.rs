@@ -10,13 +10,9 @@ use egui_notify::{Anchor, Toasts};
 use poll_promise::Promise;
 use tracing::{debug, error, info, trace};
 
-use crate::netstrat::thread_pool::ThreadPool;
+use crate::netstrat::candles::{Bounds, BoundsSet, Props, State};
+use crate::netstrat::ThreadPool;
 use crate::{
-    netstrat::{
-        bounds::{Bounds, BoundsSet},
-        props::Props,
-        state::State,
-    },
     sources::binance::{Client, Kline},
     windows::{AppWindow, TimeRangeChooser},
 };

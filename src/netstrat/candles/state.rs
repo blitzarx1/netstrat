@@ -1,8 +1,8 @@
 use tracing::{debug, error};
 
-use crate::{netstrat::bounds::BoundsSet, sources::binance::Interval};
+use crate::sources::binance::Interval;
 
-use super::{loading_state::LoadingState, props::Props};
+use super::{loading_state::LoadingState, props::Props, BoundsSet};
 
 #[derive(Default, Debug, Clone)]
 pub struct State {

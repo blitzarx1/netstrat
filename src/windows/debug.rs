@@ -6,7 +6,7 @@ use crossbeam::channel::{unbounded, Receiver, Sender};
 use egui::{ScrollArea, TextEdit, Ui, Window};
 use tracing::{info, trace};
 
-use crate::{netstrat::line_filter_highlight_layout::line_filter_highlight_layout, AppWindow};
+use crate::{netstrat::line_filter_highlight_layout, AppWindow};
 
 pub struct BuffWriter {
     pub publisher: Sender<Vec<u8>>,

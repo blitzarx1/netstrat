@@ -1,7 +1,8 @@
 use egui::{ColorImage, ScrollArea, TextureHandle};
 
-use super::AppWidget;
-use crate::netstrat::image_state::ImageState;
+use crate::widgets::AppWidget;
+
+use super::image_state::ImageState;
 
 #[derive(Default, Clone)]
 pub struct NetVisualizer {

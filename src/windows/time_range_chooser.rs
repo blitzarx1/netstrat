@@ -1,14 +1,10 @@
-use chrono::prelude::*;
-use chrono::{Date, NaiveTime, Utc};
+use chrono::{Date, NaiveTime, Timelike, Utc};
 use crossbeam::channel::{Receiver, Sender};
 use egui::{Ui, Window};
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    netstrat::{
-        bounds::{Bounds, BoundsSet},
-        props::Props,
-    },
+    netstrat::candles::{Bounds, BoundsSet, Props},
     sources::binance::Interval,
     widgets::TimeInput,
 };
