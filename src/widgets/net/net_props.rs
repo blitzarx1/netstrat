@@ -212,6 +212,7 @@ impl NetProps {
         if clicks.reset {
             info!("resetting graph params");
             self.reset();
+            self.update_state();
         }
 
         if clicks.create {
