@@ -12,13 +12,13 @@ use tracing::{debug, error, info, trace};
 
 use crate::netstrat::candles::{Bounds, BoundsSet, Props, State};
 use crate::netstrat::ThreadPool;
+use crate::widgets::AppWidget;
 use crate::{
     sources::binance::{Client, Kline},
     windows::{AppWindow, TimeRangeChooser},
 };
 
 use super::candles::Candles;
-use super::AppWidget;
 
 #[derive(Default)]
 struct ExportState {

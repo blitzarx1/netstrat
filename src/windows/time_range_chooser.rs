@@ -5,8 +5,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     netstrat::candles::{Bounds, BoundsSet, Props},
-    sources::binance::Interval,
-    widgets::TimeInput,
+    sources::binance::Interval, widgets::candles::TimeInput,
 };
 
 use super::AppWindow;

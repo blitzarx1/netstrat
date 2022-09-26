@@ -4,8 +4,12 @@ use egui::{Layout, Ui, Window};
 use egui_extras::{Size, StripBuilder};
 use tracing::info;
 
+use crate::widgets::{
+    candles::{Graph, Symbols},
+    AppWidget,
+};
+
 use super::window::AppWindow;
-use crate::widgets::{AppWidget, Graph, Symbols};
 
 pub struct SymbolsGraph {
     graph: Graph,
