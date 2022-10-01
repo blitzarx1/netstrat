@@ -10,25 +10,26 @@ use egui_notify::{Anchor, Toasts};
 use poll_promise::Promise;
 use tracing::{debug, error, info, trace};
 
-use crate::netstrat::candles::{Bounds, BoundsSet, Props, State};
 use crate::netstrat::ThreadPool;
+use crate::sources::binance::{Client, Kline};
 use crate::widgets::AppWidget;
-use crate::{
-    sources::binance::{Client, Kline},
-    windows::{AppWindow, TimeRangeChooser},
-};
+use crate::widgets::candles::bounds::BoundsSet;
 
-use super::candles::Candles;
+use super::bounds::Bounds;
+use super::drawer::Drawer;
+use super::TimeRange;
+use super::state::State;
+use super::time_range_settings::TimeRangeSettings;
 
 #[derive(Default)]
 struct ExportState {
     triggered: bool,
 }
 
-pub struct Graph {
-    time_range_window: Box<dyn AppWindow>,
+pub struct Props {
+    time_range: Box<dyn AppWidget>,
 
-    candles: Candles,
+    candles: Drawer,
     symbol: String,
 
     max_frame_pages: usize,
@@ -42,15 +43,16 @@ pub struct Graph {
 
     klines_pub: Sender<Vec<Kline>>,
     klines_sub: Receiver<Vec<Kline>>,
+    drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>,
     symbol_pub: Sender<String>,
     symbol_sub: Receiver<String>,
-    props_pub: Sender<Props>,
-    props_sub: Receiver<Props>,
-    export_sub: Receiver<Props>,
+    props_pub: Sender<TimeRangeSettings>,
+    props_sub: Receiver<TimeRangeSettings>,
+    export_sub: Receiver<TimeRangeSettings>,
     drag_sub: Receiver<Bounds>,
 }
 
-impl Default for Graph {
+impl Default for Props {
     fn default() -> Self {
         let max_frame_pages = 50;
         let toasts = Toasts::default().with_anchor(Anchor::TopRight);
@@ -61,24 +63,24 @@ impl Default for Graph {
         let (s_export, r_export) = unbounded();
         let (s_klines, r_klines) = unbounded();
         let (s_bounds, r_bounds) = unbounded();
+        let (s_drawer, _) = unbounded();
 
-        let time_range_window = Box::new(TimeRangeChooser::new(
-            false,
+        let time_range_chooser = Box::new(TimeRange::new(
             r_symbols.clone(),
             s_props,
             r_props1,
             s_export,
-            Props::default(),
+            TimeRangeSettings::default(),
         ));
 
-        let candles = Candles::new(s_bounds);
+        let candles = Drawer::new(s_bounds);
 
         let pool = ThreadPool::new(100);
 
         Self {
             max_frame_pages,
 
-            time_range_window,
+            time_range: time_range_chooser,
 
             candles,
 
@@ -88,6 +90,7 @@ impl Default for Graph {
 
             symbol_sub: r_symbols,
             symbol_pub: s_symbols,
+            drawer_pub: s_drawer,
             props_sub: r_props,
             props_pub: s_props1,
             export_sub: r_export,
@@ -103,11 +106,15 @@ impl Default for Graph {
     }
 }
 
-impl Graph {
-    pub fn new(symbol_sub: Receiver<String>) -> Self {
+impl Props {
+    pub fn new(
+        symbol_sub: Receiver<String>,
+        drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>,
+    ) -> Self {
         info!("initing widget graph");
         Self {
             symbol_sub,
+            drawer_pub,
             ..Default::default()
         }
     }
@@ -123,7 +130,7 @@ impl Graph {
         self.data_changed = true;
     }
 
-    fn start_download(&mut self, props: Props, reset_state: bool) {
+    fn start_download(&mut self, props: TimeRangeSettings, reset_state: bool) {
         if reset_state {
             self.state = State::default();
         }
@@ -276,7 +283,7 @@ impl Graph {
 
             self.candles.clear();
 
-            self.start_download(Props::default(), true);
+            self.start_download(TimeRangeSettings::default(), true);
         }
 
         let show_wrapped = self.props_sub.recv_timeout(Duration::from_millis(1));
@@ -317,12 +324,15 @@ impl Graph {
     fn draw_data(&mut self, ui: &Ui) {
         if self.data_changed {
             ui.ctx().request_repaint();
+            self.drawer_pub
+                .send(Mutex::new(Box::new(self.candles.clone())))
+                .unwrap();
             self.data_changed = false;
         }
     }
 }
 
-impl AppWidget for Graph {
+impl AppWidget for Props {
     fn show(&mut self, ui: &mut Ui) {
         self.update();
 
@@ -333,11 +343,8 @@ impl AppWidget for Graph {
             return;
         }
 
-        self.toasts.show(ui.ctx());
-
         TopBottomPanel::top("graph_toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
-                self.time_range_window.toggle_btn(ui);
                 if self.state.loading.progress() < 1.0 && !self.state.loading.has_error {
                     ui.add(
                         ProgressBar::new(self.state.loading.progress())
@@ -349,8 +356,9 @@ impl AppWidget for Graph {
         });
 
         CentralPanel::default().show_inside(ui, |ui| {
-            self.time_range_window.show(ui);
-            ui.add(&mut self.candles);
+            self.time_range.show(ui);
         });
+
+        self.toasts.show(ui.ctx());
     }
 }

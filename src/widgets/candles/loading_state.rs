@@ -1,8 +1,7 @@
 use tracing::debug;
 
 use super::{
-    pages::{Page, Pages},
-    BoundsSet,
+    pages::{Page, Pages}, bounds::BoundsSet,
 };
 
 #[derive(Default, Debug, Clone)]

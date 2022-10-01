@@ -1,8 +1,16 @@
+mod button_clicks;
+mod cones;
+mod cycle;
+mod data;
+mod drawer;
 mod edges_input;
+mod elements;
 mod image_state;
-mod net_props;
-mod net_visualizer;
+mod nodes_and_edges;
 mod nodes_input;
+mod path;
+mod props;
+mod settings;
 
-pub use self::net_props::NetProps;
-pub use self::net_visualizer::NetVisualizer;
+pub use self::drawer::Drawer;
+pub use self::props::Props;

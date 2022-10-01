@@ -1,41 +1,42 @@
 use chrono::{Date, NaiveTime, Timelike, Utc};
 use crossbeam::channel::{Receiver, Sender};
-use egui::{Ui, Window};
+use egui::{ScrollArea, Ui};
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    netstrat::candles::{Bounds, BoundsSet, Props},
-    sources::binance::Interval, widgets::candles::TimeInput,
+    sources::binance::Interval,
+    widgets::{candles::TimeInput, AppWidget},
 };
 
-use super::AppWindow;
+use super::{
+    bounds::{Bounds, BoundsSet},
+    time_range_settings::TimeRangeSettings,
+};
 
-pub struct TimeRangeChooser {
+pub struct TimeRange {
     time_start_input: TimeInput,
     time_end_input: TimeInput,
     interval: Interval,
 
     symbol: String,
     valid: bool,
-    visible: bool,
     date_start: Date<Utc>,
     date_end: Date<Utc>,
 
     symbol_sub: Receiver<String>,
-    props_pub: Sender<Props>,
-    props_sub: Receiver<Props>,
-    export_pub: Sender<Props>,
+    props_pub: Sender<TimeRangeSettings>,
+    props_sub: Receiver<TimeRangeSettings>,
+    export_pub: Sender<TimeRangeSettings>,
 }
 
 // TODO: add and use update function like in other windows
-impl TimeRangeChooser {
+impl TimeRange {
     pub fn new(
-        visible: bool,
         symbol_sub: Receiver<String>,
-        props_pub: Sender<Props>,
-        props_sub: Receiver<Props>,
-        export_pub: Sender<Props>,
-        props: Props,
+        props_pub: Sender<TimeRangeSettings>,
+        props_sub: Receiver<TimeRangeSettings>,
+        export_pub: Sender<TimeRangeSettings>,
+        props: TimeRangeSettings,
     ) -> Self {
         info!("initing window time_range_chooser");
 
@@ -43,7 +44,6 @@ impl TimeRangeChooser {
             symbol: String::new(),
             symbol_sub,
             valid: true,
-            visible,
             props_pub,
             props_sub,
             export_pub,
@@ -64,14 +64,14 @@ impl TimeRangeChooser {
     }
 }
 
-impl TimeRangeChooser {
+impl TimeRange {
     fn parse_props(
         time_start_opt: Option<NaiveTime>,
         time_end_opt: Option<NaiveTime>,
         date_start: Date<Utc>,
         date_end: Date<Utc>,
         interval: Interval,
-    ) -> Option<Props> {
+    ) -> Option<TimeRangeSettings> {
         if time_start_opt.is_none() || time_end_opt.is_none() {
             return None;
         }
@@ -79,7 +79,7 @@ impl TimeRangeChooser {
         let time_start = time_start_opt.unwrap();
         let time_end = time_end_opt.unwrap();
 
-        let mut p = Props {
+        let mut p = TimeRangeSettings {
             date_start,
             date_end,
             time_start,
@@ -97,7 +97,7 @@ impl TimeRangeChooser {
         Some(p)
     }
 
-    fn unpack_props(&mut self, p: &Props) {
+    fn unpack_props(&mut self, p: &TimeRangeSettings) {
         debug!("unpacking props...");
 
         self.date_start = p.date_start;
@@ -112,16 +112,8 @@ impl TimeRangeChooser {
 
         debug!("props unpacked and applied");
     }
-}
 
-impl AppWindow for TimeRangeChooser {
-    fn toggle_btn(&mut self, ui: &mut Ui) {
-        if ui.button("Props").clicked() {
-            self.visible = !self.visible;
-        }
-    }
-
-    fn show(&mut self, ui: &mut Ui) {
+    fn handle_events(&mut self) {
         let symbol_wrapped = self
             .symbol_sub
             .recv_timeout(std::time::Duration::from_millis(1));
@@ -139,12 +131,16 @@ impl AppWindow for TimeRangeChooser {
             debug!("received props: {props:?}");
             self.unpack_props(&props);
         }
+    }
+}
 
-        Window::new(self.symbol.to_string())
-            .open(&mut self.visible)
-            .drag_bounds(ui.max_rect())
-            .resizable(false)
-            .show(ui.ctx(), |ui| {
+impl AppWidget for TimeRange {
+    fn show(&mut self, ui: &mut Ui) {
+        self.handle_events();
+
+        ScrollArea::vertical()
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
                 ui.collapsing("Time Period", |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.add(
@@ -183,7 +179,7 @@ impl AppWindow for TimeRangeChooser {
 
                 ui.horizontal(|ui| {
                     if ui.button("show").clicked() {
-                        let props = TimeRangeChooser::parse_props(
+                        let props = TimeRange::parse_props(
                             self.time_start_input.get_time(),
                             self.time_end_input.get_time(),
                             self.date_start,
@@ -215,7 +211,7 @@ impl AppWindow for TimeRangeChooser {
                     }
 
                     if ui.button("export").clicked() {
-                        let props = TimeRangeChooser::parse_props(
+                        let props = TimeRange::parse_props(
                             self.time_start_input.get_time(),
                             self.time_end_input.get_time(),
                             self.date_start,
@@ -246,12 +242,12 @@ impl AppWindow for TimeRangeChooser {
                         }
                     };
                 });
-
-                if !self.valid {
-                    let msg = "invalid time format or start > end";
-                    ui.label(msg);
-                    warn!(msg);
-                }
             });
+
+        if !self.valid {
+            let msg = "invalid time format or start > end";
+            ui.label(msg);
+            warn!(msg);
+        }
     }
 }

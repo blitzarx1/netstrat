@@ -1,18 +1,20 @@
-use crossbeam::channel::unbounded;
+use std::sync::Mutex;
+
+use crossbeam::channel::{unbounded, Sender};
 use eframe::emath::Align;
 use egui::{Layout, Ui, Window};
 use egui_extras::{Size, StripBuilder};
 use tracing::info;
 
 use crate::widgets::{
-    candles::{Graph, Symbols},
+    candles::{Props, Symbols},
     AppWidget,
 };
 
 use super::window::AppWindow;
 
 pub struct SymbolsGraph {
-    graph: Graph,
+    graph: Props,
     symbols: Symbols,
     visible: bool,
 }
@@ -28,8 +30,6 @@ impl AppWindow for SymbolsGraph {
         let mut visible = self.visible;
         Window::new("graph")
             .open(&mut visible)
-            .min_height(500.0)
-            .min_width(700.0)
             .show(ui.ctx(), |ui| {
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     StripBuilder::new(ui)
@@ -51,12 +51,12 @@ impl AppWindow for SymbolsGraph {
 }
 
 impl SymbolsGraph {
-    pub fn new(visible: bool) -> Self {
+    pub fn new(drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>, visible: bool) -> Self {
         info!("initing window graph");
 
         let (s, r) = unbounded();
         Self {
-            graph: Graph::new(r),
+            graph: Props::new(r, drawer_pub),
             symbols: Symbols::new(s),
             visible,
         }

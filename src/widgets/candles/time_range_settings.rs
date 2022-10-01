@@ -1,13 +1,11 @@
 use chrono::{Date, DateTime, Duration, NaiveTime, Timelike, Utc};
 
-use crate::{
-    sources::binance::Interval,
-};
+use crate::sources::binance::Interval;
 
-use super::{BoundsSet, Bounds};
+use super::bounds::{BoundsSet, Bounds};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Props {
+pub struct TimeRangeSettings {
     pub date_start: Date<Utc>,
     pub date_end: Date<Utc>,
     pub time_start: NaiveTime,
@@ -17,7 +15,7 @@ pub struct Props {
     pub limit: usize,
 }
 
-impl Props {
+impl TimeRangeSettings {
     pub fn start_time(&self) -> DateTime<Utc> {
         self.date_start.and_hms(
             self.time_start.hour(),
@@ -39,7 +37,7 @@ impl Props {
     }
 }
 
-impl Default for Props {
+impl Default for TimeRangeSettings {
     fn default() -> Self {
         let now = Utc::now();
         let mut p = Self {

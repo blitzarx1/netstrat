@@ -4,7 +4,9 @@ use poll_promise::Promise;
 use tracing::{debug, error, info};
 
 use crate::{
-    sources::binance::{Client, Info, Symbol}, netstrat::line_filter_highlight_layout, widgets::AppWidget,
+    netstrat::line_filter_highlight_layout,
+    sources::binance::{Client, Info, Symbol},
+    widgets::AppWidget,
 };
 
 #[derive(Default)]

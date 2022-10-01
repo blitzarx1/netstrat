@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::{elements::Elements, path::Path};
+use super::{path::Path, elements::Elements};
 
 #[derive(Clone)]
 pub struct Cycle(Vec<Path>);

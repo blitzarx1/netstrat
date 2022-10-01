@@ -2,17 +2,19 @@ use tracing::{debug, error};
 
 use crate::sources::binance::Interval;
 
-use super::{loading_state::LoadingState, props::Props, BoundsSet};
+use super::{
+    bounds::BoundsSet, loading_state::LoadingState, time_range_settings::TimeRangeSettings,
+};
 
 #[derive(Default, Debug, Clone)]
 pub struct State {
     pub loading: LoadingState,
-    pub props: Props,
+    pub props: TimeRangeSettings,
     bounds: BoundsSet,
 }
 
 impl State {
-    pub fn apply_props(&mut self, props: &Props) {
+    pub fn apply_props(&mut self, props: &TimeRangeSettings) {
         debug!("applying new props: {props:?}");
 
         self.props = props.clone();

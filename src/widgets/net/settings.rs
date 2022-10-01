@@ -10,7 +10,7 @@ pub enum EdgeWeight {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct Settings {
+pub struct NetSettings {
     pub ini_cnt: usize,
     pub fin_cnt: usize,
     pub total_cnt: usize,
@@ -21,7 +21,7 @@ pub struct Settings {
     pub edge_weight: f64,
 }
 
-impl Default for Settings {
+impl Default for NetSettings {
     fn default() -> Self {
         Self {
             ini_cnt: 5,

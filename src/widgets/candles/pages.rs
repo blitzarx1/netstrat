@@ -1,6 +1,6 @@
 use tracing::{debug, error};
 
-use super::BoundsSet;
+use super::bounds::BoundsSet;
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Page(pub i64, pub i64);
@@ -81,7 +81,7 @@ impl Pages {
 
 #[cfg(test)]
 mod pages_tests {
-    use crate::netstrat::candles::Bounds;
+    use crate::widgets::candles::bounds::Bounds;
 
     use super::*;
 

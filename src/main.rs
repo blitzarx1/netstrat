@@ -20,7 +20,7 @@ mod windows;
 struct TemplateApp {
     windows: Vec<Box<dyn AppWindow>>,
     active_widget: Option<Mutex<Box<dyn AppWidget>>>,
-    active_widget_sub: Receiver<Mutex<Box<dyn AppWidget>>>,
+    active_widget_subs: Vec<Receiver<Mutex<Box<dyn AppWidget>>>>,
     theme: Theme,
 }
 
@@ -59,28 +59,29 @@ impl TemplateApp {
         init_logger(buffer_s);
 
         info!("starting app");
-        let (widget_s, widget_r) = unbounded();
+        let (net_drawer_s, net_drawer_r) = unbounded();
+        let (candles_drawer_s, candles_drawer_r) = unbounded();
         Self {
             windows: vec![
-                Box::new(Net::new(widget_s, false)),
-                Box::new(SymbolsGraph::new(false)),
+                Box::new(Net::new(net_drawer_s, false)),
+                Box::new(SymbolsGraph::new(candles_drawer_s, false)),
                 Box::new(Debug::new(buffer_r, false)),
             ],
             active_widget: None,
-            active_widget_sub: widget_r,
+            active_widget_subs: vec![net_drawer_r, candles_drawer_r],
             theme: Theme::new(),
         }
     }
 
     fn check_widget_event(&mut self) {
-        let widget_wrapped = self
-            .active_widget_sub
-            .recv_timeout(Duration::from_millis(1));
-        if let Ok(widget) = widget_wrapped {
-            debug!("got active widget event");
+        self.active_widget_subs.iter().for_each(|sub| {
+            let widget_wrapped = sub.recv_timeout(Duration::from_millis(1));
+            if let Ok(widget) = widget_wrapped {
+                debug!("got active widget event");
 
-            self.active_widget = Some(widget);
-        }
+                self.active_widget = Some(widget);
+            }
+        });
     }
 }
 
