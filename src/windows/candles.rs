@@ -30,8 +30,6 @@ impl AppWindow for SymbolsGraph {
         let mut visible = self.visible;
         Window::new("graph")
             .open(&mut visible)
-            .min_height(500.0)
-            .min_width(700.0)
             .show(ui.ctx(), |ui| {
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     StripBuilder::new(ui)
