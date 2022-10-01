@@ -5,12 +5,12 @@ use crate::widgets::AppWidget;
 use super::image_state::ImageState;
 
 #[derive(Default, Clone)]
-pub struct NetVisualizer {
+pub struct Drawer {
     current_image: ImageState,
     current_texture: Option<TextureHandle>,
 }
 
-impl NetVisualizer {
+impl Drawer {
     pub fn update_image(&mut self, image: ColorImage) {
         self.current_image.update(image);
     }
@@ -20,7 +20,7 @@ impl NetVisualizer {
     }
 }
 
-impl AppWidget for NetVisualizer {
+impl AppWidget for Drawer {
     fn show(&mut self, ui: &mut egui::Ui) {
         if self.current_image.changed() {
             self.current_texture = Some(ui.ctx().load_texture(

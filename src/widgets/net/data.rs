@@ -17,20 +17,20 @@ use tracing::trace;
 use tracing::warn;
 use tracing::{debug, error};
 
-use crate::netstrat::net::path::Path;
-use crate::netstrat::net::EdgeWeight;
+use crate::widgets::net::path::Path;
+use crate::widgets::net::settings::EdgeWeight;
 
 use super::cycle::Cycle;
 use super::elements::Elements;
 use super::settings::ConeSettings;
-use super::Settings;
+use super::settings::NetSettings;
 
 const MAX_DOT_WEIGHT: f64 = 5.0;
 
 #[derive(Clone)]
 pub struct Data {
     graph: StableDiGraph<String, f64>,
-    settings: Settings,
+    settings: NetSettings,
     ini_set: HashSet<NodeIndex>,
     fin_set: HashSet<NodeIndex>,
     cycles: Vec<Cycle>,
@@ -38,7 +38,7 @@ pub struct Data {
 }
 
 impl Data {
-    pub fn new(settings: Settings) -> Self {
+    pub fn new(settings: NetSettings) -> Self {
         debug!("creating graph with settings: {settings:?}");
         let mut seed = StableDiGraph::with_capacity(
             settings.total_cnt,
@@ -162,7 +162,7 @@ impl Data {
     pub fn from_dot(dot_data: String) -> Option<Self> {
         let mut data = Data {
             graph: StableDiGraph::new(),
-            settings: Settings::default(),
+            settings: NetSettings::default(),
             ini_set: HashSet::new(),
             fin_set: HashSet::new(),
             cycles: Default::default(),

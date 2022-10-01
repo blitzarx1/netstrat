@@ -2,17 +2,21 @@ use chrono::{DateTime, Utc};
 use crossbeam::channel::{unbounded, Sender};
 use egui::{
     plot::{BoxElem, BoxPlot, BoxSpread, Plot},
-    Color32, Response, Stroke, Widget,
+    Color32, Stroke,
 };
 use tracing::{error, info};
 
 use crate::{
-    sources::binance::Kline, netstrat::candles::{Data, Bounds},
+    sources::binance::Kline,
+    widgets::AppWidget,
 };
+
+use super::{data::Data, bounds::Bounds};
 
 const BOUNDS_SEND_DELAY_MILLIS: i64 = 300;
 
-pub struct Candles {
+#[derive(Clone)]
+pub struct Drawer {
     data: Data,
     val: Vec<BoxElem>,
     bounds_pub: Sender<Bounds>,
@@ -23,7 +27,7 @@ pub struct Candles {
     enabled: bool,
 }
 
-impl Default for Candles {
+impl Default for Drawer {
     fn default() -> Self {
         let (s_bounds, _) = unbounded();
 
@@ -40,7 +44,7 @@ impl Default for Candles {
     }
 }
 
-impl Candles {
+impl Drawer {
     pub fn new(bounds_pub: Sender<Bounds>) -> Self {
         Self {
             bounds_pub,
@@ -97,8 +101,8 @@ impl Candles {
     }
 }
 
-impl Widget for &mut Candles {
-    fn ui(self, ui: &mut egui::Ui) -> Response {
+impl AppWidget for Drawer {
+    fn show(&mut self, ui: &mut egui::Ui) {
         if self.drag_happened
             && Utc::now()
                 .signed_duration_since(self.last_time_drag_happened)
@@ -161,7 +165,6 @@ impl Widget for &mut Candles {
 
                     plot_ui.ctx().request_repaint();
                 })
-        })
-        .response
+        });
     }
 }

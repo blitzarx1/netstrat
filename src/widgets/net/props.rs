@@ -16,94 +16,38 @@ use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
-use crate::netstrat::net::{ConeSettings, Data, EdgeWeight, Settings};
 use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
 
-use super::edges_input::EdgesInput;
-use super::nodes_input::NodesInput;
-use super::NetVisualizer;
+use super::button_clicks::ButtonClicks;
+use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
+use super::data::Data;
+use super::nodes_and_edges::NodesAndEdgeSettings;
+use super::settings::{EdgeWeight, NetSettings};
+use super::Drawer;
 
-#[derive(PartialEq, Clone, Default)]
-struct NodesAndEdgeSettings {
-    nodes_input: NodesInput,
-    edges_input: EdgesInput,
-}
-
-#[derive(PartialEq, Clone)]
-struct ConeSettingsInputs {
-    cone_type: ConeType,
-    settings: Vec<ConeInput>,
-}
-
-impl Default for ConeSettingsInputs {
-    fn default() -> Self {
-        Self {
-            cone_type: ConeType::Custom,
-            settings: vec![ConeInput::default()],
-        }
-    }
-}
-
-#[derive(PartialEq, Clone, Default)]
-struct ConeInput {
-    nodes_names: NodesInput,
-    cone_settings: ConeSettings,
-}
-
-impl ConeInput {
-    fn prepare_settings(&self) -> ConeSettings {
-        ConeSettings {
-            roots_weights: self.nodes_names.splitted(),
-            dir: self.cone_settings.dir,
-            max_steps: self.cone_settings.max_steps,
-        }
-    }
-}
-
-#[derive(PartialEq, Clone)]
-enum ConeType {
-    Custom,
-    Initial,
-    Final,
-}
-
-#[derive(Default, Clone)]
-struct ButtonClicks {
-    reset: bool,
-    create: bool,
-    color_cones: bool,
-    color_cycles: bool,
-    export_dot: bool,
-    export_svg: bool,
-    delete_cone: bool,
-    delete_cycles: bool,
-    color_nodes_and_edges: bool,
-    delete_nodes_and_edges: bool,
-}
-
-pub struct NetProps {
+pub struct Props {
     data: Data,
-    graph_settings: Settings,
+    net_settings: NetSettings,
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
     open_drop_file: OpenDropFile,
-    net_visualizer: NetVisualizer,
-    widget_pub: Sender<Mutex<Box<dyn AppWidget>>>,
+    net_visualizer: Drawer,
+    drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>,
     toasts: Toasts,
     selected_cycles: HashSet<usize>,
 }
 
-impl NetProps {
-    pub fn new(widget_pub: Sender<Mutex<Box<dyn AppWidget>>>) -> Self {
-        let data = NetProps::reset_data();
+impl Props {
+    pub fn new(drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>) -> Self {
+        let data = Props::reset_data();
         let mut s = Self {
             data,
-            widget_pub,
+            drawer_pub,
             open_drop_file: Default::default(),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
-            graph_settings: Default::default(),
-            net_visualizer: NetVisualizer::default(),
+            net_settings: Default::default(),
+            net_visualizer: Drawer::default(),
             cone_settings: Default::default(),
             selected_cycles: Default::default(),
             nodes_and_edges_settings: Default::default(),
@@ -115,31 +59,31 @@ impl NetProps {
     }
 
     fn reset_data() -> Data {
-        Data::new(Settings::default())
+        Data::new(NetSettings::default())
     }
 
     fn reset(&mut self) {
-        let data = NetProps::reset_data();
+        let data = Props::reset_data();
         self.data = data;
-        self.graph_settings = Settings::default();
+        self.net_settings = NetSettings::default();
     }
 
     fn create(&mut self) {
-        let data = Data::new(self.graph_settings.clone());
+        let data = Data::new(self.net_settings.clone());
         self.data = data;
     }
 
-    fn update_graph_settings(&mut self, graph_settings: Settings) {
-        if self.graph_settings == graph_settings {
+    fn update_graph_settings(&mut self, graph_settings: NetSettings) {
+        if self.net_settings == graph_settings {
             return;
         }
 
-        self.graph_settings = graph_settings;
+        self.net_settings = graph_settings;
     }
 
     fn update(
         &mut self,
-        graph_settings: Settings,
+        graph_settings: NetSettings,
         cone_coloring_settings: ConeSettingsInputs,
         clicks: ButtonClicks,
         selected_cycles: HashSet<usize>,
@@ -377,9 +321,9 @@ impl NetProps {
     }
 }
 
-impl AppWidget for NetProps {
+impl AppWidget for Props {
     fn show(&mut self, ui: &mut Ui) {
-        let mut graph_settings = self.graph_settings.clone();
+        let mut graph_settings = self.net_settings.clone();
         let mut cone_settings = self.cone_settings.clone();
         let mut dot = self.data.dot();
         let mut selected_cycles = self.selected_cycles.clone();
@@ -562,7 +506,7 @@ impl AppWidget for NetProps {
         });
 
         if self.net_visualizer.changed() {
-            self.widget_pub
+            self.drawer_pub
                 .send(Mutex::new(Box::new(self.net_visualizer.clone())))
                 .unwrap();
         }

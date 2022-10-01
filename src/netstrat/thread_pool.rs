@@ -1,7 +1,7 @@
 use std::thread;
 
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use tracing::{debug, trace, error};
+use tracing::{debug, error, trace};
 
 struct Job {
     f: Box<dyn FnOnce() + Send + 'static>,
