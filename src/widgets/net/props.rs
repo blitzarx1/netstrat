@@ -1,8 +1,3 @@
-use crossbeam::channel::Sender;
-use egui_extras::image::load_svg_bytes;
-use graphviz_rust::cmd::{CommandArg, Format};
-use graphviz_rust::printer::PrinterContext;
-use graphviz_rust::{exec, parse};
 use std::collections::HashSet;
 use std::fs::{read_to_string, File};
 use std::io::Write;
@@ -10,8 +5,13 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
+use crossbeam::channel::Sender;
 use egui::{ScrollArea, Slider, TextEdit, Ui};
+use egui_extras::image::load_svg_bytes;
 use egui_notify::{Anchor, Toasts};
+use graphviz_rust::cmd::{CommandArg, Format};
+use graphviz_rust::printer::PrinterContext;
+use graphviz_rust::{exec, parse};
 use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
@@ -22,6 +22,7 @@ use crate::widgets::OpenDropFile;
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
 use super::data::Data;
+use super::interactions::{self, Interactions};
 use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, NetSettings};
 use super::Drawer;
@@ -29,6 +30,7 @@ use super::Drawer;
 pub struct Props {
     data: Data,
     net_settings: NetSettings,
+    history: Vec<Data>,
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
     open_drop_file: OpenDropFile,
@@ -36,14 +38,16 @@ pub struct Props {
     drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>,
     toasts: Toasts,
     selected_cycles: HashSet<usize>,
+    selected_history_step: Option<usize>,
 }
 
 impl Props {
     pub fn new(drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>) -> Self {
         let data = Props::reset_data();
         let mut s = Self {
-            data,
+            data: data.clone(),
             drawer_pub,
+            history: vec![data],
             open_drop_file: Default::default(),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             net_settings: Default::default(),
@@ -51,6 +55,7 @@ impl Props {
             cone_settings: Default::default(),
             selected_cycles: Default::default(),
             nodes_and_edges_settings: Default::default(),
+            selected_history_step: None,
         };
 
         s.update_frame();
@@ -63,14 +68,12 @@ impl Props {
     }
 
     fn reset(&mut self) {
-        let data = Props::reset_data();
-        self.data = data;
         self.net_settings = NetSettings::default();
+        self.update_data(None, Props::reset_data())
     }
 
     fn create(&mut self) {
-        let data = Data::new(self.net_settings.clone());
-        self.data = data;
+        self.update_data(None, Data::new(self.net_settings.clone()))
     }
 
     fn update_graph_settings(&mut self, graph_settings: NetSettings) {
@@ -81,26 +84,20 @@ impl Props {
         self.net_settings = graph_settings;
     }
 
-    fn update(
-        &mut self,
-        graph_settings: NetSettings,
-        cone_coloring_settings: ConeSettingsInputs,
-        clicks: ButtonClicks,
-        selected_cycles: HashSet<usize>,
-        nodes_and_edges_settings: NodesAndEdgeSettings,
-    ) {
-        self.update_graph_settings(graph_settings);
-        self.update_cone_settings(cone_coloring_settings);
-        self.handle_selected_cycles(selected_cycles);
-        self.handle_nodes_and_edges_settings(nodes_and_edges_settings);
-        self.handle_update_clicks(clicks.clone());
+    fn update(&mut self, inter: Interactions) {
+        self.update_graph_settings(inter.graph_settings);
+        self.update_cone_settings(inter.cone_settings);
+        self.handle_selected_cycles(inter.selected_cycles);
+        self.handle_selected_history_step(inter.selected_history_step);
+        self.handle_nodes_and_edges_settings(inter.nodes_and_edges_settings);
+        self.handle_update_clicks(inter.clicks.clone());
         self.handle_opened_file();
 
-        if clicks.export_dot {
+        if inter.clicks.export_dot {
             self.export_dot();
         }
 
-        if clicks.export_svg {
+        if inter.clicks.export_svg {
             self.export_svg();
         }
     }
@@ -131,10 +128,10 @@ impl Props {
                 return;
             }
 
-            self.data = data.unwrap();
+            let old_data = self.data.clone();
+            let new_data = data.unwrap();
+            self.update_data(Some(old_data), new_data);
             self.toasts.success("File imported");
-
-            self.update_state();
         }
     }
 
@@ -146,8 +143,23 @@ impl Props {
         self.selected_cycles = selected_cycles;
     }
 
-    fn update_state(&mut self) {
-        debug!("updating grah state");
+    fn handle_selected_history_step(&mut self, selected_history_step: Option<usize>) {
+        if self.selected_history_step == selected_history_step {
+            return;
+        }
+
+        self.selected_history_step = selected_history_step;
+    }
+
+    fn update_data(&mut self, old_data: Option<Data>, new_data: Data) {
+        debug!("updating graph state");
+
+        match old_data {
+            Some(state) => self.history.push(state),
+            None => self.history = vec![new_data.clone()],
+        }
+
+        self.data = new_data;
         self.update_frame();
         self.trigger_changed_toast();
     }
@@ -156,61 +168,78 @@ impl Props {
         if clicks.reset {
             info!("resetting graph params");
             self.reset();
-            self.update_state();
         }
 
         if clicks.create {
-            info!("generatin graph");
+            info!("generating graph");
             self.create();
-            self.update_state();
         }
 
         if clicks.color_cones {
             info!("coloring cones");
             self.color_cones();
-            self.update_state();
         }
 
         if clicks.delete_cone {
             info!("deleting cone");
             self.delete_cones();
-            self.update_state();
         }
 
         if clicks.color_cycles {
             info!("coloring cycles");
             self.color_cycles();
-            self.update_state();
         }
 
         if clicks.delete_cycles {
             info!("deleting cycles");
             self.delete_cycles();
-            self.update_state();
+        }
+
+        if clicks.load_history {
+            info!("loading history");
+            self.load_history();
         }
 
         if clicks.delete_nodes_and_edges {
             info!("deleting nodes and edges");
+            let old_data = self.data.clone();
             self.data.delete_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
-            self.update_state();
+            self.update_data(Some(old_data), self.data.clone())
         }
 
         if clicks.color_nodes_and_edges {
             info!("coloring nodes and edges");
+            let old_data = self.data.clone();
             self.data.color_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
-            self.update_state();
+            self.update_data(Some(old_data), self.data.clone());
         }
     }
 
+    fn load_history(&mut self) {
+        if self.selected_history_step.is_none() {
+            return;
+        }
+
+        let step = self.selected_history_step.unwrap();
+        self.data = self.history.get(step).unwrap().clone();
+        self.history = self.history[0..step].to_vec();
+        self.selected_history_step = None;
+        self.update_frame();
+        self.trigger_changed_toast();
+    }
+
     fn delete_cycles(&mut self) {
+        let old_data = self.data.clone();
         self.data.delete_cycles(&self.selected_cycles);
         self.selected_cycles = Default::default();
+
+        self.update_data(Some(old_data), self.data.clone());
     }
 
     fn update_frame(&mut self) {
@@ -288,6 +317,7 @@ impl Props {
     }
 
     fn color_cones(&mut self) {
+        let old_data = self.data.clone();
         match self.cone_settings.cone_type {
             ConeType::Custom => self.data.color_cones(
                 self.cone_settings
@@ -299,9 +329,12 @@ impl Props {
             ConeType::Initial => self.data.color_ini_cones(),
             ConeType::Final => self.data.color_fin_cones(),
         }
+
+        self.update_data(Some(old_data), self.data.clone())
     }
 
     fn delete_cones(&mut self) {
+        let old_data = self.data.clone();
         match self.cone_settings.cone_type {
             ConeType::Custom => self.data.delete_cones(
                 self.cone_settings
@@ -314,131 +347,156 @@ impl Props {
             ConeType::Final => self.data.delete_final_cone(),
         };
         self.cone_settings = Default::default();
+
+        self.update_data(Some(old_data), self.data.clone())
     }
 
     fn color_cycles(&mut self) {
+        let old_data = self.data.clone();
         self.data.color_cycles(&self.selected_cycles);
+
+        self.update_data(Some(old_data), self.data.clone());
     }
-}
 
-impl AppWidget for Props {
-    fn show(&mut self, ui: &mut Ui) {
-        let mut graph_settings = self.net_settings.clone();
-        let mut cone_settings = self.cone_settings.clone();
-        let mut dot = self.data.dot();
-        let mut selected_cycles = self.selected_cycles.clone();
-        let mut clicks = ButtonClicks::default();
-        let mut nodes_and_edges_settings = self.nodes_and_edges_settings.clone();
-
+    fn draw_create_section(&self, ui: &mut Ui, inter: &mut Interactions) {
         ui.collapsing("Create", |ui| {
-            ui.add(Slider::new(&mut graph_settings.ini_cnt, 1..=25).text("ini_cnt"));
-            ui.add(Slider::new(&mut graph_settings.fin_cnt, 1..=25).text("fin_cnt"));
+            ui.add(Slider::new(&mut inter.graph_settings.ini_cnt, 1..=25).text("ini_cnt"));
+            ui.add(Slider::new(&mut inter.graph_settings.fin_cnt, 1..=25).text("fin_cnt"));
             ui.add(
                 Slider::new(
-                    &mut graph_settings.total_cnt,
-                    graph_settings.ini_cnt + graph_settings.fin_cnt..=100,
+                    &mut inter.graph_settings.total_cnt,
+                    inter.graph_settings.ini_cnt + inter.graph_settings.fin_cnt..=100,
                 )
                 .text("total_cnt"),
             );
-            ui.add(Slider::new(&mut graph_settings.max_out_degree, 2..=10).text("max_out_degree"));
+            ui.add(
+                Slider::new(&mut inter.graph_settings.max_out_degree, 2..=10)
+                    .text("max_out_degree"),
+            );
             ui.add_space(10.0);
-            ui.checkbox(&mut graph_settings.no_twin_edges, "No twin edges");
-            ui.checkbox(&mut graph_settings.diamond_filter, "Apply diamond filter");
+            ui.checkbox(&mut inter.graph_settings.no_twin_edges, "No twin edges");
+            ui.checkbox(
+                &mut inter.graph_settings.diamond_filter,
+                "Apply diamond filter",
+            );
             ui.add_space(10.0);
             ui.label("Edge weights");
             ui.radio_value(
-                &mut graph_settings.edge_weight_type,
+                &mut inter.graph_settings.edge_weight_type,
                 EdgeWeight::Random,
                 "Random",
             );
             ui.horizontal_top(|ui| {
                 ui.radio_value(
-                    &mut graph_settings.edge_weight_type,
+                    &mut inter.graph_settings.edge_weight_type,
                     EdgeWeight::Fixed,
                     "Fixed",
                 );
                 ui.add_enabled(
-                    graph_settings.edge_weight_type == EdgeWeight::Fixed,
-                    Slider::new(&mut graph_settings.edge_weight, 0.0..=1.0),
+                    inter.graph_settings.edge_weight_type == EdgeWeight::Fixed,
+                    Slider::new(&mut inter.graph_settings.edge_weight, 0.0..=1.0),
                 );
             });
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
                 if ui.button("create").clicked() {
-                    clicks.create = true;
+                    inter.clicks.create = true;
                 }
                 if ui.button("reset").clicked() {
-                    clicks.reset = true;
+                    inter.clicks.reset = true;
                 }
             });
         });
+    }
 
+    fn draw_import_export_section(&mut self, ui: &mut Ui, inter: &mut Interactions) {
         ui.collapsing("Import/Export", |ui| {
             self.open_drop_file.show(ui);
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
                 if ui.button("export dot").clicked() {
-                    clicks.export_dot = true;
+                    inter.clicks.export_dot = true;
                 };
                 if ui.button("export svg").clicked() {
-                    clicks.export_svg = true;
+                    inter.clicks.export_svg = true;
                 }
             });
         });
+    }
 
+    fn draw_nodes_and_edges_section(&self, ui: &mut Ui, inter: &mut Interactions) {
         ui.collapsing("Nodes and Edges", |ui| {
             ui.add(
-                TextEdit::singleline(&mut nodes_and_edges_settings.nodes_input.input)
+                TextEdit::singleline(&mut inter.nodes_and_edges_settings.nodes_input.input)
                     .hint_text("ini_1, 5, 10"),
             );
             ui.add_space(5.0);
             ui.add(
-                TextEdit::singleline(&mut nodes_and_edges_settings.edges_input.input)
+                TextEdit::singleline(&mut inter.nodes_and_edges_settings.edges_input.input)
                     .hint_text("ini_1 -> 5, 10 -> fin_3"),
             );
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
                 if ui.button("color").clicked() {
-                    clicks.color_nodes_and_edges = true;
+                    inter.clicks.color_nodes_and_edges = true;
                 };
                 if ui.button("delete").clicked() {
-                    clicks.delete_nodes_and_edges = true;
+                    inter.clicks.delete_nodes_and_edges = true;
                 }
             });
         });
+    }
 
+    fn draw_cones_section(&self, ui: &mut Ui, inter: &mut Interactions) {
         ui.collapsing("Cones", |ui| {
-            ui.radio_value(&mut cone_settings.cone_type, ConeType::Initial, "Initial");
-            ui.radio_value(&mut cone_settings.cone_type, ConeType::Final, "Final");
-            ui.radio_value(&mut cone_settings.cone_type, ConeType::Custom, "Custom");
-            ui.add_enabled_ui(cone_settings.cone_type == ConeType::Custom, |ui| {
+            ui.radio_value(
+                &mut inter.cone_settings.cone_type,
+                ConeType::Initial,
+                "Initial",
+            );
+            ui.radio_value(&mut inter.cone_settings.cone_type, ConeType::Final, "Final");
+            ui.radio_value(
+                &mut inter.cone_settings.cone_type,
+                ConeType::Custom,
+                "Custom",
+            );
+            ui.add_enabled_ui(inter.cone_settings.cone_type == ConeType::Custom, |ui| {
                 ScrollArea::vertical()
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
-                        cone_settings.settings.iter_mut().for_each(|cone_input| {
-                            ui.add_space(5.0);
-                            ui.add(
-                                TextEdit::singleline(&mut cone_input.nodes_names.input)
-                                    .hint_text("ini_1, 5, 10"),
-                            );
-                            ui.radio_value(&mut cone_input.cone_settings.dir, Incoming, "Minus");
-                            ui.radio_value(&mut cone_input.cone_settings.dir, Outgoing, "Plus");
-                            ui.add(
-                                Slider::new(&mut cone_input.cone_settings.max_steps, -1..=10)
-                                    .text("Steps"),
-                            );
-                        });
+                        inter
+                            .cone_settings
+                            .settings
+                            .iter_mut()
+                            .for_each(|cone_input| {
+                                ui.add_space(5.0);
+                                ui.add(
+                                    TextEdit::singleline(&mut cone_input.nodes_names.input)
+                                        .hint_text("ini_1, 5, 10"),
+                                );
+                                ui.radio_value(
+                                    &mut cone_input.cone_settings.dir,
+                                    Incoming,
+                                    "Minus",
+                                );
+                                ui.radio_value(&mut cone_input.cone_settings.dir, Outgoing, "Plus");
+                                ui.add(
+                                    Slider::new(&mut cone_input.cone_settings.max_steps, -1..=10)
+                                        .text("Steps"),
+                                );
+                            });
                     });
                 ui.add_space(10.0);
                 ui.horizontal_top(|ui| {
                     if ui.button("+").clicked() {
-                        cone_settings.settings.push(ConeInput::default())
+                        inter.cone_settings.settings.push(ConeInput::default())
                     };
-                    ui.add_enabled_ui(cone_settings.settings.len() > 1, |ui| {
+                    ui.add_enabled_ui(inter.cone_settings.settings.len() > 1, |ui| {
                         if ui.button("-").clicked() {
-                            cone_settings
+                            inter
+                                .cone_settings
                                 .settings
-                                .remove(cone_settings.settings.len() - 1);
+                                .remove(inter.cone_settings.settings.len() - 1);
                         }
                     });
                 });
@@ -446,14 +504,16 @@ impl AppWidget for Props {
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
                 if ui.button("color").clicked() {
-                    clicks.color_cones = true;
+                    inter.clicks.color_cones = true;
                 };
                 if ui.button("delete").clicked() {
-                    clicks.delete_cone = true;
+                    inter.clicks.delete_cone = true;
                 }
             });
         });
+    }
 
+    fn draw_cycles_section(&self, ui: &mut Ui, inter: &mut Interactions) {
         ui.collapsing("Cycles", |ui| {
             ui.label("Cycles which are reachable from ini nodes");
             ScrollArea::vertical()
@@ -465,14 +525,14 @@ impl AppWidget for Props {
                         .iter()
                         .enumerate()
                         .for_each(|(i, c)| {
-                            let checked = selected_cycles.contains(&i);
+                            let checked = inter.selected_cycles.contains(&i);
                             if ui
                                 .selectable_label(checked, format!("{} steps", c.len()))
                                 .clicked()
                             {
                                 match checked {
-                                    true => selected_cycles.remove(&i),
-                                    false => selected_cycles.insert(i),
+                                    true => inter.selected_cycles.remove(&i),
+                                    false => inter.selected_cycles.insert(i),
                                 };
                             };
                         });
@@ -480,19 +540,63 @@ impl AppWidget for Props {
 
             ui.horizontal_top(|ui| {
                 if ui.button("color").clicked() {
-                    clicks.color_cycles = true;
+                    inter.clicks.color_cycles = true;
                 };
                 if ui.button("delete").clicked() {
-                    clicks.delete_cycles = true;
+                    inter.clicks.delete_cycles = true;
                 }
             });
         });
+    }
 
+    fn draw_history_section(&self, ui: &mut Ui, inter: &mut Interactions) {
+        ui.collapsing("History", |ui| {
+            self.history.iter().enumerate().for_each(|(i, _)| {
+                if ui
+                    .selectable_label(
+                        inter.selected_history_step.is_some()
+                            && inter.selected_history_step.unwrap() == i,
+                        format!("{} step", i),
+                    )
+                    .clicked()
+                {
+                    inter.selected_history_step = Some(i);
+                };
+            });
+
+            if ui.button("Load").clicked() {
+                inter.clicks.load_history = true;
+            }
+        });
+    }
+
+    fn draw_dot_preview_section(&mut self, ui: &mut Ui) {
+        let mut dot_mock_interaction = self.data.dot();
         ui.collapsing("Dot preview", |ui| {
             ScrollArea::vertical()
                 .auto_shrink([false, true])
-                .show(ui, |ui| ui.text_edit_multiline(&mut dot));
+                .show(ui, |ui| ui.text_edit_multiline(&mut dot_mock_interaction));
         });
+    }
+}
+
+impl AppWidget for Props {
+    fn show(&mut self, ui: &mut Ui) {
+        let mut interactions = Interactions::new(
+            self.selected_cycles.clone(),
+            self.net_settings.clone(),
+            self.cone_settings.clone(),
+            self.selected_history_step,
+            self.nodes_and_edges_settings.clone(),
+        );
+
+        self.draw_create_section(ui, &mut interactions);
+        self.draw_import_export_section(ui, &mut interactions);
+        self.draw_nodes_and_edges_section(ui, &mut interactions);
+        self.draw_cones_section(ui, &mut interactions);
+        self.draw_cycles_section(ui, &mut interactions);
+        self.draw_history_section(ui, &mut interactions);
+        self.draw_dot_preview_section(ui);
 
         ui.add_space(10.0);
         ui.horizontal_top(|ui| {
@@ -512,13 +616,7 @@ impl AppWidget for Props {
         }
 
         self.toasts.show(ui.ctx());
-        self.update(
-            graph_settings,
-            cone_settings,
-            clicks,
-            selected_cycles,
-            nodes_and_edges_settings,
-        );
+        self.update(interactions);
     }
 }
 
