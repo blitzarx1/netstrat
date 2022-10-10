@@ -11,6 +11,7 @@ mod nodes_input;
 mod path;
 mod props;
 mod settings;
+mod interactions;
 
 pub use self::drawer::Drawer;
 pub use self::props::Props;
