@@ -22,7 +22,8 @@ use crate::widgets::OpenDropFile;
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
 use super::data::Data;
-use super::interactions::{self, Interactions};
+use super::history::History;
+use super::interactions::Interactions;
 use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, NetSettings};
 use super::Drawer;
@@ -30,7 +31,7 @@ use super::Drawer;
 pub struct Props {
     data: Data,
     net_settings: NetSettings,
-    history: Vec<Data>,
+    history: History,
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
     open_drop_file: OpenDropFile,
@@ -44,10 +45,12 @@ pub struct Props {
 impl Props {
     pub fn new(drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>) -> Self {
         let data = Props::reset_data();
+        let mut history = History::new();
+        history.push("create".to_string(), data.clone());
         let mut s = Self {
-            data: data.clone(),
+            data,
             drawer_pub,
-            history: vec![data],
+            history,
             open_drop_file: Default::default(),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             net_settings: Default::default(),
@@ -69,11 +72,15 @@ impl Props {
 
     fn reset(&mut self) {
         self.net_settings = NetSettings::default();
-        self.update_data(None, Props::reset_data())
+        self.data = Props::reset_data();
+        self.history = History::new();
+        self.update_data("reset".to_string())
     }
 
     fn create(&mut self) {
-        self.update_data(None, Data::new(self.net_settings.clone()))
+        self.data = Data::new(self.net_settings.clone());
+        self.history = History::new();
+        self.update_data("create".to_string())
     }
 
     fn update_graph_settings(&mut self, graph_settings: NetSettings) {
@@ -128,9 +135,8 @@ impl Props {
                 return;
             }
 
-            let old_data = self.data.clone();
-            let new_data = data.unwrap();
-            self.update_data(Some(old_data), new_data);
+            self.data = data.unwrap();
+            self.update_data("load".to_string());
             self.toasts.success("File imported");
         }
     }
@@ -151,15 +157,11 @@ impl Props {
         self.selected_history_step = selected_history_step;
     }
 
-    fn update_data(&mut self, old_data: Option<Data>, new_data: Data) {
+    fn update_data(&mut self, action_name: String) {
         debug!("updating graph state");
 
-        match old_data {
-            Some(state) => self.history.push(state),
-            None => self.history = vec![new_data.clone()],
-        }
+        self.history.push(action_name, self.data.clone());
 
-        self.data = new_data;
         self.update_frame();
         self.trigger_changed_toast();
     }
@@ -202,22 +204,20 @@ impl Props {
 
         if clicks.delete_nodes_and_edges {
             info!("deleting nodes and edges");
-            let old_data = self.data.clone();
             self.data.delete_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
-            self.update_data(Some(old_data), self.data.clone())
+            self.update_data("delete node or edge".to_string())
         }
 
         if clicks.color_nodes_and_edges {
             info!("coloring nodes and edges");
-            let old_data = self.data.clone();
             self.data.color_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
-            self.update_data(Some(old_data), self.data.clone());
+            self.update_data("color node or edge".to_string());
         }
     }
 
@@ -227,22 +227,24 @@ impl Props {
         }
 
         let step = self.selected_history_step.unwrap();
-        self.data = self.history.get(step).unwrap().clone();
-        self.history = self.history[0..step].to_vec();
-        self.selected_history_step = None;
+        let history_step = self.history.get_and_crop(step);
+
+        self.data = history_step.data;
+        self.selected_history_step = Some(history_step.step);
+
         self.update_frame();
         self.trigger_changed_toast();
     }
 
     fn delete_cycles(&mut self) {
-        let old_data = self.data.clone();
         self.data.delete_cycles(&self.selected_cycles);
         self.selected_cycles = Default::default();
 
-        self.update_data(Some(old_data), self.data.clone());
+        self.update_data("delete cycle".to_string());
     }
 
     fn update_frame(&mut self) {
+        self.data.update();
         let graph_svg = exec(
             parse(self.data.dot().as_str()).unwrap(),
             &mut PrinterContext::default(),
@@ -317,7 +319,6 @@ impl Props {
     }
 
     fn color_cones(&mut self) {
-        let old_data = self.data.clone();
         match self.cone_settings.cone_type {
             ConeType::Custom => self.data.color_cones(
                 self.cone_settings
@@ -330,11 +331,10 @@ impl Props {
             ConeType::Final => self.data.color_fin_cones(),
         }
 
-        self.update_data(Some(old_data), self.data.clone())
+        self.update_data("color cone".to_string());
     }
 
     fn delete_cones(&mut self) {
-        let old_data = self.data.clone();
         match self.cone_settings.cone_type {
             ConeType::Custom => self.data.delete_cones(
                 self.cone_settings
@@ -348,14 +348,13 @@ impl Props {
         };
         self.cone_settings = Default::default();
 
-        self.update_data(Some(old_data), self.data.clone())
+        self.update_data("delete cone".to_string());
     }
 
     fn color_cycles(&mut self) {
-        let old_data = self.data.clone();
         self.data.color_cycles(&self.selected_cycles);
 
-        self.update_data(Some(old_data), self.data.clone());
+        self.update_data("color cycle".to_string());
     }
 
     fn draw_create_section(&self, ui: &mut Ui, inter: &mut Interactions) {
@@ -551,18 +550,21 @@ impl Props {
 
     fn draw_history_section(&self, ui: &mut Ui, inter: &mut Interactions) {
         ui.collapsing("History", |ui| {
-            self.history.iter().enumerate().for_each(|(i, _)| {
-                if ui
-                    .selectable_label(
-                        inter.selected_history_step.is_some()
-                            && inter.selected_history_step.unwrap() == i,
-                        format!("{} step", i),
-                    )
-                    .clicked()
-                {
-                    inter.selected_history_step = Some(i);
-                };
-            });
+            self.history
+                .iter()
+                .enumerate()
+                .for_each(|(_, history_step)| {
+                    if ui
+                        .selectable_label(
+                            inter.selected_history_step.is_some()
+                                && inter.selected_history_step.unwrap() == history_step.step,
+                            format!("{} {}", history_step.step, history_step.name),
+                        )
+                        .clicked()
+                    {
+                        inter.selected_history_step = Some(history_step.step);
+                    };
+                });
 
             if ui.button("Load").clicked() {
                 inter.clicks.load_history = true;

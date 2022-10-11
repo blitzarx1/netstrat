@@ -12,6 +12,7 @@ mod path;
 mod props;
 mod settings;
 mod interactions;
+mod history;
 
 pub use self::drawer::Drawer;
 pub use self::props::Props;
