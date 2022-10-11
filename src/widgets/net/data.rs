@@ -34,6 +34,7 @@ pub struct Data {
     ini_set: HashSet<NodeIndex>,
     fin_set: HashSet<NodeIndex>,
     cycles: Vec<Cycle>,
+    colored_elements: Elements,
     dot: String,
 }
 
@@ -144,6 +145,7 @@ impl Data {
         let mut data = Self {
             graph: seed,
             settings: settings.clone(),
+            colored_elements: Default::default(),
             ini_set,
             fin_set,
             cycles: Default::default(),
@@ -166,6 +168,7 @@ impl Data {
             ini_set: HashSet::new(),
             fin_set: HashSet::new(),
             cycles: Default::default(),
+            colored_elements: Default::default(),
             dot: Default::default(),
         };
         let mut has_errors = false;
@@ -177,6 +180,10 @@ impl Data {
                         let node_idx = data.graph.add_node(weight.clone());
                         let digit_weight = weight.split('_').last().unwrap();
                         node_weight_to_index.insert(digit_weight.to_string(), node_idx);
+
+                        if l.contains("color") {
+                            data.colored_elements.add_node(node_idx);
+                        }
 
                         if weight.contains("ini") {
                             data.ini_set.insert(node_idx);
@@ -203,7 +210,12 @@ impl Data {
                         let start = *node_weight_to_index.get(&s).unwrap();
                         let end = *node_weight_to_index.get(&e).unwrap();
 
-                        data.graph.add_edge(start, end, weight);
+                        let edge_idx = data.graph.add_edge(start, end, weight);
+
+                        if l.contains("color") {
+                            data.colored_elements.add_edge(edge_idx);
+                        }
+
                         return;
                     }
                 }
@@ -225,10 +237,10 @@ impl Data {
     fn calc_dot(&self) -> String {
         let dot = Dot::new(&self.graph).to_string();
         if self.settings.edge_weight_type == EdgeWeight::Fixed {
-            return dot;
+            return self.color_dot(dot, self.colored_elements.clone());
         }
 
-        self.weight_dot(dot)
+        self.color_dot(self.weight_dot(dot), self.colored_elements.clone())
     }
 
     pub fn color_ini_cones(&mut self) {
@@ -238,7 +250,8 @@ impl Data {
             elements.union(&self.get_cone_elements(el, Outgoing, -1));
         }
 
-        self.dot = self.color_dot(self.calc_dot(), elements);
+        self.colored_elements = elements;
+        self.dot = self.calc_dot();
     }
 
     pub fn color_fin_cones(&mut self) {
@@ -247,7 +260,8 @@ impl Data {
             elements.union(&self.get_cone_elements(el, Incoming, -1));
         }
 
-        self.dot = self.color_dot(self.calc_dot(), elements);
+        self.colored_elements = elements;
+        self.dot = self.calc_dot();
     }
 
     pub fn color_cones(&mut self, cones_settings: Vec<ConeSettings>) {
@@ -265,7 +279,8 @@ impl Data {
             });
         });
 
-        self.dot = self.color_dot(self.calc_dot(), elements);
+        self.colored_elements = elements;
+        self.dot = self.calc_dot();
     }
 
     pub fn delete_cones(&mut self, cones_settings: Vec<ConeSettings>) {
@@ -294,7 +309,8 @@ impl Data {
             }
         });
 
-        self.dot = self.color_dot(self.calc_dot(), elements);
+        self.colored_elements = elements;
+        self.dot = self.calc_dot();
     }
 
     pub fn diamond_filter(&mut self) {
@@ -359,7 +375,8 @@ impl Data {
     }
 
     pub fn color_nodes_and_edges(&mut self, nodes: Vec<String>, edges: Vec<[String; 2]>) {
-        self.dot = self.color_dot(self.calc_dot(), self.find_nodes_and_edges(nodes, edges));
+        self.colored_elements = self.find_nodes_and_edges(nodes, edges);
+        self.dot = self.calc_dot();
     }
 
     pub fn delete_nodes_and_edges(&mut self, nodes: Vec<String>, edges: Vec<[String; 2]>) {
@@ -439,11 +456,13 @@ impl Data {
             self.graph.remove_edge(*edge);
         });
 
+        self.colored_elements = Default::default();
+
         info!("elements deleted");
         self.update();
     }
 
-    fn update(&mut self) {
+    pub fn update(&mut self) {
         self.ini_set = self.collect_ini_set();
         self.fin_set = self.collect_fin_set();
         self.cycles = self.calc_cycles();
