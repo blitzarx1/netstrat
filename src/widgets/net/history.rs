@@ -10,11 +10,15 @@ pub struct HistoryStep {
 }
 pub struct History {
     steps: Vec<HistoryStep>,
+    current_step: usize,
 }
 
 impl History {
     pub fn new() -> Self {
-        Self { steps: vec![] }
+        Self {
+            steps: vec![],
+            current_step: 0,
+        }
     }
 
     pub fn push(&mut self, step_name: String, data: Data) {
@@ -26,13 +30,17 @@ impl History {
         });
     }
 
-    pub fn get_and_crop(&mut self, step: usize) -> HistoryStep {
+    pub fn get(&mut self, step: usize) -> Option<HistoryStep> {
         let idx = step - 1;
-        let history_step = self.steps.get(idx).unwrap().clone();
+        self.steps.get(idx).cloned()
+    }
 
-        self.steps = self.steps[0..idx + 1].to_vec();
+    pub fn set_current_step(&mut self, step: usize) {
+        self.current_step = step
+    }
 
-        history_step
+    pub fn get_current_step(&self) -> usize {
+        self.current_step
     }
 
     pub fn iter(&self) -> Iter<'_, HistoryStep> {

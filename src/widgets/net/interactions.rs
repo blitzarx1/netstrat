@@ -11,7 +11,7 @@ pub struct Interactions {
     pub clicks: ButtonClicks,
     pub nodes_and_edges_settings: NodesAndEdgeSettings,
     pub selected_cycles: HashSet<usize>,
-    pub selected_history_step: Option<usize>,
+    pub selected_history_step: usize,
 }
 
 impl Interactions {
@@ -19,7 +19,7 @@ impl Interactions {
         selected_cycles: HashSet<usize>,
         graph_settings: NetSettings,
         cone_settings: ConeSettingsInputs,
-        selected_history_step: Option<usize>,
+        selected_history_step: usize,
         nodes_and_edges_settings: NodesAndEdgeSettings,
     ) -> Self {
         Self {

@@ -39,7 +39,6 @@ pub struct Props {
     drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>,
     toasts: Toasts,
     selected_cycles: HashSet<usize>,
-    selected_history_step: Option<usize>,
 }
 
 impl Props {
@@ -58,7 +57,6 @@ impl Props {
             cone_settings: Default::default(),
             selected_cycles: Default::default(),
             nodes_and_edges_settings: Default::default(),
-            selected_history_step: None,
         };
 
         s.update_frame();
@@ -149,12 +147,12 @@ impl Props {
         self.selected_cycles = selected_cycles;
     }
 
-    fn handle_selected_history_step(&mut self, selected_history_step: Option<usize>) {
-        if self.selected_history_step == selected_history_step {
+    fn handle_selected_history_step(&mut self, selected_history_step: usize) {
+        if self.history.get_current_step() == selected_history_step {
             return;
         }
 
-        self.selected_history_step = selected_history_step;
+        self.history.set_current_step(selected_history_step);
     }
 
     fn update_data(&mut self, action_name: String) {
@@ -222,15 +220,17 @@ impl Props {
     }
 
     fn load_history(&mut self) {
-        if self.selected_history_step.is_none() {
+        let step = self.history.get_current_step();
+        if step == 0 {
             return;
         }
 
-        let step = self.selected_history_step.unwrap();
-        let history_step = self.history.get_and_crop(step);
+        let history_wrapped = self.history.get(step);
+        if history_wrapped.is_none() {
+            return;
+        }
 
-        self.data = history_step.data;
-        self.selected_history_step = Some(history_step.step);
+        self.data = history_wrapped.unwrap().data;
 
         self.update_frame();
         self.trigger_changed_toast();
@@ -556,13 +556,12 @@ impl Props {
                 .for_each(|(_, history_step)| {
                     if ui
                         .selectable_label(
-                            inter.selected_history_step.is_some()
-                                && inter.selected_history_step.unwrap() == history_step.step,
+                            self.history.get_current_step() == history_step.step,
                             format!("{} {}", history_step.step, history_step.name),
                         )
                         .clicked()
                     {
-                        inter.selected_history_step = Some(history_step.step);
+                        inter.selected_history_step = history_step.step;
                     };
                 });
 
@@ -588,7 +587,7 @@ impl AppWidget for Props {
             self.selected_cycles.clone(),
             self.net_settings.clone(),
             self.cone_settings.clone(),
-            self.selected_history_step,
+            self.history.get_current_step(),
             self.nodes_and_edges_settings.clone(),
         );
 
