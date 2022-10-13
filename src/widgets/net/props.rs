@@ -153,6 +153,7 @@ impl Props {
         }
 
         self.history.set_current_step(selected_history_step);
+        self.load_history();
     }
 
     fn update_data(&mut self, action_name: String) {
@@ -193,11 +194,6 @@ impl Props {
         if clicks.delete_cycles {
             info!("deleting cycles");
             self.delete_cycles();
-        }
-
-        if clicks.load_history {
-            info!("loading history");
-            self.load_history();
         }
 
         if clicks.delete_nodes_and_edges {
@@ -564,10 +560,6 @@ impl Props {
                         inter.selected_history_step = history_step.step;
                     };
                 });
-
-            if ui.button("Load").clicked() {
-                inter.clicks.load_history = true;
-            }
         });
     }
 

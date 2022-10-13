@@ -28,6 +28,7 @@ impl History {
             name: step_name,
             data,
         });
+        self.set_current_step(step)
     }
 
     pub fn get(&mut self, step: usize) -> Option<HistoryStep> {
