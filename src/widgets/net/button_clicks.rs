@@ -10,5 +10,4 @@ pub struct ButtonClicks {
     pub delete_cycles: bool,
     pub color_nodes_and_edges: bool,
     pub delete_nodes_and_edges: bool,
-    pub load_history: bool,
 }
