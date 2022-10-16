@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 use crossbeam::channel::Sender;
-use egui::{ScrollArea, Slider, TextEdit, Ui};
+use egui::{Button, ScrollArea, Slider, TextEdit, Ui};
 use egui_extras::image::load_svg_bytes;
 use egui_notify::{Anchor, Toasts};
 use graphviz_rust::cmd::{CommandArg, Format};
@@ -14,6 +14,7 @@ use graphviz_rust::printer::PrinterContext;
 use graphviz_rust::{exec, parse};
 use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
+use tracing_subscriber::fmt::format;
 use urlencoding::encode;
 
 use crate::widgets::AppWidget;
@@ -22,7 +23,7 @@ use crate::widgets::OpenDropFile;
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
 use super::data::Data;
-use super::history::History;
+use super::history::{self, History, HistoryStep};
 use super::interactions::Interactions;
 use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, NetSettings};
@@ -44,8 +45,12 @@ pub struct Props {
 impl Props {
     pub fn new(drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>) -> Self {
         let data = Props::reset_data();
-        let mut history = History::new();
-        history.push("create".to_string(), data.clone());
+
+        let history = History::new_with_initial_step(HistoryStep {
+            name: "create".to_string(),
+            data: data.clone(),
+        });
+
         let mut s = Self {
             data,
             drawer_pub,
@@ -69,16 +74,32 @@ impl Props {
     }
 
     fn reset(&mut self) {
-        self.net_settings = NetSettings::default();
         self.data = Props::reset_data();
-        self.history = History::new();
-        self.update_data("reset".to_string())
+
+        self.history = History::new_with_initial_step(HistoryStep {
+            name: "reset".to_string(),
+            data: self.data.clone(),
+        });
+
+        self.update_data();
+        self.reset_settings();
+    }
+
+    fn reset_settings(&mut self) {
+        self.net_settings = NetSettings::default();
+        self.cone_settings = ConeSettingsInputs::default();
+        self.nodes_and_edges_settings = NodesAndEdgeSettings::default();
     }
 
     fn create(&mut self) {
         self.data = Data::new(self.net_settings.clone());
-        self.history = History::new();
-        self.update_data("create".to_string())
+
+        self.history = History::new_with_initial_step(HistoryStep {
+            name: "create".to_string(),
+            data: self.data.clone(),
+        });
+
+        self.update_data();
     }
 
     fn update_graph_settings(&mut self, graph_settings: NetSettings) {
@@ -92,22 +113,17 @@ impl Props {
     fn update(&mut self, inter: Interactions) {
         self.update_graph_settings(inter.graph_settings);
         self.update_cone_settings(inter.cone_settings);
+        self.update_nodes_and_edges_settings(inter.nodes_and_edges_settings);
+
         self.handle_selected_cycles(inter.selected_cycles);
-        self.handle_selected_history_step(inter.selected_history_step);
-        self.handle_nodes_and_edges_settings(inter.nodes_and_edges_settings);
-        self.handle_update_clicks(inter.clicks.clone());
+        // self.handle_selected_history_step(inter.selected_history_step);
+
+        self.handle_clicks(inter.clicks);
+
         self.handle_opened_file();
-
-        if inter.clicks.export_dot {
-            self.export_dot();
-        }
-
-        if inter.clicks.export_svg {
-            self.export_svg();
-        }
     }
 
-    fn handle_nodes_and_edges_settings(&mut self, nodes_and_edges_settings: NodesAndEdgeSettings) {
+    fn update_nodes_and_edges_settings(&mut self, nodes_and_edges_settings: NodesAndEdgeSettings) {
         if self.nodes_and_edges_settings != nodes_and_edges_settings {
             self.nodes_and_edges_settings = nodes_and_edges_settings
         }
@@ -134,8 +150,12 @@ impl Props {
             }
 
             self.data = data.unwrap();
-            self.update_data("load".to_string());
-            self.toasts.success("File imported");
+            self.history = History::new_with_initial_step(HistoryStep {
+                name: "load from file".to_string(),
+                data: self.data.clone(),
+            });
+            self.update_data();
+            self.reset_settings();
         }
     }
 
@@ -147,25 +167,19 @@ impl Props {
         self.selected_cycles = selected_cycles;
     }
 
-    fn handle_selected_history_step(&mut self, selected_history_step: usize) {
-        if self.history.get_current_step() == selected_history_step {
-            return;
-        }
-
-        self.history.set_current_step(selected_history_step);
-        self.load_history();
-    }
-
-    fn update_data(&mut self, action_name: String) {
+    fn update_data(&mut self) {
         debug!("updating graph state");
-
-        self.history.push(action_name, self.data.clone());
 
         self.update_frame();
         self.trigger_changed_toast();
     }
 
-    fn handle_update_clicks(&mut self, clicks: ButtonClicks) {
+    fn handle_error(&mut self, msg: &str) {
+        self.toasts.error(msg);
+        error!(msg);
+    }
+
+    fn handle_clicks(&mut self, clicks: ButtonClicks) {
         if clicks.reset {
             info!("resetting graph params");
             self.reset();
@@ -196,13 +210,58 @@ impl Props {
             self.delete_cycles();
         }
 
+        if clicks.history_go_up {
+            info!("navigating history up");
+            match self.history.go_up() {
+                Some(loaded_step) => {
+                    self.data = loaded_step.data;
+                    self.update_data()
+                }
+                None => self.handle_error("failed to load history"),
+            }
+        }
+
+        if clicks.history_go_down {
+            info!("navigating history down");
+            match self.history.go_down() {
+                Some(loaded_step) => {
+                    self.data = loaded_step.data;
+                    self.update_data()
+                }
+                None => self.handle_error("failed to load history"),
+            }
+        }
+
+        if clicks.history_go_sibling {
+            info!("navigating to history sibling");
+            match self.history.go_sibling() {
+                Some(loaded_step) => {
+                    self.data = loaded_step.data;
+                    self.update_data()
+                }
+                None => self.handle_error("failed to load history"),
+            }
+        }
+
         if clicks.delete_nodes_and_edges {
             info!("deleting nodes and edges");
             self.data.delete_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
-            self.update_data("delete node or edge".to_string())
+
+            if self
+                .history
+                .add_and_set_current_step(HistoryStep {
+                    name: "delete node or edge".to_string(),
+                    data: self.data.clone(),
+                })
+                .is_none()
+            {
+                self.handle_error("failed to delete node or edge");
+                return;
+            }
+            self.update_data();
         }
 
         if clicks.color_nodes_and_edges {
@@ -211,32 +270,41 @@ impl Props {
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
-            self.update_data("color node or edge".to_string());
+
+            if self
+                .history
+                .add_and_set_current_step(HistoryStep {
+                    name: "color node or edge".to_string(),
+                    data: self.data.clone(),
+                })
+                .is_none()
+            {
+                self.handle_error("failed to color node or edge");
+                return;
+            }
+            self.update_data();
         }
-    }
 
-    fn load_history(&mut self) {
-        let step = self.history.get_current_step();
-        if step == 0 {
-            return;
+        if clicks.export_dot {
+            info!("exporting dot");
+            self.export_dot();
         }
-
-        let history_wrapped = self.history.get(step);
-        if history_wrapped.is_none() {
-            return;
+        if clicks.export_svg {
+            info!("exporting svg");
+            self.export_svg();
         }
-
-        self.data = history_wrapped.unwrap().data;
-
-        self.update_frame();
-        self.trigger_changed_toast();
     }
 
     fn delete_cycles(&mut self) {
         self.data.delete_cycles(&self.selected_cycles);
         self.selected_cycles = Default::default();
 
-        self.update_data("delete cycle".to_string());
+        self.history.add_and_set_current_step(HistoryStep {
+            name: "delete cycle".to_string(),
+            data: self.data.clone(),
+        });
+
+        self.update_data();
     }
 
     fn update_frame(&mut self) {
@@ -275,8 +343,7 @@ impl Props {
             return;
         }
 
-        error!("failed to create svg: {}", graph_svg.err().unwrap());
-        self.toasts.error("Failed to export to file");
+        self.handle_error(format!("failed to create svg: {}", graph_svg.err().unwrap()).as_str());
     }
 
     fn write_to_file(&mut self, name: String, data: &[u8]) {
@@ -288,11 +355,11 @@ impl Props {
                 debug!("exporting graph to file: {}", abs_path.display());
 
                 if f.write_all(data).is_err() {
-                    error!("failed to export graph")
+                    self.handle_error("failed to export graph");
                 }
 
                 if let Some(err) = f.flush().err() {
-                    error!("failed to write to file with error: {err}");
+                    self.handle_error("failed to write to file with error: {err}");
                 }
 
                 self.toasts
@@ -301,7 +368,7 @@ impl Props {
                 info!("exported to file: {abs_path:?}");
             }
             Err(err) => {
-                error!("failed to create file with error: {err}");
+                self.handle_error("failed to create file with error: {err}");
             }
         }
     }
@@ -327,7 +394,12 @@ impl Props {
             ConeType::Final => self.data.color_fin_cones(),
         }
 
-        self.update_data("color cone".to_string());
+        self.history.add_and_set_current_step(HistoryStep {
+            name: "color cone".to_string(),
+            data: self.data.clone(),
+        });
+
+        self.update_data();
     }
 
     fn delete_cones(&mut self) {
@@ -344,13 +416,21 @@ impl Props {
         };
         self.cone_settings = Default::default();
 
-        self.update_data("delete cone".to_string());
+        self.history.add_and_set_current_step(HistoryStep {
+            name: "delete cone".to_string(),
+            data: self.data.clone(),
+        });
+        self.update_data();
     }
 
     fn color_cycles(&mut self) {
         self.data.color_cycles(&self.selected_cycles);
 
-        self.update_data("color cycle".to_string());
+        self.history.add_and_set_current_step(HistoryStep {
+            name: "color cycle".to_string(),
+            data: self.data.clone(),
+        });
+        self.update_data();
     }
 
     fn draw_create_section(&self, ui: &mut Ui, inter: &mut Interactions) {
@@ -545,21 +625,44 @@ impl Props {
     }
 
     fn draw_history_section(&self, ui: &mut Ui, inter: &mut Interactions) {
+        let is_root = self.history.get_current_step().unwrap() == self.history.root().unwrap();
+        let is_leaf = self
+            .history
+            .is_leaf(self.history.get_current_step().unwrap());
+        let is_parent_intersection = self
+            .history
+            .is_parent_intersection(self.history.get_current_step().unwrap());
+
         ui.collapsing("History", |ui| {
-            self.history
-                .iter()
-                .enumerate()
-                .for_each(|(_, history_step)| {
-                    if ui
-                        .selectable_label(
-                            self.history.get_current_step() == history_step.step,
-                            format!("{} {}", history_step.step, history_step.name),
-                        )
-                        .clicked()
-                    {
-                        inter.selected_history_step = history_step.step;
-                    };
-                });
+            ui.horizontal_top(|ui| {
+                if ui
+                    .add_enabled(
+                        !is_root,
+                        Button::new("⏶"), //up
+                    )
+                    .clicked()
+                {
+                    inter.clicks.history_go_up = true;
+                };
+                if ui
+                    .add_enabled(
+                        !is_leaf,
+                        Button::new("⏷"), // down
+                    )
+                    .clicked()
+                {
+                    inter.clicks.history_go_down = true;
+                };
+                if ui
+                    .add_enabled(is_parent_intersection, Button::new("▶"))
+                    .clicked()
+                {
+                    inter.clicks.history_go_sibling = true;
+                };
+            });
+            ui.add_space(5.0);
+            ui.add_space(10.0);
+            self.history.drawer().show(ui);
         });
     }
 
@@ -579,7 +682,7 @@ impl AppWidget for Props {
             self.selected_cycles.clone(),
             self.net_settings.clone(),
             self.cone_settings.clone(),
-            self.history.get_current_step(),
+            self.history.get_current_step().unwrap(),
             self.nodes_and_edges_settings.clone(),
         );
 
