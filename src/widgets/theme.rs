@@ -1,3 +1,4 @@
+// TODO: enable theme when styles are logically connected to selected theme
 use egui::{Response, Visuals, Widget};
 
 static LIGHT_MODE_SYMBOL: &str = "🔆";

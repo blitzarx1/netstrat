@@ -21,7 +21,6 @@ struct TemplateApp {
     windows: Vec<Box<dyn AppWindow>>,
     active_widget: Option<Mutex<Box<dyn AppWidget>>>,
     active_widget_subs: Vec<Receiver<Mutex<Box<dyn AppWidget>>>>,
-    theme: Theme,
 }
 
 fn init_logger(s: Sender<Vec<u8>>) {
@@ -69,7 +68,6 @@ impl TemplateApp {
             ],
             active_widget: None,
             active_widget_subs: vec![net_drawer_r, candles_drawer_r],
-            theme: Theme::new(),
         }
     }
 
@@ -89,8 +87,6 @@ impl App for TemplateApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         TopBottomPanel::top("header").show(ctx, |ui| {
             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                ui.add(&mut self.theme);
-
                 self.windows.iter_mut().for_each(|w| {
                     w.as_mut().toggle_btn(ui);
                 });
