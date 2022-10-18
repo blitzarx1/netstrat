@@ -3,10 +3,17 @@ use std::collections::HashSet;
 use std::vec;
 
 use lazy_static::lazy_static;
+use ndarray::Array;
+use ndarray::Ix2;
+use ndarray::ShapeBuilder;
+use ndarray::{arr2, Array2};
 use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
 use petgraph::prelude::{EdgeRef, StableDiGraph};
+use petgraph::visit::IntoEdgeReferences;
+use petgraph::visit::NodeIndexable;
 use petgraph::visit::depth_first_search;
+use petgraph::visit::GetAdjacencyMatrix;
 use petgraph::visit::IntoNodeReferences;
 use petgraph::{Direction, Incoming, Outgoing};
 use rand::distributions::{Distribution, Uniform};
@@ -389,6 +396,20 @@ impl Data {
 
     pub fn dot(&self) -> String {
         self.dot.clone()
+    }
+
+    pub fn adj_mat(&self) -> Array2<u8> {
+        let n = self.graph.node_bound();
+        let mut mat = Array::<u8, Ix2>::zeros((n, n).f());
+
+        self.graph.edge_references().for_each(|e| {
+            let row = e.source().index();
+            let col = e.target().index();
+    
+            mat[[row, col]] = 1
+        });
+
+        mat
     }
 
     fn find_nodes_and_edges(&self, nodes: Vec<String>, edges: Vec<[String; 2]>) -> Elements {

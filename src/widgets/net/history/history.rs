@@ -11,9 +11,9 @@ use petgraph::{
     Direction::{Incoming, Outgoing},
 };
 
-use crate::widgets::net::{nodes_and_edges::NodesAndEdgeSettings, Drawer};
+use crate::widgets::net::Drawer;
 
-use super::{generation_path::GenerationPath, path::Path, HistoryStep};
+use super::HistoryStep;
 
 pub struct Builder {
     tree: StableDiGraph<HistoryStep, usize>,
