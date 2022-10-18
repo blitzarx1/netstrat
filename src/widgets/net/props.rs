@@ -18,6 +18,7 @@ use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
+use crate::netstrat::Bus;
 use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
 
@@ -26,12 +27,14 @@ use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
 use super::data::Data;
 use super::history::{History, HistoryStep};
 use super::interactions::Interactions;
+use super::matrix::{self, Matrix};
 use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, NetSettings};
 use super::Drawer;
 
 pub struct Props {
     data: Data,
+    matrix: Matrix,
     net_settings: NetSettings,
     history: History,
     cone_settings: ConeSettingsInputs,
@@ -52,10 +55,13 @@ impl Props {
             data: data.clone(),
         });
 
+        let matrix = Matrix::new(data.clone().adj_mat(), Box::new(Bus::new()));
+
         let mut s = Self {
-            data,
             drawer_pub,
             history,
+            data,
+            matrix,
             open_drop_file: Default::default(),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             net_settings: Default::default(),
@@ -115,12 +121,8 @@ impl Props {
         self.update_graph_settings(inter.graph_settings);
         self.update_cone_settings(inter.cone_settings);
         self.update_nodes_and_edges_settings(inter.nodes_and_edges_settings);
-
         self.handle_selected_cycles(inter.selected_cycles);
-        // self.handle_selected_history_step(inter.selected_history_step);
-
         self.handle_clicks(inter.clicks);
-
         self.handle_opened_file();
     }
 
@@ -171,6 +173,7 @@ impl Props {
     fn update_data(&mut self) {
         debug!("updating graph state");
 
+        self.matrix = Matrix::new(self.data.adj_mat(), Box::new(Bus::new()));
         self.update_frame();
         self.trigger_changed_toast();
     }
@@ -667,11 +670,13 @@ impl Props {
         });
     }
 
-    fn draw_section_matrices(&self, ui: &mut Ui) {
+    fn draw_section_matrices(&mut self, ui: &mut Ui) {
         ui.collapsing("Matrices", |ui| {
-            ui.collapsing("Adj", |ui| {
-                draw_matrix(ui, self.data.adj_mat());
-            });
+            ScrollArea::both()
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    ui.collapsing("Adj", |ui| self.matrix.show(ui));
+                })
         });
     }
 
@@ -734,21 +739,4 @@ fn generate_unique_export_name() -> String {
             .unwrap()
             .as_millis(),
     )
-}
-
-fn draw_matrix(ui: &mut Ui, m: Array2<u8>) {
-    let n = m.len_of(Axis(0));
-    let m_transposed = m.view().reversed_axes();
-
-    ui.columns(n, |cols| {
-        for (i, col) in cols.iter_mut().enumerate() {
-            col.label(
-                (0..n)
-                    .map(|j| format!("{}\n", m_transposed[[i, j]]))
-                    .collect::<Vec<String>>()
-                    .join("")
-                    .to_string(),
-            );
-        }
-    });
 }
