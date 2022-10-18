@@ -6,15 +6,16 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 use crossbeam::channel::Sender;
-use egui::{Button, ScrollArea, Slider, TextEdit, Ui};
+use egui::text::LayoutJob;
+use egui::{Button, Color32, ScrollArea, Slider, TextEdit, TextFormat, Ui};
 use egui_extras::image::load_svg_bytes;
 use egui_notify::{Anchor, Toasts};
 use graphviz_rust::cmd::{CommandArg, Format};
 use graphviz_rust::printer::PrinterContext;
 use graphviz_rust::{exec, parse};
+use ndarray::{Array2, Axis};
 use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
-use tracing_subscriber::fmt::format;
 use urlencoding::encode;
 
 use crate::widgets::AppWidget;
@@ -23,7 +24,7 @@ use crate::widgets::OpenDropFile;
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
 use super::data::Data;
-use super::history::{self, History, HistoryStep};
+use super::history::{History, HistoryStep};
 use super::interactions::Interactions;
 use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, NetSettings};
@@ -666,6 +667,14 @@ impl Props {
         });
     }
 
+    fn draw_section_matrices(&self, ui: &mut Ui) {
+        ui.collapsing("Matrices", |ui| {
+            ui.collapsing("Adj", |ui| {
+                draw_matrix(ui, self.data.adj_mat());
+            });
+        });
+    }
+
     fn draw_dot_preview_section(&mut self, ui: &mut Ui) {
         let mut dot_mock_interaction = self.data.dot();
         ui.collapsing("Dot preview", |ui| {
@@ -692,6 +701,7 @@ impl AppWidget for Props {
         self.draw_cones_section(ui, &mut interactions);
         self.draw_cycles_section(ui, &mut interactions);
         self.draw_history_section(ui, &mut interactions);
+        self.draw_section_matrices(ui);
         self.draw_dot_preview_section(ui);
 
         ui.add_space(10.0);
@@ -724,4 +734,21 @@ fn generate_unique_export_name() -> String {
             .unwrap()
             .as_millis(),
     )
+}
+
+fn draw_matrix(ui: &mut Ui, m: Array2<u8>) {
+    let n = m.len_of(Axis(0));
+    let m_transposed = m.view().reversed_axes();
+
+    ui.columns(n, |cols| {
+        for (i, col) in cols.iter_mut().enumerate() {
+            col.label(
+                (0..n)
+                    .map(|j| format!("{}\n", m_transposed[[i, j]]))
+                    .collect::<Vec<String>>()
+                    .join("")
+                    .to_string(),
+            );
+        }
+    });
 }
