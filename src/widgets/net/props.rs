@@ -173,7 +173,7 @@ impl Props {
     fn update_data(&mut self) {
         debug!("updating graph state");
 
-        self.matrix = Matrix::new(self.data.adj_mat(), Box::new(Bus::new()));
+        self.matrix.set_matrix(self.data.adj_mat());
         self.update_frame();
         self.trigger_changed_toast();
     }
@@ -270,10 +270,12 @@ impl Props {
 
         if clicks.color_nodes_and_edges {
             info!("coloring nodes and edges");
-            self.data.color_nodes_and_edges(
+            let colored_els = self.data.color_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
+
+            self.matrix.set_selected_elements(colored_els);
 
             if self
                 .history

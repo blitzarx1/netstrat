@@ -1,4 +1,7 @@
+use std::collections::HashSet;
+
 use crossbeam::channel::{Receiver, Sender};
+use eframe::epaint::ahash::HashMap;
 use egui::{
     text::LayoutJob, Align, Color32, FontId, Label, RichText, ScrollArea, TextEdit, TextFormat,
     TextStyle, Vec2,
@@ -15,7 +18,7 @@ pub struct Matrix {
     m: Array2<u8>,
     selected_rows: Vec<usize>,
     selected_cols: Vec<usize>,
-    selected_elements: Vec<[usize; 2]>,
+    selected_elements: HashSet<(usize, usize)>,
 }
 
 impl Matrix {
@@ -29,6 +32,20 @@ impl Matrix {
         }
     }
 
+    pub fn set_matrix(&mut self, m: Array2<u8>) {
+        self.m = m;
+    }
+
+    pub fn set_selected_elements(&mut self, elements: Vec<(usize, usize)>) {
+        let mut set = HashSet::new();
+        elements.iter().for_each(|el| {
+            set.insert(*el);
+        });
+
+        self.selected_elements = set;
+    }
+
+    // basically index column
     fn first_colum(&self, n: usize) -> Vec<(String, TextFormat)> {
         let mut res = vec![(
             "\n".to_string(),
@@ -62,6 +79,7 @@ impl Matrix {
         let n = m.len_of(Axis(0));
         let mut res = Vec::with_capacity(n + 1);
 
+        // first symbol in col is index
         res.push((
             format!("{}\n", col_idx),
             TextFormat {
@@ -75,6 +93,18 @@ impl Matrix {
         (0..n).for_each(|i| {
             let el = m[[col_idx, i]];
             let el_string = format!("{}\n", el);
+            if self.selected_elements.get(&(i, col_idx)).is_some() {
+                res.push((
+                    el_string,
+                    TextFormat {
+                        color: Color32::LIGHT_RED,
+                        ..Default::default()
+                    },
+                ));
+
+                return;
+            };
+
             res.push(match el == 1 {
                 true => (
                     el_string,

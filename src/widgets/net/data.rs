@@ -10,11 +10,11 @@ use ndarray::{arr2, Array2};
 use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
 use petgraph::prelude::{EdgeRef, StableDiGraph};
-use petgraph::visit::IntoEdgeReferences;
-use petgraph::visit::NodeIndexable;
 use petgraph::visit::depth_first_search;
 use petgraph::visit::GetAdjacencyMatrix;
+use petgraph::visit::IntoEdgeReferences;
 use petgraph::visit::IntoNodeReferences;
+use petgraph::visit::NodeIndexable;
 use petgraph::{Direction, Incoming, Outgoing};
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
@@ -381,9 +381,21 @@ impl Data {
         self.delete_elements(elements)
     }
 
-    pub fn color_nodes_and_edges(&mut self, nodes: Vec<String>, edges: Vec<[String; 2]>) {
+    pub fn color_nodes_and_edges(
+        &mut self,
+        nodes: Vec<String>,
+        edges: Vec<[String; 2]>,
+    ) -> Vec<(usize, usize)> {
         self.colored_elements = self.find_nodes_and_edges(nodes, edges);
         self.dot = self.calc_dot();
+
+        let mut res = vec![];
+        self.colored_elements.edges().iter().for_each(|e| {
+            let (source, target) = self.graph.edge_endpoints(*e).unwrap();
+            res.push((source.index(), target.index()));
+        });
+
+        res
     }
 
     pub fn delete_nodes_and_edges(&mut self, nodes: Vec<String>, edges: Vec<[String; 2]>) {
@@ -405,7 +417,7 @@ impl Data {
         self.graph.edge_references().for_each(|e| {
             let row = e.source().index();
             let col = e.target().index();
-    
+
             mat[[row, col]] = 1
         });
 
