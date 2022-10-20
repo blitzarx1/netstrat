@@ -1,4 +1,7 @@
-use egui::{text::LayoutJob, Align, Color32, FontId, Label, TextFormat};
+use egui::{
+    text::LayoutJob, Align, Color32, Direction, FontId, Label, Layout, ScrollArea, TextFormat,
+};
+use egui_extras::StripBuilder;
 use ndarray::{ArrayBase, Axis, Ix2, ViewRepr};
 
 use super::graph::MatrixState;
@@ -136,14 +139,25 @@ impl AppWidget for Matrix {
             cols.push(filled_column);
         });
 
-        ui.columns(n + 1, |ui| {
-            for (i, ui) in ui.iter_mut().enumerate() {
-                let mut job = LayoutJob::default();
-                cols.get(i).unwrap().iter().for_each(|(text, format)| {
-                    job.append(text.as_str(), 0.0, format.clone());
+        StripBuilder::new(ui)
+            .clip(false)
+            .sizes(
+                egui_extras::Size::Absolute {
+                    initial: 7.0,
+                    range: (7.0, 10.0),
+                },
+                n + 1,
+            )
+            .horizontal(|mut strip| {
+                (0..(n + 1)).for_each(|i| {
+                    let mut job = LayoutJob::default();
+                    cols.get(i).unwrap().iter().for_each(|(text, format)| {
+                        job.append(text.as_str(), 0.0, format.clone());
+                    });
+                    strip.cell(|ui| {
+                        ui.add(Label::new(job).wrap(false));
+                    });
                 });
-                ui.add(Label::new(job).wrap(false));
-            }
-        });
+            });
     }
 }
