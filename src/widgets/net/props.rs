@@ -673,7 +673,7 @@ impl Props {
                 .auto_shrink([false, true])
                 .show(ui, |ui| {
                     ui.collapsing("Adj", |ui| self.matrix.show(ui));
-                })
+                });
         });
     }
 
