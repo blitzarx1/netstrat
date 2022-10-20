@@ -1,48 +1,21 @@
-use std::collections::HashSet;
+use egui::{text::LayoutJob, Align, Color32, FontId, Label, TextFormat};
+use ndarray::{ArrayBase, Axis, Ix2, ViewRepr};
 
-use crossbeam::channel::{Receiver, Sender};
-use eframe::epaint::ahash::HashMap;
-use egui::{
-    text::LayoutJob, Align, Color32, FontId, Label, RichText, ScrollArea, TextEdit, TextFormat,
-    TextStyle, Vec2,
-};
-use ndarray::{Array2, ArrayBase, Axis, Ix2, ViewRepr};
-
-use crate::{
-    netstrat::{Bus, Message},
-    widgets::AppWidget,
-};
+use super::graph::MatrixState;
+use crate::{netstrat::Bus, widgets::AppWidget};
 
 pub struct Matrix {
     bus: Box<Bus>,
-    m: Array2<u8>,
-    selected_rows: Vec<usize>,
-    selected_cols: Vec<usize>,
-    selected_elements: HashSet<(usize, usize)>,
+    state: MatrixState,
 }
 
 impl Matrix {
-    pub fn new(m: Array2<u8>, bus: Box<Bus>) -> Self {
-        Self {
-            m,
-            bus,
-            selected_rows: Default::default(),
-            selected_cols: Default::default(),
-            selected_elements: Default::default(),
-        }
+    pub fn new(state: MatrixState, bus: Box<Bus>) -> Self {
+        Self { bus, state }
     }
 
-    pub fn set_matrix(&mut self, m: Array2<u8>) {
-        self.m = m;
-    }
-
-    pub fn set_selected_elements(&mut self, elements: Vec<(usize, usize)>) {
-        let mut set = HashSet::new();
-        elements.iter().for_each(|el| {
-            set.insert(*el);
-        });
-
-        self.selected_elements = set;
+    pub fn set_state(&mut self, state: MatrixState) {
+        self.state = state;
     }
 
     // basically index column
@@ -57,15 +30,28 @@ impl Matrix {
             },
         )];
         (0..n).for_each(|i| {
-            res.push((
-                format!("{}", i),
-                TextFormat {
-                    font_id: FontId::monospace(9.0),
-                    color: Color32::GRAY.linear_multiply(0.1),
-                    valign: Align::Center,
-                    ..Default::default()
-                },
-            ));
+            let el_string = format!("{}", i);
+            if self.state.colored_elements.rows.contains(&i) {
+                res.push((
+                    el_string,
+                    TextFormat {
+                        font_id: FontId::monospace(9.0),
+                        color: Color32::LIGHT_RED,
+                        valign: Align::Center,
+                        ..Default::default()
+                    },
+                ));
+            } else {
+                res.push((
+                    el_string,
+                    TextFormat {
+                        font_id: FontId::monospace(9.0),
+                        color: Color32::GRAY.linear_multiply(0.1),
+                        valign: Align::Center,
+                        ..Default::default()
+                    },
+                ));
+            }
             res.push((" \n".to_string(), TextFormat::default()))
         });
         res
@@ -80,20 +66,33 @@ impl Matrix {
         let mut res = Vec::with_capacity(n + 1);
 
         // first symbol in col is index
-        res.push((
-            format!("{}\n", col_idx),
-            TextFormat {
-                font_id: FontId::monospace(9.0),
-                color: Color32::GRAY.linear_multiply(0.1),
-                valign: Align::Center,
-                ..Default::default()
-            },
-        ));
+        let idx_string = format!("{}\n", col_idx);
+        if self.state.colored_elements.cols.contains(&col_idx) {
+            res.push((
+                idx_string,
+                TextFormat {
+                    font_id: FontId::monospace(9.0),
+                    color: Color32::LIGHT_RED,
+                    valign: Align::Center,
+                    ..Default::default()
+                },
+            ));
+        } else {
+            res.push((
+                idx_string,
+                TextFormat {
+                    font_id: FontId::monospace(9.0),
+                    color: Color32::GRAY.linear_multiply(0.1),
+                    valign: Align::Center,
+                    ..Default::default()
+                },
+            ));
+        }
 
         (0..n).for_each(|i| {
             let el = m[[col_idx, i]];
             let el_string = format!("{}\n", el);
-            if self.selected_elements.get(&(i, col_idx)).is_some() {
+            if self.state.colored_elements.elements.contains(&(i, col_idx)) {
                 res.push((
                     el_string,
                     TextFormat {
@@ -129,11 +128,11 @@ impl Matrix {
 
 impl AppWidget for Matrix {
     fn show(&mut self, ui: &mut egui::Ui) {
-        let n = self.m.len_of(Axis(0));
+        let n = self.state.m.len_of(Axis(0));
 
         let mut cols = vec![self.first_colum(n)];
         (0..n).for_each(|i| {
-            let filled_column = self.nth_column(&self.m.view().reversed_axes(), i);
+            let filled_column = self.nth_column(&self.state.m.view().reversed_axes(), i);
             cols.push(filled_column);
         });
 

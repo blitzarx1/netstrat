@@ -13,10 +13,10 @@ use petgraph::{
 
 use crate::widgets::net::Drawer;
 
-use super::HistoryStep;
+use super::Step;
 
 pub struct Builder {
-    tree: StableDiGraph<HistoryStep, usize>,
+    tree: StableDiGraph<Step, usize>,
     initial_step: Option<usize>,
     root: Option<usize>,
 }
@@ -30,7 +30,7 @@ impl Builder {
         }
     }
 
-    pub fn with_initial_step(&mut self, history_step: HistoryStep) {
+    pub fn with_initial_step(&mut self, history_step: Step) {
         let root_idx = self.tree.add_node(history_step).index();
         self.root = Some(root_idx);
         self.initial_step = Some(root_idx);
@@ -52,7 +52,7 @@ impl Builder {
 }
 
 pub struct History {
-    tree: StableDiGraph<HistoryStep, usize>,
+    tree: StableDiGraph<Step, usize>,
     current_step: Option<usize>,
     max_gen: usize,
     drawer: Drawer,
@@ -68,7 +68,7 @@ impl History {
         self.drawer.clone()
     }
 
-    pub fn new_with_initial_step(history_step: HistoryStep) -> Self {
+    pub fn new_with_initial_step(history_step: Step) -> Self {
         let mut history_builder = History::builder();
         history_builder.with_initial_step(history_step);
         history_builder.build()
@@ -100,7 +100,7 @@ impl History {
         self.tree.edges_directed(parent_idx, Outgoing).count() > 1
     }
 
-    pub fn go_up(&mut self) -> Option<HistoryStep> {
+    pub fn go_up(&mut self) -> Option<Step> {
         let parent_idx = self
             .tree
             .edges_directed(NodeIndex::from(self.get_current_step()? as u32), Incoming)
@@ -113,7 +113,7 @@ impl History {
         self.tree.node_weight(parent_idx).cloned()
     }
 
-    pub fn go_down(&mut self) -> Option<HistoryStep> {
+    pub fn go_down(&mut self) -> Option<Step> {
         let child_idx = self
             .tree
             .edges_directed(NodeIndex::from(self.get_current_step()? as u32), Outgoing)
@@ -126,7 +126,7 @@ impl History {
         self.tree.node_weight(child_idx).cloned()
     }
 
-    pub fn go_sibling(&mut self) -> Option<HistoryStep> {
+    pub fn go_sibling(&mut self) -> Option<Step> {
         let parent_idx = self
             .tree
             .edges_directed(NodeIndex::from(self.get_current_step()? as u32), Incoming)
@@ -163,7 +163,7 @@ impl History {
     }
 
     /// adds step to history creating new generation or extending current one
-    pub fn add_and_set_current_step(&mut self, history_step: HistoryStep) -> Option<()> {
+    pub fn add_and_set_current_step(&mut self, history_step: Step) -> Option<()> {
         let new_node_idx = self.tree.add_node(history_step);
 
         match self.is_leaf(self.current_step?) {
@@ -248,7 +248,7 @@ impl History {
         .to_string()
     }
 
-    pub fn get(&self, step: usize) -> Option<HistoryStep> {
+    pub fn get(&self, step: usize) -> Option<Step> {
         self.tree.node_weight(NodeIndex::from(step as u32)).cloned()
     }
 }

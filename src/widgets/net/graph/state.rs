@@ -4,14 +4,13 @@ use std::vec;
 
 use lazy_static::lazy_static;
 use ndarray::Array;
+use ndarray::Array2;
 use ndarray::Ix2;
 use ndarray::ShapeBuilder;
-use ndarray::{arr2, Array2};
 use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
 use petgraph::prelude::{EdgeRef, StableDiGraph};
 use petgraph::visit::depth_first_search;
-use petgraph::visit::GetAdjacencyMatrix;
 use petgraph::visit::IntoEdgeReferences;
 use petgraph::visit::IntoNodeReferences;
 use petgraph::visit::NodeIndexable;
@@ -24,18 +23,19 @@ use tracing::trace;
 use tracing::warn;
 use tracing::{debug, error};
 
-use crate::widgets::net::path::Path;
+use crate::widgets::net::graph::path::Path;
+use crate::widgets::net::settings::ConeSettings;
 use crate::widgets::net::settings::EdgeWeight;
+use crate::widgets::net::settings::NetSettings;
 
 use super::cycle::Cycle;
 use super::elements::Elements;
-use super::settings::ConeSettings;
-use super::settings::NetSettings;
+use super::matrix;
 
 const MAX_DOT_WEIGHT: f64 = 5.0;
 
 #[derive(Clone)]
-pub struct Data {
+pub struct State {
     graph: StableDiGraph<String, f64>,
     settings: NetSettings,
     ini_set: HashSet<NodeIndex>,
@@ -43,9 +43,10 @@ pub struct Data {
     cycles: Vec<Cycle>,
     colored_elements: Elements,
     dot: String,
+    adj_mat: matrix::State,
 }
 
-impl Data {
+impl State {
     pub fn new(settings: NetSettings) -> Self {
         debug!("creating graph with settings: {settings:?}");
         let mut seed = StableDiGraph::with_capacity(
@@ -157,19 +158,20 @@ impl Data {
             fin_set,
             cycles: Default::default(),
             dot: Default::default(),
+            adj_mat: Default::default(),
         };
 
         if settings.diamond_filter {
             data.diamond_filter()
         }
 
-        data.update();
+        data.recalculate_metadata();
 
         data
     }
 
     pub fn from_dot(dot_data: String) -> Option<Self> {
-        let mut data = Data {
+        let mut data = State {
             graph: StableDiGraph::new(),
             settings: NetSettings::default(),
             ini_set: HashSet::new(),
@@ -177,6 +179,7 @@ impl Data {
             cycles: Default::default(),
             colored_elements: Default::default(),
             dot: Default::default(),
+            adj_mat: Default::default(),
         };
         let mut has_errors = false;
         let mut node_weight_to_index = HashMap::new();
@@ -236,18 +239,9 @@ impl Data {
             return None;
         }
 
-        data.update();
+        data.recalculate_metadata();
 
         Some(data)
-    }
-
-    fn calc_dot(&self) -> String {
-        let dot = Dot::new(&self.graph).to_string();
-        if self.settings.edge_weight_type == EdgeWeight::Fixed {
-            return self.color_dot(dot, self.colored_elements.clone());
-        }
-
-        self.color_dot(self.weight_dot(dot), self.colored_elements.clone())
     }
 
     pub fn color_ini_cones(&mut self) {
@@ -258,7 +252,7 @@ impl Data {
         }
 
         self.colored_elements = elements;
-        self.dot = self.calc_dot();
+        self.recalculate_metadata();
     }
 
     pub fn color_fin_cones(&mut self) {
@@ -268,7 +262,7 @@ impl Data {
         }
 
         self.colored_elements = elements;
-        self.dot = self.calc_dot();
+        self.recalculate_metadata();
     }
 
     pub fn color_cones(&mut self, cones_settings: Vec<ConeSettings>) {
@@ -287,7 +281,7 @@ impl Data {
         });
 
         self.colored_elements = elements;
-        self.dot = self.calc_dot();
+        self.recalculate_metadata();
     }
 
     pub fn delete_cones(&mut self, cones_settings: Vec<ConeSettings>) {
@@ -317,7 +311,7 @@ impl Data {
         });
 
         self.colored_elements = elements;
-        self.dot = self.calc_dot();
+        self.recalculate_metadata();
     }
 
     pub fn diamond_filter(&mut self) {
@@ -347,7 +341,7 @@ impl Data {
         self.graph
             .retain_nodes(|_, node| intersection.contains(&node));
 
-        self.update();
+        self.recalculate_metadata();
     }
 
     pub fn delete_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
@@ -381,21 +375,9 @@ impl Data {
         self.delete_elements(elements)
     }
 
-    pub fn color_nodes_and_edges(
-        &mut self,
-        nodes: Vec<String>,
-        edges: Vec<[String; 2]>,
-    ) -> Vec<(usize, usize)> {
+    pub fn color_nodes_and_edges(&mut self, nodes: Vec<String>, edges: Vec<[String; 2]>) {
         self.colored_elements = self.find_nodes_and_edges(nodes, edges);
-        self.dot = self.calc_dot();
-
-        let mut res = vec![];
-        self.colored_elements.edges().iter().for_each(|e| {
-            let (source, target) = self.graph.edge_endpoints(*e).unwrap();
-            res.push((source.index(), target.index()));
-        });
-
-        res
+        self.recalculate_metadata();
     }
 
     pub fn delete_nodes_and_edges(&mut self, nodes: Vec<String>, edges: Vec<[String; 2]>) {
@@ -410,7 +392,11 @@ impl Data {
         self.dot.clone()
     }
 
-    pub fn adj_mat(&self) -> Array2<u8> {
+    pub fn matrix(&self) -> matrix::State {
+        self.adj_mat.clone()
+    }
+
+    fn adj_mat(&self) -> Array2<u8> {
         let n = self.graph.node_bound();
         let mut mat = Array::<u8, Ix2>::zeros((n, n).f());
 
@@ -492,16 +478,43 @@ impl Data {
         self.colored_elements = Default::default();
 
         info!("elements deleted");
-        self.update();
+        self.recalculate_metadata();
     }
 
-    pub fn update(&mut self) {
+    fn recalculate_metadata(&mut self) {
         self.ini_set = self.collect_ini_set();
         self.fin_set = self.collect_fin_set();
         self.cycles = self.calc_cycles();
         self.dot = self.calc_dot();
+        self.adj_mat =
+            matrix::State::new(self.adj_mat(), self.colored_elements_to_matrix_elements());
 
         info!("graph metadata recalculated");
+    }
+
+    fn calc_dot(&self) -> String {
+        let dot = Dot::new(&self.graph).to_string();
+        if self.settings.edge_weight_type == EdgeWeight::Fixed {
+            return self.color_dot(dot, self.colored_elements.clone());
+        }
+
+        self.color_dot(self.weight_dot(dot), self.colored_elements.clone())
+    }
+
+    fn colored_elements_to_matrix_elements(&self) -> matrix::Elements {
+        let mut res: matrix::Elements = Default::default();
+
+        self.colored_elements.edges().iter().for_each(|idx| {
+            let edge = self.graph.edge_endpoints(*idx).unwrap();
+            res.elements.insert((edge.0.index(), edge.1.index()));
+        });
+
+        self.colored_elements.nodes().iter().for_each(|e| {
+            res.rows.insert(e.index());
+            res.cols.insert(e.index());
+        });
+
+        res
     }
 
     fn calc_cycles(&self) -> Vec<Cycle> {

@@ -6,8 +6,7 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 use crossbeam::channel::Sender;
-use egui::text::LayoutJob;
-use egui::{Button, Color32, ScrollArea, Slider, TextEdit, TextFormat, Ui};
+use egui::{Button, ScrollArea, Slider, TextEdit, Ui};
 use egui_extras::image::load_svg_bytes;
 use egui_notify::{Anchor, Toasts};
 use graphviz_rust::cmd::{CommandArg, Format};
@@ -24,16 +23,15 @@ use crate::widgets::OpenDropFile;
 
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
-use super::data::Data;
-use super::history::{History, HistoryStep};
+use super::history::{History, Step};
 use super::interactions::Interactions;
-use super::matrix::{self, Matrix};
+use super::matrix::Matrix;
 use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, NetSettings};
-use super::Drawer;
+use super::{Drawer, State};
 
 pub struct Props {
-    data: Data,
+    graph_state: State,
     matrix: Matrix,
     net_settings: NetSettings,
     history: History,
@@ -50,17 +48,17 @@ impl Props {
     pub fn new(drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>) -> Self {
         let data = Props::reset_data();
 
-        let history = History::new_with_initial_step(HistoryStep {
+        let history = History::new_with_initial_step(Step {
             name: "create".to_string(),
             data: data.clone(),
         });
 
-        let matrix = Matrix::new(data.clone().adj_mat(), Box::new(Bus::new()));
+        let matrix = Matrix::new(data.matrix(), Box::new(Bus::new()));
 
         let mut s = Self {
             drawer_pub,
             history,
-            data,
+            graph_state: data,
             matrix,
             open_drop_file: Default::default(),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
@@ -76,16 +74,16 @@ impl Props {
         s
     }
 
-    fn reset_data() -> Data {
-        Data::new(NetSettings::default())
+    fn reset_data() -> State {
+        State::new(NetSettings::default())
     }
 
     fn reset(&mut self) {
-        self.data = Props::reset_data();
+        self.graph_state = Props::reset_data();
 
-        self.history = History::new_with_initial_step(HistoryStep {
+        self.history = History::new_with_initial_step(Step {
             name: "reset".to_string(),
-            data: self.data.clone(),
+            data: self.graph_state.clone(),
         });
 
         self.update_data();
@@ -99,11 +97,11 @@ impl Props {
     }
 
     fn create(&mut self) {
-        self.data = Data::new(self.net_settings.clone());
+        self.graph_state = State::new(self.net_settings.clone());
 
-        self.history = History::new_with_initial_step(HistoryStep {
+        self.history = History::new_with_initial_step(Step {
             name: "create".to_string(),
-            data: self.data.clone(),
+            data: self.graph_state.clone(),
         });
 
         self.update_data();
@@ -146,16 +144,16 @@ impl Props {
             }
 
             let dot_data = read_to_string(p).unwrap();
-            let data = Data::from_dot(dot_data);
+            let data = State::from_dot(dot_data);
             if data.is_none() {
                 self.toasts.error("Failed to parse imported file");
                 return;
             }
 
-            self.data = data.unwrap();
-            self.history = History::new_with_initial_step(HistoryStep {
+            self.graph_state = data.unwrap();
+            self.history = History::new_with_initial_step(Step {
                 name: "load from file".to_string(),
-                data: self.data.clone(),
+                data: self.graph_state.clone(),
             });
             self.update_data();
             self.reset_settings();
@@ -173,7 +171,7 @@ impl Props {
     fn update_data(&mut self) {
         debug!("updating graph state");
 
-        self.matrix.set_matrix(self.data.adj_mat());
+        self.matrix.set_state(self.graph_state.matrix());
         self.update_frame();
         self.trigger_changed_toast();
     }
@@ -218,7 +216,7 @@ impl Props {
             info!("navigating history up");
             match self.history.go_up() {
                 Some(loaded_step) => {
-                    self.data = loaded_step.data;
+                    self.graph_state = loaded_step.data;
                     self.update_data()
                 }
                 None => self.handle_error("failed to load history"),
@@ -229,7 +227,7 @@ impl Props {
             info!("navigating history down");
             match self.history.go_down() {
                 Some(loaded_step) => {
-                    self.data = loaded_step.data;
+                    self.graph_state = loaded_step.data;
                     self.update_data()
                 }
                 None => self.handle_error("failed to load history"),
@@ -240,7 +238,7 @@ impl Props {
             info!("navigating to history sibling");
             match self.history.go_sibling() {
                 Some(loaded_step) => {
-                    self.data = loaded_step.data;
+                    self.graph_state = loaded_step.data;
                     self.update_data()
                 }
                 None => self.handle_error("failed to load history"),
@@ -249,16 +247,16 @@ impl Props {
 
         if clicks.delete_nodes_and_edges {
             info!("deleting nodes and edges");
-            self.data.delete_nodes_and_edges(
+            self.graph_state.delete_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
 
             if self
                 .history
-                .add_and_set_current_step(HistoryStep {
+                .add_and_set_current_step(Step {
                     name: "delete node or edge".to_string(),
-                    data: self.data.clone(),
+                    data: self.graph_state.clone(),
                 })
                 .is_none()
             {
@@ -270,18 +268,16 @@ impl Props {
 
         if clicks.color_nodes_and_edges {
             info!("coloring nodes and edges");
-            let colored_els = self.data.color_nodes_and_edges(
+            let colored_els = self.graph_state.color_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
 
-            self.matrix.set_selected_elements(colored_els);
-
             if self
                 .history
-                .add_and_set_current_step(HistoryStep {
+                .add_and_set_current_step(Step {
                     name: "color node or edge".to_string(),
-                    data: self.data.clone(),
+                    data: self.graph_state.clone(),
                 })
                 .is_none()
             {
@@ -302,21 +298,20 @@ impl Props {
     }
 
     fn delete_cycles(&mut self) {
-        self.data.delete_cycles(&self.selected_cycles);
+        self.graph_state.delete_cycles(&self.selected_cycles);
         self.selected_cycles = Default::default();
 
-        self.history.add_and_set_current_step(HistoryStep {
+        self.history.add_and_set_current_step(Step {
             name: "delete cycle".to_string(),
-            data: self.data.clone(),
+            data: self.graph_state.clone(),
         });
 
         self.update_data();
     }
 
     fn update_frame(&mut self) {
-        self.data.update();
         let graph_svg = exec(
-            parse(self.data.dot().as_str()).unwrap(),
+            parse(self.graph_state.dot().as_str()).unwrap(),
             &mut PrinterContext::default(),
             vec![CommandArg::Format(Format::Svg)],
         )
@@ -334,13 +329,13 @@ impl Props {
 
     fn export_dot(&mut self) {
         let name = format!("{}.dot", generate_unique_export_name());
-        self.write_to_file(name, self.data.dot().as_bytes())
+        self.write_to_file(name, self.graph_state.dot().as_bytes())
     }
 
     fn export_svg(&mut self) {
         let name = format!("{}.svg", generate_unique_export_name());
         let graph_svg = exec(
-            parse(self.data.dot().as_str()).unwrap(),
+            parse(self.graph_state.dot().as_str()).unwrap(),
             &mut PrinterContext::default(),
             vec![CommandArg::Format(Format::Svg)],
         );
@@ -389,20 +384,20 @@ impl Props {
 
     fn color_cones(&mut self) {
         match self.cone_settings.cone_type {
-            ConeType::Custom => self.data.color_cones(
+            ConeType::Custom => self.graph_state.color_cones(
                 self.cone_settings
                     .settings
                     .iter_mut()
                     .map(|input| input.prepare_settings())
                     .collect(),
             ),
-            ConeType::Initial => self.data.color_ini_cones(),
-            ConeType::Final => self.data.color_fin_cones(),
+            ConeType::Initial => self.graph_state.color_ini_cones(),
+            ConeType::Final => self.graph_state.color_fin_cones(),
         }
 
-        self.history.add_and_set_current_step(HistoryStep {
+        self.history.add_and_set_current_step(Step {
             name: "color cone".to_string(),
-            data: self.data.clone(),
+            data: self.graph_state.clone(),
         });
 
         self.update_data();
@@ -410,31 +405,31 @@ impl Props {
 
     fn delete_cones(&mut self) {
         match self.cone_settings.cone_type {
-            ConeType::Custom => self.data.delete_cones(
+            ConeType::Custom => self.graph_state.delete_cones(
                 self.cone_settings
                     .settings
                     .iter_mut()
                     .map(|input| input.prepare_settings())
                     .collect(),
             ),
-            ConeType::Initial => self.data.delete_initial_cone(),
-            ConeType::Final => self.data.delete_final_cone(),
+            ConeType::Initial => self.graph_state.delete_initial_cone(),
+            ConeType::Final => self.graph_state.delete_final_cone(),
         };
         self.cone_settings = Default::default();
 
-        self.history.add_and_set_current_step(HistoryStep {
+        self.history.add_and_set_current_step(Step {
             name: "delete cone".to_string(),
-            data: self.data.clone(),
+            data: self.graph_state.clone(),
         });
         self.update_data();
     }
 
     fn color_cycles(&mut self) {
-        self.data.color_cycles(&self.selected_cycles);
+        self.graph_state.color_cycles(&self.selected_cycles);
 
-        self.history.add_and_set_current_step(HistoryStep {
+        self.history.add_and_set_current_step(Step {
             name: "color cycle".to_string(),
-            data: self.data.clone(),
+            data: self.graph_state.clone(),
         });
         self.update_data();
     }
@@ -600,7 +595,7 @@ impl Props {
             ScrollArea::vertical()
                 .auto_shrink([false, true])
                 .show(ui, |ui| {
-                    self.data
+                    self.graph_state
                         .clone()
                         .cycles()
                         .iter()
@@ -683,7 +678,7 @@ impl Props {
     }
 
     fn draw_dot_preview_section(&mut self, ui: &mut Ui) {
-        let mut dot_mock_interaction = self.data.dot();
+        let mut dot_mock_interaction = self.graph_state.dot();
         ui.collapsing("Dot preview", |ui| {
             ScrollArea::vertical()
                 .auto_shrink([false, true])
@@ -716,7 +711,7 @@ impl AppWidget for Props {
             if ui.button("Open in Explorer").clicked() {
                 open::that(format!(
                     "https://dreampuf.github.io/GraphvizOnline/#{}",
-                    encode(self.data.dot().as_str())
+                    encode(self.graph_state.dot().as_str())
                 ))
                 .unwrap();
             }
