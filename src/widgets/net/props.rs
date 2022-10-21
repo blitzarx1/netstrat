@@ -721,6 +721,8 @@ impl AppWidget for Props {
             self.drawer_pub
                 .send(Mutex::new(Box::new(self.net_visualizer.clone())))
                 .unwrap();
+
+            self.net_visualizer.set_changed(false)
         }
 
         self.toasts.show(ui.ctx());

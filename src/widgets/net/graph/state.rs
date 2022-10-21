@@ -484,12 +484,16 @@ impl State {
     fn recalculate_metadata(&mut self) {
         self.ini_set = self.collect_ini_set();
         self.fin_set = self.collect_fin_set();
+
         self.cycles = self.calc_cycles();
         self.dot = self.calc_dot();
-        self.adj_mat =
-            matrix::State::new(self.adj_mat(), self.colored_elements_to_matrix_elements());
+        self.adj_mat = self.calc_adj_mat();
 
         info!("graph metadata recalculated");
+    }
+
+    fn calc_adj_mat(&self) -> matrix::State {
+        matrix::State::new(self.adj_mat(), self.colored_elements_to_matrix_elements())
     }
 
     fn calc_dot(&self) -> String {

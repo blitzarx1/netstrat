@@ -18,6 +18,10 @@ impl Drawer {
     pub fn changed(&mut self) -> bool {
         self.current_image.changed()
     }
+
+    pub fn set_changed(&mut self, changed: bool) {
+        self.current_image.set_changed(changed)
+    }
 }
 
 impl AppWidget for Drawer {
