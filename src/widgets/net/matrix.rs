@@ -21,7 +21,7 @@ impl Matrix {
         self.state = state;
     }
 
-    // basically index column
+    // row index column
     fn first_colum(&self, n: usize) -> Vec<(String, TextFormat)> {
         let mut res = vec![(
             "\n".to_string(),
@@ -34,7 +34,7 @@ impl Matrix {
         )];
         (0..n).for_each(|i| {
             let el_string = format!("{}", i);
-            if self.state.colored_elements.rows.contains(&i) {
+            if self.state.colored.rows.contains(&i) {
                 res.push((
                     el_string,
                     TextFormat {
@@ -68,9 +68,9 @@ impl Matrix {
         let n = m.len_of(Axis(0));
         let mut res = Vec::with_capacity(n + 1);
 
-        // first symbol in col is index
+        // first symbol in col is col index
         let idx_string = format!("{}\n", col_idx);
-        if self.state.colored_elements.cols.contains(&col_idx) {
+        if self.state.colored.cols.contains(&col_idx) {
             res.push((
                 idx_string,
                 TextFormat {
@@ -95,7 +95,7 @@ impl Matrix {
         (0..n).for_each(|i| {
             let el = m[[col_idx, i]];
             let el_string = format!("{}\n", el);
-            if self.state.colored_elements.elements.contains(&(i, col_idx)) {
+            if self.state.colored.elements.contains(&(i, col_idx)) {
                 res.push((
                     el_string,
                     TextFormat {

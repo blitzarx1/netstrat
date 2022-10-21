@@ -33,7 +33,7 @@ pub struct ThreadPool {
     sender: Sender<Job>,
 }
 
-// TODO: gracefull shutdown
+// TODO: graceful shutdown
 impl ThreadPool {
     pub fn new(size: usize) -> Self {
         debug!("initing thread_pool");

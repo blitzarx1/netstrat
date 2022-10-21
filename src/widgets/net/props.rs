@@ -268,7 +268,7 @@ impl Props {
 
         if clicks.color_nodes_and_edges {
             info!("coloring nodes and edges");
-            let colored_els = self.graph_state.color_nodes_and_edges(
+            self.graph_state.color_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
