@@ -17,7 +17,10 @@ impl ImageState {
     }
 
     pub fn image(&mut self) -> ColorImage {
-        self.changed = false;
         self.image.clone()
+    }
+
+    pub fn set_changed(&mut self, changed: bool) {
+        self.changed = changed
     }
 }
