@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use petgraph::graph::NodeIndex;
 
 use crate::widgets::matrix::State as MatrixState;
-use crate::widgets::net::graph::{cycle::Cycle, elements::Elements};
+use crate::widgets::net_props::graph::{cycle::Cycle, elements::Elements};
 
 #[derive(Default, Clone)]
 pub struct Calculated {

@@ -1,11 +1,11 @@
 use std::fmt::Display;
 
-use crate::widgets::net::graph;
+use crate::widgets::net_props::State;
 
 #[derive(Clone)]
 pub struct Step {
     pub name: String,
-    pub data: graph::State,
+    pub data: State,
 }
 
 impl Display for Step {

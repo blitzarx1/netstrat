@@ -12,24 +12,23 @@ use egui_notify::{Anchor, Toasts};
 use graphviz_rust::cmd::{CommandArg, Format};
 use graphviz_rust::printer::PrinterContext;
 use graphviz_rust::{exec, parse};
-use ndarray::{Array2, Axis};
 use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
 use crate::netstrat::Bus;
+use crate::widgets::history::{History, Clicks, Step};
+use crate::widgets::matrix::Matrix;
+use crate::widgets::net_drawer::NetDrawer;
 use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
-use crate::widgets::matrix::Matrix;
 
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
 use super::graph::State;
-use super::history::{History, Step};
 use super::interactions::Interactions;
 use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, NetSettings};
-use super::Drawer;
 
 pub struct NetProps {
     graph_state: State,
@@ -39,7 +38,7 @@ pub struct NetProps {
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
     open_drop_file: OpenDropFile,
-    net_visualizer: Drawer,
+    net_visualizer: NetDrawer,
     drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>,
     toasts: Toasts,
     selected_cycles: HashSet<usize>,
@@ -61,10 +60,10 @@ impl NetProps {
             history,
             graph_state: data,
             matrix,
-            open_drop_file: Default::default(),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
+            open_drop_file: Default::default(),
             net_settings: Default::default(),
-            net_visualizer: Drawer::default(),
+            net_visualizer: Default::default(),
             cone_settings: Default::default(),
             selected_cycles: Default::default(),
             nodes_and_edges_settings: Default::default(),
@@ -213,36 +212,38 @@ impl NetProps {
             self.delete_cycles();
         }
 
-        if clicks.history_go_up {
-            info!("navigating history up");
-            match self.history.go_up() {
-                Some(loaded_step) => {
-                    self.graph_state = loaded_step.data;
-                    self.update_data()
+        if let Some(history_click) = self.history.last_click() {
+            match history_click {
+                Clicks::Up => {
+                    info!("navigating history up");
+                    match self.history.go_up() {
+                        Some(loaded_step) => {
+                            self.graph_state = loaded_step.data;
+                            self.update_data()
+                        }
+                        None => self.handle_error("failed to load history"),
+                    }
                 }
-                None => self.handle_error("failed to load history"),
-            }
-        }
-
-        if clicks.history_go_down {
-            info!("navigating history down");
-            match self.history.go_down() {
-                Some(loaded_step) => {
-                    self.graph_state = loaded_step.data;
-                    self.update_data()
+                Clicks::Down => {
+                    info!("navigating history down");
+                    match self.history.go_down() {
+                        Some(loaded_step) => {
+                            self.graph_state = loaded_step.data;
+                            self.update_data()
+                        }
+                        None => self.handle_error("failed to load history"),
+                    }
                 }
-                None => self.handle_error("failed to load history"),
-            }
-        }
-
-        if clicks.history_go_sibling {
-            info!("navigating to history sibling");
-            match self.history.go_sibling() {
-                Some(loaded_step) => {
-                    self.graph_state = loaded_step.data;
-                    self.update_data()
+                Clicks::Right => {
+                    info!("navigating to history sibling");
+                    match self.history.go_sibling() {
+                        Some(loaded_step) => {
+                            self.graph_state = loaded_step.data;
+                            self.update_data()
+                        }
+                        None => self.handle_error("failed to load history"),
+                    }
                 }
-                None => self.handle_error("failed to load history"),
             }
         }
 
@@ -626,48 +627,6 @@ impl NetProps {
         });
     }
 
-    fn draw_history_section(&self, ui: &mut Ui, inter: &mut Interactions) {
-        let is_root = self.history.get_current_step().unwrap() == self.history.root().unwrap();
-        let is_leaf = self
-            .history
-            .is_leaf(self.history.get_current_step().unwrap());
-        let is_parent_intersection = self
-            .history
-            .is_parent_intersection(self.history.get_current_step().unwrap());
-
-        ui.collapsing("History", |ui| {
-            ui.horizontal_top(|ui| {
-                if ui
-                    .add_enabled(
-                        !is_root,
-                        Button::new("⏶"), //up
-                    )
-                    .clicked()
-                {
-                    inter.clicks.history_go_up = true;
-                };
-                if ui
-                    .add_enabled(
-                        !is_leaf,
-                        Button::new("⏷"), // down
-                    )
-                    .clicked()
-                {
-                    inter.clicks.history_go_down = true;
-                };
-                if ui
-                    .add_enabled(is_parent_intersection, Button::new("▶"))
-                    .clicked()
-                {
-                    inter.clicks.history_go_sibling = true;
-                };
-            });
-            ui.add_space(5.0);
-            ui.add_space(10.0);
-            self.history.drawer().show(ui);
-        });
-    }
-
     fn draw_section_matrices(&mut self, ui: &mut Ui) {
         ui.collapsing("Matrices", |ui| {
             ScrollArea::both()
@@ -703,7 +662,7 @@ impl AppWidget for NetProps {
         self.draw_nodes_and_edges_section(ui, &mut interactions);
         self.draw_cones_section(ui, &mut interactions);
         self.draw_cycles_section(ui, &mut interactions);
-        self.draw_history_section(ui, &mut interactions);
+        self.history.show(ui);
         self.draw_section_matrices(ui);
         self.draw_dot_preview_section(ui);
 

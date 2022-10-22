@@ -4,8 +4,8 @@ use std::vec;
 
 use crate::widgets::matrix::Elements as MatrixElements;
 use crate::widgets::matrix::State as MatrixState;
-use crate::widgets::net::graph::cycle::Cycle;
-use crate::widgets::net::graph::elements::Elements;
+use crate::widgets::net_props::graph::cycle::Cycle;
+use crate::widgets::net_props::graph::elements::Elements;
 use lazy_static::lazy_static;
 use ndarray::Array;
 use ndarray::Array2;
@@ -27,10 +27,10 @@ use tracing::trace;
 use tracing::warn;
 use tracing::{debug, error};
 
-use crate::widgets::net::graph::path::Path;
-use crate::widgets::net::settings::ConeSettings;
-use crate::widgets::net::settings::EdgeWeight;
-use crate::widgets::net::settings::NetSettings;
+use crate::widgets::net_props::graph::path::Path;
+use crate::widgets::net_props::settings::ConeSettings;
+use crate::widgets::net_props::settings::EdgeWeight;
+use crate::widgets::net_props::settings::NetSettings;
 
 use super::calculated::Calculated;
 
