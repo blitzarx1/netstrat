@@ -1,23 +1,24 @@
-use egui::{
-    text::LayoutJob, Align, Color32, Direction, FontId, Label, Layout, ScrollArea, TextFormat,
-};
+use egui::{text::LayoutJob, Align, Color32, FontId, Label, TextFormat};
 use egui_extras::StripBuilder;
 use ndarray::{ArrayBase, Axis, Ix2, ViewRepr};
 
-use super::graph::MatrixState;
 use crate::{netstrat::Bus, widgets::AppWidget};
+
+use super::state::State;
+
+// TODO: map deleted elements to their index to be able to properly visualize matrix without deleted rows/cols
 
 pub struct Matrix {
     bus: Box<Bus>,
-    state: MatrixState,
+    state: State,
 }
 
 impl Matrix {
-    pub fn new(state: MatrixState, bus: Box<Bus>) -> Self {
+    pub fn new(state: State, bus: Box<Bus>) -> Self {
         Self { bus, state }
     }
 
-    pub fn set_state(&mut self, state: MatrixState) {
+    pub fn set_state(&mut self, state: State) {
         self.state = state;
     }
 

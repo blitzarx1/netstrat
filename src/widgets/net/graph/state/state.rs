@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::vec;
 
+use crate::widgets::matrix::Elements as MatrixElements;
+use crate::widgets::matrix::State as MatrixState;
 use crate::widgets::net::graph::cycle::Cycle;
 use crate::widgets::net::graph::elements::Elements;
-use crate::widgets::net::graph::matrix;
 use lazy_static::lazy_static;
 use ndarray::Array;
 use ndarray::Array2;
@@ -395,7 +396,7 @@ impl State {
         self.calculated.dot.clone()
     }
 
-    pub fn matrix(&self) -> matrix::State {
+    pub fn matrix(&self) -> MatrixState {
         self.calculated.adj_mat.clone()
     }
 
@@ -495,8 +496,8 @@ impl State {
         info!("graph metadata recalculated");
     }
 
-    fn calc_adj_mat(&self) -> matrix::State {
-        matrix::State::new(
+    fn calc_adj_mat(&self) -> MatrixState {
+        MatrixState::new(
             self.adj_mat(),
             self.elements_to_matrix_elements(&self.calculated.colored),
             self.elements_to_matrix_elements(&self.calculated.deleted),
@@ -512,8 +513,8 @@ impl State {
         self.color_dot(self.weight_dot(dot), self.calculated.colored.clone())
     }
 
-    fn elements_to_matrix_elements(&self, elements: &Elements) -> matrix::Elements {
-        let mut res: matrix::Elements = Default::default();
+    fn elements_to_matrix_elements(&self, elements: &Elements) -> MatrixElements {
+        let mut res: MatrixElements = Default::default();
 
         elements.edges().iter().for_each(|idx| {
             let edge = self.graph.edge_endpoints(*idx).unwrap();

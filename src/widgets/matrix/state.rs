@@ -1,6 +1,6 @@
 use ndarray::Array2;
 
-use super::Elements;
+use super::elements::Elements;
 
 #[derive(Clone, Default)]
 pub struct State {

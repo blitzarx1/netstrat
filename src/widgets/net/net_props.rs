@@ -20,17 +20,18 @@ use urlencoding::encode;
 use crate::netstrat::Bus;
 use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
+use crate::widgets::matrix::Matrix;
 
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
+use super::graph::State;
 use super::history::{History, Step};
 use super::interactions::Interactions;
-use super::matrix::Matrix;
 use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, NetSettings};
-use super::{Drawer, State};
+use super::Drawer;
 
-pub struct Props {
+pub struct NetProps {
     graph_state: State,
     matrix: Matrix,
     net_settings: NetSettings,
@@ -44,9 +45,9 @@ pub struct Props {
     selected_cycles: HashSet<usize>,
 }
 
-impl Props {
+impl NetProps {
     pub fn new(drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>) -> Self {
-        let data = Props::reset_data();
+        let data = NetProps::reset_data();
 
         let history = History::new_with_initial_step(Step {
             name: "create".to_string(),
@@ -79,7 +80,7 @@ impl Props {
     }
 
     fn reset(&mut self) {
-        self.graph_state = Props::reset_data();
+        self.graph_state = NetProps::reset_data();
 
         self.history = History::new_with_initial_step(Step {
             name: "reset".to_string(),
@@ -687,7 +688,7 @@ impl Props {
     }
 }
 
-impl AppWidget for Props {
+impl AppWidget for NetProps {
     fn show(&mut self, ui: &mut Ui) {
         let mut interactions = Interactions::new(
             self.selected_cycles.clone(),
