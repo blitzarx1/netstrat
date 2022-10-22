@@ -1,6 +1,6 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc};
 
-use crate::widgets::NetProps;
+use crate::{widgets::NetProps, netstrat::Drawer};
 use crossbeam::channel::Sender;
 use egui::{ScrollArea, Ui, Window};
 use tracing::info;
@@ -34,7 +34,7 @@ impl AppWindow for Net {
 }
 
 impl Net {
-    pub fn new(widget_pub: Sender<Mutex<Box<dyn AppWidget>>>, visible: bool) -> Self {
+    pub fn new(widget_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>, visible: bool) -> Self {
         info!("initing window net");
         Self {
             net: NetProps::new(widget_pub),

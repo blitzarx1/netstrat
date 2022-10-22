@@ -12,7 +12,7 @@ use petgraph::{
     Direction::{Incoming, Outgoing},
 };
 
-use crate::widgets::{net_drawer::NetDrawer, AppWidget};
+use crate::{widgets::{AppWidget, image_drawer}, netstrat::Drawer};
 
 use super::{Clicks, Step};
 
@@ -39,12 +39,12 @@ impl Builder {
 
     pub fn build(&self) -> History {
         let mut h = History {
-            drawer: Default::default(),
             max_gen: 0,
             root: self.root,
             tree: self.tree.clone(),
             current_step: self.initial_step,
             last_click: None,
+            drawer: Default::default(),
         };
 
         h.update_image();
@@ -57,7 +57,7 @@ pub struct History {
     tree: StableDiGraph<Step, usize>,
     current_step: Option<usize>,
     max_gen: usize,
-    drawer: NetDrawer,
+    drawer: image_drawer::ImageDrawer,
     root: Option<usize>,
     last_click: Option<Clicks>,
 }
@@ -71,7 +71,7 @@ impl History {
         &self.last_click
     }
 
-    pub fn drawer(&self) -> NetDrawer {
+    pub fn drawer(&self) -> image_drawer::ImageDrawer {
         self.drawer.clone()
     }
 

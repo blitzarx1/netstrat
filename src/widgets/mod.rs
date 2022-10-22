@@ -1,7 +1,7 @@
 pub mod candles;
+mod image_drawer;
 mod history;
 mod matrix;
-mod net_drawer;
 mod net_props;
 mod open_drop_file;
 mod theme;

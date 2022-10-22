@@ -8,7 +8,7 @@ use tracing::{error, info};
 
 use crate::{
     sources::binance::Kline,
-    widgets::AppWidget,
+    widgets::AppWidget, netstrat::Drawer,
 };
 
 use super::{data::Data, bounds::Bounds};
@@ -16,7 +16,7 @@ use super::{data::Data, bounds::Bounds};
 const BOUNDS_SEND_DELAY_MILLIS: i64 = 300;
 
 #[derive(Clone)]
-pub struct Drawer {
+pub struct CandlesDrawer {
     data: Data,
     val: Vec<BoxElem>,
     bounds_pub: Sender<Bounds>,
@@ -27,7 +27,7 @@ pub struct Drawer {
     enabled: bool,
 }
 
-impl Default for Drawer {
+impl Default for CandlesDrawer {
     fn default() -> Self {
         let (s_bounds, _) = unbounded();
 
@@ -44,7 +44,19 @@ impl Default for Drawer {
     }
 }
 
-impl Drawer {
+
+// TODO:  refactor drawer trait to be more generalized
+impl Drawer for CandlesDrawer {
+    fn update_image(&mut self, image: egui::ColorImage) {
+        todo!()
+    }
+
+    fn has_unread_image(&self) -> bool {
+        todo!()
+    }
+}
+
+impl CandlesDrawer {
     pub fn new(bounds_pub: Sender<Bounds>) -> Self {
         Self {
             bounds_pub,
@@ -101,7 +113,7 @@ impl Drawer {
     }
 }
 
-impl AppWidget for Drawer {
+impl AppWidget for CandlesDrawer {
     fn show(&mut self, ui: &mut egui::Ui) {
         if self.drag_happened
             && Utc::now()

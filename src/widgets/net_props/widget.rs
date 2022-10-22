@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fs::{read_to_string, File};
 use std::io::Write;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use crossbeam::channel::Sender;
@@ -16,10 +16,10 @@ use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
-use crate::netstrat::Bus;
-use crate::widgets::history::{History, Clicks, Step};
+use crate::netstrat::{Bus, Drawer};
+use crate::widgets::image_drawer;
+use crate::widgets::history::{Clicks, History, Step};
 use crate::widgets::matrix::Matrix;
-use crate::widgets::net_drawer::NetDrawer;
 use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
 
@@ -38,14 +38,14 @@ pub struct NetProps {
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
     open_drop_file: OpenDropFile,
-    net_visualizer: NetDrawer,
-    drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>,
+    net_drawer: Arc<Mutex<Box<dyn Drawer>>>,
+    drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>,
     toasts: Toasts,
     selected_cycles: HashSet<usize>,
 }
 
 impl NetProps {
-    pub fn new(drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>) -> Self {
+    pub fn new(drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>) -> Self {
         let data = NetProps::reset_data();
 
         let history = History::new_with_initial_step(Step {
@@ -63,13 +63,13 @@ impl NetProps {
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             open_drop_file: Default::default(),
             net_settings: Default::default(),
-            net_visualizer: Default::default(),
+            net_drawer: Arc::new(Mutex::new(Box::new(image_drawer::ImageDrawer::default()))),
             cone_settings: Default::default(),
             selected_cycles: Default::default(),
             nodes_and_edges_settings: Default::default(),
         };
 
-        s.update_frame();
+        s.update_data();
 
         s
     }
@@ -320,7 +320,7 @@ impl NetProps {
         .unwrap();
 
         let image = load_svg_bytes(graph_svg.as_bytes()).unwrap();
-        self.net_visualizer.update_image(image);
+        self.net_drawer.lock().unwrap().update_image(image);
     }
 
     fn trigger_changed_toast(&mut self) {
@@ -677,12 +677,8 @@ impl AppWidget for NetProps {
             }
         });
 
-        if self.net_visualizer.changed() {
-            self.drawer_pub
-                .send(Mutex::new(Box::new(self.net_visualizer.clone())))
-                .unwrap();
-
-            self.net_visualizer.set_changed(false)
+        if self.net_drawer.lock().unwrap().has_unread_image() {
+            self.drawer_pub.send(self.net_drawer.clone()).unwrap();
         }
 
         self.toasts.show(ui.ctx());

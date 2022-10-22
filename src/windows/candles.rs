@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc};
 
 use crossbeam::channel::{unbounded, Sender};
 use eframe::emath::Align;
@@ -6,9 +6,12 @@ use egui::{Layout, Ui, Window};
 use egui_extras::{Size, StripBuilder};
 use tracing::info;
 
-use crate::widgets::{
-    candles::{Props, Symbols},
-    AppWidget,
+use crate::{
+    netstrat::Drawer,
+    widgets::{
+        candles::{Props, Symbols},
+        AppWidget,
+    },
 };
 
 use super::window::AppWindow;
@@ -51,7 +54,7 @@ impl AppWindow for SymbolsGraph {
 }
 
 impl SymbolsGraph {
-    pub fn new(drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>, visible: bool) -> Self {
+    pub fn new(drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>, visible: bool) -> Self {
         info!("initing window graph");
 
         let (s, r) = unbounded();

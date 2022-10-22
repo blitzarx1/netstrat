@@ -1,14 +1,17 @@
-use std::{sync::Mutex, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use eframe::{run_native, App, CreationContext, NativeOptions};
 use egui::{Align, CentralPanel, Context, Layout, TopBottomPanel};
 
+use netstrat::Drawer;
 use tracing::{debug, info, Level};
 use tracing_subscriber::EnvFilter;
 
 use crate::windows::{BuffWriter, Net};
-use widgets::{AppWidget, Theme};
 use windows::{AppWindow, Debug, SymbolsGraph};
 
 mod netstrat;
@@ -19,8 +22,8 @@ mod windows;
 
 struct TemplateApp {
     windows: Vec<Box<dyn AppWindow>>,
-    active_widget: Option<Mutex<Box<dyn AppWidget>>>,
-    active_widget_subs: Vec<Receiver<Mutex<Box<dyn AppWidget>>>>,
+    active_drawer: Option<Arc<Mutex<Box<dyn Drawer>>>>,
+    active_drawer_subs: Vec<Receiver<Arc<Mutex<Box<dyn Drawer>>>>>,
 }
 
 fn init_logger(s: Sender<Vec<u8>>) {
@@ -60,24 +63,25 @@ impl TemplateApp {
         info!("starting app");
         let (net_drawer_s, net_drawer_r) = unbounded();
         let (candles_drawer_s, candles_drawer_r) = unbounded();
+
         Self {
             windows: vec![
                 Box::new(Net::new(net_drawer_s, false)),
                 Box::new(SymbolsGraph::new(candles_drawer_s, false)),
                 Box::new(Debug::new(buffer_r, false)),
             ],
-            active_widget: None,
-            active_widget_subs: vec![net_drawer_r, candles_drawer_r],
+            active_drawer_subs: vec![net_drawer_r, candles_drawer_r],
+            active_drawer: None,
         }
     }
 
-    fn check_widget_event(&mut self) {
-        self.active_widget_subs.iter().for_each(|sub| {
-            let widget_wrapped = sub.recv_timeout(Duration::from_millis(1));
-            if let Ok(widget) = widget_wrapped {
-                debug!("got active widget event");
+    fn check_drawer_event(&mut self) {
+        self.active_drawer_subs.iter().for_each(|sub| {
+            let drawer_wrapped = sub.recv_timeout(Duration::from_millis(1));
+            if let Ok(drawer) = drawer_wrapped {
+                debug!("got active drawer event");
 
-                self.active_widget = Some(widget);
+                self.active_drawer = Some(drawer);
             }
         });
     }
@@ -94,14 +98,14 @@ impl App for TemplateApp {
         });
 
         CentralPanel::default().show(ctx, |ui| {
-            if let Some(w) = &mut self.active_widget {
-                w.get_mut().unwrap().show(ui);
+            if let Some(drawer) = &mut self.active_drawer {
+                drawer.lock().as_mut().unwrap().show(ui);
             }
 
             self.windows.iter_mut().for_each(|w| w.show(ui));
         });
 
-        self.check_widget_event();
+        self.check_drawer_event();
     }
 }
 
