@@ -408,7 +408,7 @@ impl State {
             let row = e.source().index();
             let col = e.target().index();
 
-            mat[[row, col]] = 1
+            mat[[row, col]] += 1
         });
 
         mat

@@ -114,7 +114,7 @@ impl Matrix {
                 return;
             };
 
-            res.push(match el == 1 {
+            res.push(match el != 0 {
                 true => (
                     el_string,
                     TextFormat {
