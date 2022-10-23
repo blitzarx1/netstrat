@@ -6,8 +6,6 @@ use crate::{netstrat::Bus, widgets::AppWidget};
 
 use super::state::State;
 
-// TODO: map deleted elements to their index to be able to properly visualize matrix without deleted rows/cols
-
 pub struct Matrix {
     bus: Box<Bus>,
     state: State,
@@ -34,6 +32,10 @@ impl Matrix {
             },
         )];
         (0..n).for_each(|i| {
+            if self.state.deleted.rows.contains(&i) {
+                return;
+            }
+
             let el_string = format!("{}", i);
             if self.state.colored.rows.contains(&i) {
                 res.push((
@@ -94,6 +96,10 @@ impl Matrix {
         }
 
         (0..n).for_each(|i| {
+            if self.state.deleted.rows.contains(&i) {
+                return;
+            }
+
             let el = m[[col_idx, i]];
             let el_string = format!("{}\n", el);
             if self.state.colored.elements.contains(&(i, col_idx)) {
@@ -136,10 +142,15 @@ impl AppWidget for Matrix {
 
         let mut cols = vec![self.first_colum(n)];
         (0..n).for_each(|i| {
+            if self.state.deleted.cols.contains(&i) {
+                return;
+            }
+
             let filled_column = self.nth_column(&self.state.m.view().reversed_axes(), i);
             cols.push(filled_column);
         });
 
+        let cols_num = cols.len();
         StripBuilder::new(ui)
             .clip(false)
             .sizes(
@@ -147,10 +158,10 @@ impl AppWidget for Matrix {
                     initial: 7.0,
                     range: (7.0, 10.0),
                 },
-                n + 1,
+                cols_num,
             )
             .horizontal(|mut strip| {
-                (0..(n + 1)).for_each(|i| {
+                (0..cols_num).for_each(|i| {
                     let mut job = LayoutJob::default();
                     cols.get(i).unwrap().iter().for_each(|(text, format)| {
                         job.append(text.as_str(), 0.0, format.clone());
