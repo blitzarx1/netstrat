@@ -1,9 +1,9 @@
 mod candles;
 mod debug;
-mod net_props;
+mod net;
 mod window;
 
 pub use self::candles::SymbolsGraph;
 pub use self::debug::{BuffWriter, Debug};
-pub use self::net_props::Net;
+pub use self::net::Net;
 pub use self::window::AppWindow;

@@ -2,6 +2,10 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::vec;
 
+use crate::widgets::matrix::Elements as MatrixElements;
+use crate::widgets::matrix::State as MatrixState;
+use crate::widgets::net_props::graph::cycle::Cycle;
+use crate::widgets::net_props::graph::elements::Elements;
 use lazy_static::lazy_static;
 use ndarray::Array;
 use ndarray::Array2;
@@ -23,39 +27,32 @@ use tracing::trace;
 use tracing::warn;
 use tracing::{debug, error};
 
-use crate::widgets::net::graph::path::Path;
-use crate::widgets::net::settings::ConeSettings;
-use crate::widgets::net::settings::EdgeWeight;
-use crate::widgets::net::settings::NetSettings;
+use crate::widgets::net_props::graph::path::Path;
+use crate::widgets::net_props::settings::ConeSettings;
+use crate::widgets::net_props::settings::EdgeWeight;
+use crate::widgets::net_props::settings::NetSettings;
 
-use super::cycle::Cycle;
-use super::elements::Elements;
-use super::matrix;
+use super::calculated::Calculated;
 
 const MAX_DOT_WEIGHT: f64 = 5.0;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct State {
     graph: StableDiGraph<String, f64>,
     settings: NetSettings,
-    ini_set: HashSet<NodeIndex>,
-    fin_set: HashSet<NodeIndex>,
-    cycles: Vec<Cycle>,
-    colored_elements: Elements,
-    dot: String,
-    adj_mat: matrix::State,
+    calculated: Calculated,
 }
 
 impl State {
     pub fn new(settings: NetSettings) -> Self {
         debug!("creating graph with settings: {settings:?}");
-        let mut seed = StableDiGraph::with_capacity(
+        let mut graph = StableDiGraph::with_capacity(
             settings.total_cnt,
             settings.total_cnt * settings.total_cnt,
         );
         let mut all_nodes = HashSet::with_capacity(settings.total_cnt);
         for i in 0..settings.total_cnt {
-            let node_idx = seed.add_node(format!("{i}"));
+            let node_idx = graph.add_node(format!("{i}"));
             all_nodes.insert(node_idx);
         }
 
@@ -65,13 +62,13 @@ impl State {
 
         // pick inis
         while ini_to_add > 0 {
-            let idx = seed.node_indices().choose(&mut rng).unwrap();
+            let idx = graph.node_indices().choose(&mut rng).unwrap();
 
             if ini_set.contains(&idx) {
                 continue;
             }
 
-            let weight = seed.node_weight_mut(idx).unwrap();
+            let weight = graph.node_weight_mut(idx).unwrap();
             let new_weight = format!("ini_{}", *weight);
             *weight = new_weight.clone();
 
@@ -118,7 +115,7 @@ impl State {
                         weight = edge_weight_pool.sample(&mut rng);
                     }
 
-                    seed.add_edge(*last_end, *end, weight);
+                    graph.add_edge(*last_end, *end, weight);
 
                     edges_map.insert([last_end.index(), end.index()]);
 
@@ -143,22 +140,23 @@ impl State {
                 continue;
             }
 
-            let weight = seed.node_weight_mut(*idx).unwrap();
+            let weight = graph.node_weight_mut(*idx).unwrap();
             let new_weight = format!("fin_{}", *weight);
             *weight = new_weight.clone();
 
             fin_set.insert(*idx);
         }
 
-        let mut data = Self {
-            graph: seed,
-            settings: settings.clone(),
-            colored_elements: Default::default(),
+        let calculated = Calculated {
             ini_set,
             fin_set,
-            cycles: Default::default(),
-            dot: Default::default(),
-            adj_mat: Default::default(),
+            ..Default::default()
+        };
+
+        let mut data = Self {
+            graph,
+            calculated,
+            settings: settings.clone(),
         };
 
         if settings.diamond_filter {
@@ -171,18 +169,10 @@ impl State {
     }
 
     pub fn from_dot(dot_data: String) -> Option<Self> {
-        let mut data = State {
-            graph: StableDiGraph::new(),
-            settings: NetSettings::default(),
-            ini_set: HashSet::new(),
-            fin_set: HashSet::new(),
-            cycles: Default::default(),
-            colored_elements: Default::default(),
-            dot: Default::default(),
-            adj_mat: Default::default(),
-        };
+        let mut data = State::default();
         let mut has_errors = false;
         let mut node_weight_to_index = HashMap::new();
+
         dot_data.lines().for_each(|l| {
             if !l.contains("->") && !l.contains('{') && !l.contains('}') {
                 if let Some((_, props)) = parse_node(l.to_string()) {
@@ -192,14 +182,14 @@ impl State {
                         node_weight_to_index.insert(digit_weight.to_string(), node_idx);
 
                         if l.contains("color") {
-                            data.colored_elements.add_node(node_idx);
+                            data.calculated.colored.add_node(node_idx);
                         }
 
                         if weight.contains("ini") {
-                            data.ini_set.insert(node_idx);
+                            data.calculated.ini_set.insert(node_idx);
                         }
                         if weight.contains("fin") {
-                            data.fin_set.insert(node_idx);
+                            data.calculated.fin_set.insert(node_idx);
                         }
 
                         return;
@@ -223,7 +213,7 @@ impl State {
                         let edge_idx = data.graph.add_edge(start, end, weight);
 
                         if l.contains("color") {
-                            data.colored_elements.add_edge(edge_idx);
+                            data.calculated.colored.add_edge(edge_idx);
                         }
 
                         return;
@@ -247,21 +237,21 @@ impl State {
     pub fn color_ini_cones(&mut self) {
         let mut elements = Elements::default();
 
-        for el in self.ini_set.clone() {
+        for el in self.calculated.ini_set.clone() {
             elements.union(&self.get_cone_elements(el, Outgoing, -1));
         }
 
-        self.colored_elements = elements;
+        self.calculated.colored = elements;
         self.recalculate_metadata();
     }
 
     pub fn color_fin_cones(&mut self) {
         let mut elements = Elements::default();
-        for el in self.fin_set.clone() {
+        for el in self.calculated.fin_set.clone() {
             elements.union(&self.get_cone_elements(el, Incoming, -1));
         }
 
-        self.colored_elements = elements;
+        self.calculated.colored = elements;
         self.recalculate_metadata();
     }
 
@@ -280,7 +270,7 @@ impl State {
             });
         });
 
-        self.colored_elements = elements;
+        self.calculated.colored = elements;
         self.recalculate_metadata();
     }
 
@@ -304,20 +294,24 @@ impl State {
 
     pub fn color_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
         let mut elements = Elements::default();
-        self.cycles.iter().enumerate().for_each(|(i, c)| {
-            if cycle_idxs.contains(&i) {
-                elements.union(&c.elements())
-            }
-        });
+        self.calculated
+            .cycles
+            .iter()
+            .enumerate()
+            .for_each(|(i, c)| {
+                if cycle_idxs.contains(&i) {
+                    elements.union(&c.elements())
+                }
+            });
 
-        self.colored_elements = elements;
+        self.calculated.colored = elements;
         self.recalculate_metadata();
     }
 
     pub fn diamond_filter(&mut self) {
         let mut ini_union_cone = HashSet::new();
         // gather cone of all children of inis
-        for el in self.ini_set.clone() {
+        for el in self.calculated.ini_set.clone() {
             ini_union_cone = ini_union_cone
                 .union(&self.get_cone_elements(el, Outgoing, -1).nodes())
                 .cloned()
@@ -326,7 +320,7 @@ impl State {
 
         let mut fin_union_cone = HashSet::new();
         // gather cone of all parents of fins
-        for el in self.fin_set.clone() {
+        for el in self.calculated.fin_set.clone() {
             fin_union_cone = fin_union_cone
                 .union(&self.get_cone_elements(el, Incoming, -1).nodes())
                 .cloned()
@@ -339,27 +333,36 @@ impl State {
             .collect::<HashSet<NodeIndex>>();
 
         self.graph
-            .retain_nodes(|_, node| intersection.contains(&node));
-
-        self.recalculate_metadata();
+            .retain_nodes(|_, node| match intersection.contains(&node) {
+                false => {
+                    self.calculated.deleted.add_node(node);
+                    false
+                }
+                true => true,
+            });
     }
 
     pub fn delete_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
         let mut elements = Elements::default();
-        self.cycles.iter().enumerate().for_each(|(i, c)| {
-            if !cycle_idxs.contains(&i) {
-                return;
-            }
+        self.calculated
+            .cycles
+            .iter()
+            .enumerate()
+            .for_each(|(i, c)| {
+                if !cycle_idxs.contains(&i) {
+                    return;
+                }
 
-            elements.union(&c.elements());
-        });
+                elements.union(&c.elements());
+            });
 
         self.delete_elements(elements);
     }
 
     pub fn delete_initial_cone(&mut self) {
         let mut elements = Elements::default();
-        self.ini_set
+        self.calculated
+            .ini_set
             .iter()
             .for_each(|node_idx| elements.union(&self.get_cone_elements(*node_idx, Outgoing, -1)));
 
@@ -368,7 +371,8 @@ impl State {
 
     pub fn delete_final_cone(&mut self) {
         let mut elements = Elements::default();
-        self.fin_set
+        self.calculated
+            .fin_set
             .iter()
             .for_each(|node_idx| elements.union(&self.get_cone_elements(*node_idx, Incoming, -1)));
 
@@ -376,7 +380,7 @@ impl State {
     }
 
     pub fn color_nodes_and_edges(&mut self, nodes: Vec<String>, edges: Vec<[String; 2]>) {
-        self.colored_elements = self.find_nodes_and_edges(nodes, edges);
+        self.calculated.colored = self.find_nodes_and_edges(nodes, edges);
         self.recalculate_metadata();
     }
 
@@ -385,15 +389,15 @@ impl State {
     }
 
     pub fn cycles(self) -> Vec<Cycle> {
-        self.cycles
+        self.calculated.cycles
     }
 
     pub fn dot(&self) -> String {
-        self.dot.clone()
+        self.calculated.dot.clone()
     }
 
-    pub fn matrix(&self) -> matrix::State {
-        self.adj_mat.clone()
+    pub fn matrix(&self) -> MatrixState {
+        self.calculated.adj_mat.clone()
     }
 
     fn adj_mat(&self) -> Array2<u8> {
@@ -470,50 +474,55 @@ impl State {
 
         elements.nodes().iter().for_each(|node| {
             self.graph.remove_node(*node).unwrap();
+            self.calculated.deleted.add_node(*node);
         });
         elements.edges().iter().for_each(|edge| {
             self.graph.remove_edge(*edge);
         });
 
-        self.colored_elements = Default::default();
+        self.calculated.colored = Default::default();
 
         info!("elements deleted");
         self.recalculate_metadata();
     }
 
     fn recalculate_metadata(&mut self) {
-        self.ini_set = self.collect_ini_set();
-        self.fin_set = self.collect_fin_set();
+        self.calculated.ini_set = self.collect_ini_set();
+        self.calculated.fin_set = self.collect_fin_set();
 
-        self.cycles = self.calc_cycles();
-        self.dot = self.calc_dot();
-        self.adj_mat = self.calc_adj_mat();
+        self.calculated.cycles = self.calc_cycles();
+        self.calculated.dot = self.calc_dot();
+        self.calculated.adj_mat = self.calc_adj_mat();
 
         info!("graph metadata recalculated");
     }
 
-    fn calc_adj_mat(&self) -> matrix::State {
-        matrix::State::new(self.adj_mat(), self.colored_elements_to_matrix_elements())
+    fn calc_adj_mat(&self) -> MatrixState {
+        MatrixState::new(
+            self.adj_mat(),
+            self.elements_to_matrix_elements(&self.calculated.colored),
+            self.elements_to_matrix_elements(&self.calculated.deleted),
+        )
     }
 
     fn calc_dot(&self) -> String {
         let dot = Dot::new(&self.graph).to_string();
         if self.settings.edge_weight_type == EdgeWeight::Fixed {
-            return self.color_dot(dot, self.colored_elements.clone());
+            return self.color_dot(dot, self.calculated.colored.clone());
         }
 
-        self.color_dot(self.weight_dot(dot), self.colored_elements.clone())
+        self.color_dot(self.weight_dot(dot), self.calculated.colored.clone())
     }
 
-    fn colored_elements_to_matrix_elements(&self) -> matrix::Elements {
-        let mut res: matrix::Elements = Default::default();
+    fn elements_to_matrix_elements(&self, elements: &Elements) -> MatrixElements {
+        let mut res: MatrixElements = Default::default();
 
-        self.colored_elements.edges().iter().for_each(|idx| {
+        elements.edges().iter().for_each(|idx| {
             let edge = self.graph.edge_endpoints(*idx).unwrap();
             res.elements.insert((edge.0.index(), edge.1.index()));
         });
 
-        self.colored_elements.nodes().iter().for_each(|e| {
+        elements.nodes().iter().for_each(|e| {
             res.rows.insert(e.index());
             res.cols.insert(e.index());
         });
@@ -527,7 +536,7 @@ impl State {
         let mut path = vec![];
         depth_first_search(
             &self.graph,
-            self.ini_set.iter().cloned(),
+            self.calculated.ini_set.iter().cloned(),
             |event| match event {
                 petgraph::visit::DfsEvent::TreeEdge(s, e) => {
                     debug!("visited edge {} -> {}", s.index(), e.index());

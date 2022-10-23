@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fs::{read_to_string, File};
 use std::io::Write;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use crossbeam::channel::Sender;
@@ -12,25 +12,25 @@ use egui_notify::{Anchor, Toasts};
 use graphviz_rust::cmd::{CommandArg, Format};
 use graphviz_rust::printer::PrinterContext;
 use graphviz_rust::{exec, parse};
-use ndarray::{Array2, Axis};
 use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
-use crate::netstrat::Bus;
+use crate::netstrat::{Bus, Drawer};
+use crate::widgets::image_drawer;
+use crate::widgets::history::{Clicks, History, Step};
+use crate::widgets::matrix::Matrix;
 use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
 
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
-use super::history::{History, Step};
+use super::graph::State;
 use super::interactions::Interactions;
-use super::matrix::Matrix;
 use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, NetSettings};
-use super::{Drawer, State};
 
-pub struct Props {
+pub struct NetProps {
     graph_state: State,
     matrix: Matrix,
     net_settings: NetSettings,
@@ -38,15 +38,15 @@ pub struct Props {
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
     open_drop_file: OpenDropFile,
-    net_visualizer: Drawer,
-    drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>,
+    net_drawer: Arc<Mutex<Box<dyn Drawer>>>,
+    drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>,
     toasts: Toasts,
     selected_cycles: HashSet<usize>,
 }
 
-impl Props {
-    pub fn new(drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>) -> Self {
-        let data = Props::reset_data();
+impl NetProps {
+    pub fn new(drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>) -> Self {
+        let data = NetProps::reset_data();
 
         let history = History::new_with_initial_step(Step {
             name: "create".to_string(),
@@ -60,16 +60,16 @@ impl Props {
             history,
             graph_state: data,
             matrix,
-            open_drop_file: Default::default(),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
+            open_drop_file: Default::default(),
             net_settings: Default::default(),
-            net_visualizer: Drawer::default(),
+            net_drawer: Arc::new(Mutex::new(Box::new(image_drawer::ImageDrawer::default()))),
             cone_settings: Default::default(),
             selected_cycles: Default::default(),
             nodes_and_edges_settings: Default::default(),
         };
 
-        s.update_frame();
+        s.update_data();
 
         s
     }
@@ -79,7 +79,7 @@ impl Props {
     }
 
     fn reset(&mut self) {
-        self.graph_state = Props::reset_data();
+        self.graph_state = NetProps::reset_data();
 
         self.history = History::new_with_initial_step(Step {
             name: "reset".to_string(),
@@ -212,36 +212,38 @@ impl Props {
             self.delete_cycles();
         }
 
-        if clicks.history_go_up {
-            info!("navigating history up");
-            match self.history.go_up() {
-                Some(loaded_step) => {
-                    self.graph_state = loaded_step.data;
-                    self.update_data()
+        if let Some(history_click) = self.history.last_click() {
+            match history_click {
+                Clicks::Up => {
+                    info!("navigating history up");
+                    match self.history.go_up() {
+                        Some(loaded_step) => {
+                            self.graph_state = loaded_step.data;
+                            self.update_data()
+                        }
+                        None => self.handle_error("failed to load history"),
+                    }
                 }
-                None => self.handle_error("failed to load history"),
-            }
-        }
-
-        if clicks.history_go_down {
-            info!("navigating history down");
-            match self.history.go_down() {
-                Some(loaded_step) => {
-                    self.graph_state = loaded_step.data;
-                    self.update_data()
+                Clicks::Down => {
+                    info!("navigating history down");
+                    match self.history.go_down() {
+                        Some(loaded_step) => {
+                            self.graph_state = loaded_step.data;
+                            self.update_data()
+                        }
+                        None => self.handle_error("failed to load history"),
+                    }
                 }
-                None => self.handle_error("failed to load history"),
-            }
-        }
-
-        if clicks.history_go_sibling {
-            info!("navigating to history sibling");
-            match self.history.go_sibling() {
-                Some(loaded_step) => {
-                    self.graph_state = loaded_step.data;
-                    self.update_data()
+                Clicks::Right => {
+                    info!("navigating to history sibling");
+                    match self.history.go_sibling() {
+                        Some(loaded_step) => {
+                            self.graph_state = loaded_step.data;
+                            self.update_data()
+                        }
+                        None => self.handle_error("failed to load history"),
+                    }
                 }
-                None => self.handle_error("failed to load history"),
             }
         }
 
@@ -268,7 +270,7 @@ impl Props {
 
         if clicks.color_nodes_and_edges {
             info!("coloring nodes and edges");
-            let colored_els = self.graph_state.color_nodes_and_edges(
+            self.graph_state.color_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
@@ -318,7 +320,7 @@ impl Props {
         .unwrap();
 
         let image = load_svg_bytes(graph_svg.as_bytes()).unwrap();
-        self.net_visualizer.update_image(image);
+        self.net_drawer.lock().unwrap().update_image(image);
     }
 
     fn trigger_changed_toast(&mut self) {
@@ -625,48 +627,6 @@ impl Props {
         });
     }
 
-    fn draw_history_section(&self, ui: &mut Ui, inter: &mut Interactions) {
-        let is_root = self.history.get_current_step().unwrap() == self.history.root().unwrap();
-        let is_leaf = self
-            .history
-            .is_leaf(self.history.get_current_step().unwrap());
-        let is_parent_intersection = self
-            .history
-            .is_parent_intersection(self.history.get_current_step().unwrap());
-
-        ui.collapsing("History", |ui| {
-            ui.horizontal_top(|ui| {
-                if ui
-                    .add_enabled(
-                        !is_root,
-                        Button::new("⏶"), //up
-                    )
-                    .clicked()
-                {
-                    inter.clicks.history_go_up = true;
-                };
-                if ui
-                    .add_enabled(
-                        !is_leaf,
-                        Button::new("⏷"), // down
-                    )
-                    .clicked()
-                {
-                    inter.clicks.history_go_down = true;
-                };
-                if ui
-                    .add_enabled(is_parent_intersection, Button::new("▶"))
-                    .clicked()
-                {
-                    inter.clicks.history_go_sibling = true;
-                };
-            });
-            ui.add_space(5.0);
-            ui.add_space(10.0);
-            self.history.drawer().show(ui);
-        });
-    }
-
     fn draw_section_matrices(&mut self, ui: &mut Ui) {
         ui.collapsing("Matrices", |ui| {
             ScrollArea::both()
@@ -687,7 +647,7 @@ impl Props {
     }
 }
 
-impl AppWidget for Props {
+impl AppWidget for NetProps {
     fn show(&mut self, ui: &mut Ui) {
         let mut interactions = Interactions::new(
             self.selected_cycles.clone(),
@@ -702,7 +662,7 @@ impl AppWidget for Props {
         self.draw_nodes_and_edges_section(ui, &mut interactions);
         self.draw_cones_section(ui, &mut interactions);
         self.draw_cycles_section(ui, &mut interactions);
-        self.draw_history_section(ui, &mut interactions);
+        self.history.show(ui);
         self.draw_section_matrices(ui);
         self.draw_dot_preview_section(ui);
 
@@ -717,12 +677,8 @@ impl AppWidget for Props {
             }
         });
 
-        if self.net_visualizer.changed() {
-            self.drawer_pub
-                .send(Mutex::new(Box::new(self.net_visualizer.clone())))
-                .unwrap();
-
-            self.net_visualizer.set_changed(false)
+        if self.net_drawer.lock().unwrap().has_unread_image() {
+            self.drawer_pub.send(self.net_drawer.clone()).unwrap();
         }
 
         self.toasts.show(ui.ctx());

@@ -1,3 +1,4 @@
+use egui::Button;
 use egui_extras::image::load_svg_bytes;
 use graphviz_rust::{
     cmd::{CommandArg, Format},
@@ -11,9 +12,9 @@ use petgraph::{
     Direction::{Incoming, Outgoing},
 };
 
-use crate::widgets::net::Drawer;
+use crate::{widgets::{AppWidget, image_drawer}, netstrat::Drawer};
 
-use super::Step;
+use super::{Clicks, Step};
 
 pub struct Builder {
     tree: StableDiGraph<Step, usize>,
@@ -38,11 +39,12 @@ impl Builder {
 
     pub fn build(&self) -> History {
         let mut h = History {
-            drawer: Default::default(),
             max_gen: 0,
             root: self.root,
             tree: self.tree.clone(),
             current_step: self.initial_step,
+            last_click: None,
+            drawer: Default::default(),
         };
 
         h.update_image();
@@ -55,8 +57,9 @@ pub struct History {
     tree: StableDiGraph<Step, usize>,
     current_step: Option<usize>,
     max_gen: usize,
-    drawer: Drawer,
+    drawer: image_drawer::ImageDrawer,
     root: Option<usize>,
+    last_click: Option<Clicks>,
 }
 
 impl History {
@@ -64,7 +67,11 @@ impl History {
         Builder::new()
     }
 
-    pub fn drawer(&self) -> Drawer {
+    pub fn last_click(&self) -> &Option<Clicks> {
+        &self.last_click
+    }
+
+    pub fn drawer(&self) -> image_drawer::ImageDrawer {
         self.drawer.clone()
     }
 
@@ -250,5 +257,36 @@ impl History {
 
     pub fn get(&self, step: usize) -> Option<Step> {
         self.tree.node_weight(NodeIndex::from(step as u32)).cloned()
+    }
+}
+
+impl AppWidget for History {
+    fn show(&mut self, ui: &mut egui::Ui) {
+        let is_root = self.get_current_step().unwrap() == self.root().unwrap();
+        let is_leaf = self.is_leaf(self.get_current_step().unwrap());
+        let is_parent_intersection = self.is_parent_intersection(self.get_current_step().unwrap());
+        let mut click = None;
+
+        ui.collapsing("History", |ui| {
+            ui.horizontal_top(|ui| {
+                if ui.add_enabled(!is_root, Button::new("⏶")).clicked() {
+                    click = Some(Clicks::Up);
+                };
+                if ui.add_enabled(!is_leaf, Button::new("⏷")).clicked() {
+                    click = Some(Clicks::Down);
+                };
+                if ui
+                    .add_enabled(is_parent_intersection, Button::new("▶"))
+                    .clicked()
+                {
+                    click = Some(Clicks::Right);
+                };
+            });
+            ui.add_space(5.0);
+            ui.add_space(10.0);
+            self.drawer().show(ui);
+        });
+
+        self.last_click = click;
     }
 }

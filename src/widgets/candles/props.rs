@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{cmp::Ordering, fs::File};
 
@@ -10,16 +10,16 @@ use egui_notify::{Anchor, Toasts};
 use poll_promise::Promise;
 use tracing::{debug, error, info, trace};
 
-use crate::netstrat::ThreadPool;
+use crate::netstrat::{Drawer, ThreadPool};
 use crate::sources::binance::{Client, Kline};
-use crate::widgets::AppWidget;
 use crate::widgets::candles::bounds::BoundsSet;
+use crate::widgets::AppWidget;
 
 use super::bounds::Bounds;
-use super::drawer::Drawer;
-use super::TimeRange;
+use super::canles_drawer::CandlesDrawer;
 use super::state::State;
 use super::time_range_settings::TimeRangeSettings;
+use super::TimeRange;
 
 #[derive(Default)]
 struct ExportState {
@@ -29,7 +29,7 @@ struct ExportState {
 pub struct Props {
     time_range: Box<dyn AppWidget>,
 
-    candles: Drawer,
+    candles: CandlesDrawer,
     symbol: String,
 
     max_frame_pages: usize,
@@ -43,7 +43,7 @@ pub struct Props {
 
     klines_pub: Sender<Vec<Kline>>,
     klines_sub: Receiver<Vec<Kline>>,
-    drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>,
+    drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>,
     symbol_pub: Sender<String>,
     symbol_sub: Receiver<String>,
     props_pub: Sender<TimeRangeSettings>,
@@ -73,7 +73,7 @@ impl Default for Props {
             TimeRangeSettings::default(),
         ));
 
-        let candles = Drawer::new(s_bounds);
+        let candles = CandlesDrawer::new(s_bounds);
 
         let pool = ThreadPool::new(100);
 
@@ -109,7 +109,7 @@ impl Default for Props {
 impl Props {
     pub fn new(
         symbol_sub: Receiver<String>,
-        drawer_pub: Sender<Mutex<Box<dyn AppWidget>>>,
+        drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>,
     ) -> Self {
         info!("initing widget graph");
         Self {
@@ -325,7 +325,7 @@ impl Props {
         if self.data_changed {
             ui.ctx().request_repaint();
             self.drawer_pub
-                .send(Mutex::new(Box::new(self.candles.clone())))
+                .send(Arc::new(Mutex::new(Box::new(self.candles.clone()))))
                 .unwrap();
             self.data_changed = false;
         }
