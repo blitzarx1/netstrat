@@ -474,6 +474,7 @@ impl State {
 
         elements.nodes().iter().for_each(|node| {
             self.graph.remove_node(*node).unwrap();
+            self.calculated.deleted.add_node(*node);
         });
         elements.edges().iter().for_each(|edge| {
             self.graph.remove_edge(*edge);
