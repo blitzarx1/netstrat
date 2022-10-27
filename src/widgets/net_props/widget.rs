@@ -38,7 +38,7 @@ pub struct NetProps {
     history: History,
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
-    matrix_power: usize,
+    matrix_power_input: String,
     open_drop_file: OpenDropFile,
     net_drawer: Arc<Mutex<Box<dyn Drawer>>>,
     drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>,
@@ -69,7 +69,7 @@ impl NetProps {
             open_drop_file: Default::default(),
             net_settings: Default::default(),
             cone_settings: Default::default(),
-            matrix_power: Default::default(),
+            matrix_power_input: Default::default(),
             selected_cycles: Default::default(),
             nodes_and_edges_settings: Default::default(),
         };
@@ -125,7 +125,7 @@ impl NetProps {
         self.update_cone_settings(inter.cone_settings);
         self.update_nodes_and_edges_settings(inter.nodes_and_edges_settings);
         self.handle_selected_cycles(inter.selected_cycles);
-        self.handle_matrix_power(inter.matrix_power);
+        self.handle_matrix_power(inter.matrix_power_input);
         self.handle_clicks(inter.clicks);
         self.handle_opened_file();
     }
@@ -174,13 +174,12 @@ impl NetProps {
         self.selected_cycles = selected_cycles;
     }
 
-    fn handle_matrix_power(&mut self, matrix_power: usize) {
-        if self.matrix_power == matrix_power {
+    fn handle_matrix_power(&mut self, matrix_power_input: String) {
+        if self.matrix_power_input == matrix_power_input {
             return;
         }
 
-        self.matrix_power = matrix_power;
-        self.update_data();
+        self.matrix_power_input = matrix_power_input;
     }
 
     fn update_data(&mut self) {
@@ -665,7 +664,16 @@ impl NetProps {
                         self.adj_matrix.show(ui);
                     });
                     ui.collapsing("Power", |ui| {
-                        ui.add(Slider::new(&mut inter.matrix_power, 1..=10).text("Power"));
+                        ui.horizontal_top(|ui| {
+                            ui.add(
+                                TextEdit::singleline(&mut inter.matrix_power_input)
+                                    .hint_text("Power"),
+                            );
+                            if ui.button("Apply").clicked() {
+                                inter.clicks.apply_power = true
+                            }
+                        });
+                        ui.add_space(5.0);
                         self.adj_matrix_power.show(ui);
                     });
                 });
@@ -698,7 +706,7 @@ impl AppWidget for NetProps {
             self.cone_settings.clone(),
             self.history.get_current_step().unwrap(),
             self.nodes_and_edges_settings.clone(),
-            self.matrix_power,
+            self.matrix_power_input,
         );
 
         self.draw_create_section(ui, &mut interactions);
