@@ -189,7 +189,8 @@ impl NetProps {
         self.adj_matrix.set_state(matrix_state.clone());
 
         self.adj_matrix_power.set_state(matrix_state);
-        self.adj_matrix_power.set_power(self.matrix_power);
+        self.adj_matrix_power
+            .set_power(self.matrix_power_input.parse::<usize>().unwrap_or(1));
 
         self.update_frame();
         self.trigger_changed_toast();
@@ -229,6 +230,11 @@ impl NetProps {
         if clicks.delete_cycles {
             info!("deleting cycles");
             self.delete_cycles();
+        }
+
+        if clicks.apply_power {
+            info!("applying matrix cycles");
+            self.update_data();
         }
 
         if let Some(history_click) = self.history.last_click() {
@@ -662,19 +668,19 @@ impl NetProps {
                 .show(ui, |ui| {
                     ui.collapsing("Adj", |ui| {
                         self.adj_matrix.show(ui);
-                    });
-                    ui.collapsing("Power", |ui| {
-                        ui.horizontal_top(|ui| {
-                            ui.add(
-                                TextEdit::singleline(&mut inter.matrix_power_input)
-                                    .hint_text("Power"),
-                            );
-                            if ui.button("Apply").clicked() {
-                                inter.clicks.apply_power = true
-                            }
+                        ui.collapsing("Power", |ui| {
+                            ui.horizontal_top(|ui| {
+                                ui.add(
+                                    TextEdit::singleline(&mut inter.matrix_power_input)
+                                        .desired_width(50.0),
+                                );
+                                if ui.button("Apply").clicked() {
+                                    inter.clicks.apply_power = true
+                                }
+                            });
+                            ui.add_space(5.0);
+                            self.adj_matrix_power.show(ui);
                         });
-                        ui.add_space(5.0);
-                        self.adj_matrix_power.show(ui);
                     });
                 });
         });
@@ -706,7 +712,7 @@ impl AppWidget for NetProps {
             self.cone_settings.clone(),
             self.history.get_current_step().unwrap(),
             self.nodes_and_edges_settings.clone(),
-            self.matrix_power_input,
+            self.matrix_power_input.clone(),
         );
 
         self.draw_create_section(ui, &mut interactions);
