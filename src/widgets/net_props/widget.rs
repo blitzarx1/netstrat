@@ -186,11 +186,17 @@ impl NetProps {
         debug!("updating graph state");
 
         let matrix_state = self.graph_state.matrix();
-        self.adj_matrix.set_state(matrix_state.clone());
+        if !self.matrix_power_input.is_empty() {
+            let power_result = self.matrix_power_input.parse::<usize>();
+            if let Err(err) = power_result.clone() {
+                self.handle_error(&format!("invalid power: {err:?}"));
+                return;
+            }
 
-        self.adj_matrix_power.set_state(matrix_state);
-        self.adj_matrix_power
-            .set_power(self.matrix_power_input.parse::<usize>().unwrap_or(1));
+            self.adj_matrix.set_state(matrix_state.clone());
+            self.adj_matrix_power.set_state(matrix_state);
+            self.adj_matrix_power.set_power(power_result.unwrap());
+        }
 
         self.update_frame();
         self.trigger_changed_toast();
