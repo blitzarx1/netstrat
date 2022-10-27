@@ -11,4 +11,5 @@ pub struct ButtonClicks {
     pub color_nodes_and_edges: bool,
     pub delete_nodes_and_edges: bool,
     pub open_dot_preview: bool,
+    pub apply_power: bool,
 }

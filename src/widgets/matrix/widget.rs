@@ -1,8 +1,4 @@
-use egui::{
-    text::LayoutJob, Align, CentralPanel, Color32, FontId, Grid, Label, RichText, ScrollArea,
-    TextBuffer, TextEdit, TextFormat, Vec2,
-};
-use egui_extras::StripBuilder;
+use egui::{text::LayoutJob, Align, Color32, FontId, Grid, Label, TextFormat};
 use ndarray::{Array2, ArrayBase, Axis, Ix2, ViewRepr};
 
 use crate::{netstrat::Bus, widgets::AppWidget};
