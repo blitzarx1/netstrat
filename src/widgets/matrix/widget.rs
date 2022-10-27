@@ -36,7 +36,7 @@ impl Matrix {
         if power > 1 {
             self.m_powered = self.state.m.clone();
             (1..power).for_each(|_| {
-                self.m_powered = self.m_powered.dot(&self.m_powered);
+                self.m_powered = self.m_powered.dot(&self.state.m);
             });
         }
     }
