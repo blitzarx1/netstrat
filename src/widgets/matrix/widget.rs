@@ -1,23 +1,44 @@
-use egui::{text::LayoutJob, Align, Color32, FontId, Label, TextFormat};
+use egui::{
+    text::LayoutJob, Align, CentralPanel, Color32, FontId, Grid, Label, RichText, ScrollArea,
+    TextBuffer, TextEdit, TextFormat, Vec2,
+};
 use egui_extras::StripBuilder;
-use ndarray::{ArrayBase, Axis, Ix2, ViewRepr};
+use ndarray::{Array2, ArrayBase, Axis, Ix2, ViewRepr};
 
 use crate::{netstrat::Bus, widgets::AppWidget};
 
 use super::state::State;
 
+#[derive(Clone)]
 pub struct Matrix {
     bus: Box<Bus>,
     state: State,
+    power: usize,
+    m_powered: Array2<u8>,
 }
 
 impl Matrix {
     pub fn new(state: State, bus: Box<Bus>) -> Self {
-        Self { bus, state }
+        Self {
+            bus,
+            power: 1,
+            state: state.clone(),
+            m_powered: state.m,
+        }
     }
 
     pub fn set_state(&mut self, state: State) {
         self.state = state;
+    }
+
+    pub fn set_power(&mut self, power: usize) {
+        self.power = power;
+        if power > 1 {
+            self.m_powered = self.state.m.clone();
+            (1..power).for_each(|_| {
+                self.m_powered = self.m_powered.dot(&self.state.m);
+            });
+        }
     }
 
     // row index column
@@ -37,7 +58,7 @@ impl Matrix {
             }
 
             let el_string = format!("{}", i);
-            if self.state.colored.rows.contains(&i) {
+            if self.state.colored.rows.contains(&i) && self.power == 1 {
                 res.push((
                     el_string,
                     TextFormat {
@@ -58,7 +79,6 @@ impl Matrix {
                     },
                 ));
             }
-            res.push((" \n".to_string(), TextFormat::default()))
         });
         res
     }
@@ -72,8 +92,8 @@ impl Matrix {
         let mut res = Vec::with_capacity(n + 1);
 
         // first symbol in col is col index
-        let idx_string = format!("{}\n", col_idx);
-        if self.state.colored.cols.contains(&col_idx) {
+        let idx_string = format!("{}", col_idx);
+        if self.state.colored.cols.contains(&col_idx) && self.power == 1 {
             res.push((
                 idx_string,
                 TextFormat {
@@ -101,8 +121,8 @@ impl Matrix {
             }
 
             let el = m[[col_idx, i]];
-            let el_string = format!("{}\n", el);
-            if self.state.colored.elements.contains(&(i, col_idx)) {
+            let el_string = format!("{}", el);
+            if self.state.colored.elements.contains(&(i, col_idx)) && self.power == 1 {
                 res.push((
                     el_string,
                     TextFormat {
@@ -146,29 +166,29 @@ impl AppWidget for Matrix {
                 return;
             }
 
-            let filled_column = self.nth_column(&self.state.m.view().reversed_axes(), i);
+            let mut m = &self.state.m;
+            if self.power > 1 {
+                m = &self.m_powered;
+            }
+
+            let filled_column = self.nth_column(&m.view().reversed_axes(), i);
             cols.push(filled_column);
         });
 
         let cols_num = cols.len();
-        StripBuilder::new(ui)
-            .clip(false)
-            .sizes(
-                egui_extras::Size::Absolute {
-                    initial: 7.0,
-                    range: (7.0, 10.0),
-                },
-                cols_num,
-            )
-            .horizontal(|mut strip| {
-                (0..cols_num).for_each(|i| {
-                    let mut job = LayoutJob::default();
-                    cols.get(i).unwrap().iter().for_each(|(text, format)| {
+        Grid::new("mat")
+            .min_col_width(14.0)
+            .max_col_width(14.0)
+            .striped(true)
+            .show(ui, |ui| {
+                (0..cols_num).for_each(|row| {
+                    (0..cols_num).for_each(|col| {
+                        let mut job = LayoutJob::default();
+                        let (text, format) = cols.get(col).unwrap().get(row).unwrap();
                         job.append(text.as_str(), 0.0, format.clone());
-                    });
-                    strip.cell(|ui| {
                         ui.add(Label::new(job).wrap(false));
                     });
+                    ui.end_row();
                 });
             });
     }

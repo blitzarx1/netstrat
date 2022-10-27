@@ -12,6 +12,7 @@ pub struct Interactions {
     pub nodes_and_edges_settings: NodesAndEdgeSettings,
     pub selected_cycles: HashSet<usize>,
     pub selected_history_step: usize,
+    pub matrix_power: usize,
 }
 
 impl Interactions {
@@ -21,6 +22,7 @@ impl Interactions {
         cone_settings: ConeSettingsInputs,
         selected_history_step: usize,
         nodes_and_edges_settings: NodesAndEdgeSettings,
+        matrix_power:usize,
     ) -> Self {
         Self {
             selected_cycles,
@@ -28,6 +30,7 @@ impl Interactions {
             cone_settings,
             selected_history_step,
             nodes_and_edges_settings,
+            matrix_power,
             clicks: Default::default(),
         }
     }

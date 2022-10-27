@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use crossbeam::channel::Sender;
-use egui::{Button, ScrollArea, Slider, TextEdit, Ui};
+use egui::{ScrollArea, Slider, TextEdit, Ui};
 use egui_extras::image::load_svg_bytes;
 use egui_notify::{Anchor, Toasts};
 use graphviz_rust::cmd::{CommandArg, Format};
@@ -17,8 +17,8 @@ use tracing::{debug, error, info};
 use urlencoding::encode;
 
 use crate::netstrat::{Bus, Drawer};
-use crate::widgets::image_drawer;
 use crate::widgets::history::{Clicks, History, Step};
+use crate::widgets::image_drawer;
 use crate::widgets::matrix::Matrix;
 use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
@@ -32,11 +32,13 @@ use super::settings::{EdgeWeight, NetSettings};
 
 pub struct NetProps {
     graph_state: State,
-    matrix: Matrix,
+    adj_matrix: Matrix,
+    adj_matrix_power: Matrix,
     net_settings: NetSettings,
     history: History,
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
+    matrix_power: usize,
     open_drop_file: OpenDropFile,
     net_drawer: Arc<Mutex<Box<dyn Drawer>>>,
     drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>,
@@ -53,18 +55,21 @@ impl NetProps {
             data: data.clone(),
         });
 
-        let matrix = Matrix::new(data.matrix(), Box::new(Bus::new()));
+        let adj_matrix = Matrix::new(data.matrix(), Box::new(Bus::new()));
+        let adj_matrix_power = adj_matrix.clone();
 
         let mut s = Self {
             drawer_pub,
             history,
+            adj_matrix,
+            adj_matrix_power,
             graph_state: data,
-            matrix,
+            net_drawer: Arc::new(Mutex::new(Box::new(image_drawer::ImageDrawer::default()))),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             open_drop_file: Default::default(),
             net_settings: Default::default(),
-            net_drawer: Arc::new(Mutex::new(Box::new(image_drawer::ImageDrawer::default()))),
             cone_settings: Default::default(),
+            matrix_power: Default::default(),
             selected_cycles: Default::default(),
             nodes_and_edges_settings: Default::default(),
         };
@@ -120,6 +125,7 @@ impl NetProps {
         self.update_cone_settings(inter.cone_settings);
         self.update_nodes_and_edges_settings(inter.nodes_and_edges_settings);
         self.handle_selected_cycles(inter.selected_cycles);
+        self.handle_matrix_power(inter.matrix_power);
         self.handle_clicks(inter.clicks);
         self.handle_opened_file();
     }
@@ -168,10 +174,24 @@ impl NetProps {
         self.selected_cycles = selected_cycles;
     }
 
+    fn handle_matrix_power(&mut self, matrix_power: usize) {
+        if self.matrix_power == matrix_power {
+            return;
+        }
+
+        self.matrix_power = matrix_power;
+        self.update_data();
+    }
+
     fn update_data(&mut self) {
         debug!("updating graph state");
 
-        self.matrix.set_state(self.graph_state.matrix());
+        let matrix_state = self.graph_state.matrix();
+        self.adj_matrix.set_state(matrix_state.clone());
+
+        self.adj_matrix_power.set_state(matrix_state);
+        self.adj_matrix_power.set_power(self.matrix_power);
+
         self.update_frame();
         self.trigger_changed_toast();
     }
@@ -293,9 +313,18 @@ impl NetProps {
             info!("exporting dot");
             self.export_dot();
         }
+
         if clicks.export_svg {
             info!("exporting svg");
             self.export_svg();
+        }
+
+        if clicks.open_dot_preview {
+            open::that(format!(
+                "https://dreampuf.github.io/GraphvizOnline/#{}",
+                encode(self.graph_state.dot().as_str())
+            ))
+            .unwrap();
         }
     }
 
@@ -627,22 +656,36 @@ impl NetProps {
         });
     }
 
-    fn draw_section_matrices(&mut self, ui: &mut Ui) {
+    fn draw_section_matrices(&mut self, ui: &mut Ui, inter: &mut Interactions) {
         ui.collapsing("Matrices", |ui| {
             ScrollArea::both()
                 .auto_shrink([false, true])
                 .show(ui, |ui| {
-                    ui.collapsing("Adj", |ui| self.matrix.show(ui));
+                    ui.collapsing("Adj", |ui| {
+                        self.adj_matrix.show(ui);
+                    });
+                    ui.collapsing("Power", |ui| {
+                        ui.add(Slider::new(&mut inter.matrix_power, 1..=10).text("Power"));
+                        self.adj_matrix_power.show(ui);
+                    });
                 });
         });
     }
 
-    fn draw_dot_preview_section(&mut self, ui: &mut Ui) {
+    fn draw_dot_preview_section(&mut self, ui: &mut Ui, inter: &mut Interactions) {
         let mut dot_mock_interaction = self.graph_state.dot();
         ui.collapsing("Dot preview", |ui| {
             ScrollArea::vertical()
                 .auto_shrink([false, true])
-                .show(ui, |ui| ui.text_edit_multiline(&mut dot_mock_interaction));
+                .show(ui, |ui| {
+                    ui.horizontal_top(|ui| {
+                        if ui.button("Open in Explorer").clicked() {
+                            inter.clicks.open_dot_preview = true;
+                        }
+                    });
+                    ui.add_space(5.0);
+                    ui.text_edit_multiline(&mut dot_mock_interaction);
+                });
         });
     }
 }
@@ -655,6 +698,7 @@ impl AppWidget for NetProps {
             self.cone_settings.clone(),
             self.history.get_current_step().unwrap(),
             self.nodes_and_edges_settings.clone(),
+            self.matrix_power,
         );
 
         self.draw_create_section(ui, &mut interactions);
@@ -663,19 +707,8 @@ impl AppWidget for NetProps {
         self.draw_cones_section(ui, &mut interactions);
         self.draw_cycles_section(ui, &mut interactions);
         self.history.show(ui);
-        self.draw_section_matrices(ui);
-        self.draw_dot_preview_section(ui);
-
-        ui.add_space(10.0);
-        ui.horizontal_top(|ui| {
-            if ui.button("Open in Explorer").clicked() {
-                open::that(format!(
-                    "https://dreampuf.github.io/GraphvizOnline/#{}",
-                    encode(self.graph_state.dot().as_str())
-                ))
-                .unwrap();
-            }
-        });
+        self.draw_section_matrices(ui, &mut interactions);
+        self.draw_dot_preview_section(ui, &mut interactions);
 
         if self.net_drawer.lock().unwrap().has_unread_image() {
             self.drawer_pub.send(self.net_drawer.clone()).unwrap();

@@ -6,7 +6,7 @@ use tracing::{debug, error};
 
 use super::{errors, Message};
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Bus {
     channels: HashMap<String, (Sender<Message>, Receiver<Message>)>,
 }
