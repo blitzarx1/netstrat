@@ -14,7 +14,7 @@ pub struct Matrix {
     bus: Box<Bus>,
     state: State,
     power: usize,
-    m_powered: Array2<u8>,
+    m_powered: Array2<isize>,
 }
 
 impl Matrix {
@@ -85,7 +85,7 @@ impl Matrix {
 
     fn nth_column(
         &self,
-        m: &ArrayBase<ViewRepr<&u8>, Ix2>,
+        m: &ArrayBase<ViewRepr<&isize>, Ix2>,
         col_idx: usize,
     ) -> Vec<(String, TextFormat)> {
         let n = m.len_of(Axis(0));

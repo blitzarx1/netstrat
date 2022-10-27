@@ -400,9 +400,9 @@ impl State {
         self.calculated.adj_mat.clone()
     }
 
-    fn adj_mat(&self) -> Array2<u8> {
+    fn adj_mat(&self) -> Array2<isize> {
         let n = self.graph.node_bound();
-        let mut mat = Array::<u8, Ix2>::zeros((n, n).f());
+        let mut mat = Array::<isize, Ix2>::zeros((n, n).f());
 
         self.graph.edge_references().for_each(|e| {
             let row = e.source().index();
