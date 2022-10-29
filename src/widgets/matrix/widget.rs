@@ -3,38 +3,31 @@ use ndarray::{Array2, ArrayBase, Axis, Ix2, ViewRepr};
 
 use crate::{netstrat::Bus, widgets::AppWidget};
 
-use super::state::State;
+use super::adj_matrix_state::AdjMatrixState;
 
 #[derive(Clone)]
 pub struct Matrix {
-    bus: Box<Bus>,
-    state: State,
+    adj_state: AdjMatrixState,
     power: usize,
     m_powered: Array2<isize>,
 }
 
 impl Matrix {
-    pub fn new(state: State, bus: Box<Bus>) -> Self {
+    pub fn new(state: AdjMatrixState) -> Self {
         Self {
-            bus,
             power: 1,
-            state: state.clone(),
+            adj_state: state.clone(),
             m_powered: state.m,
         }
     }
 
-    pub fn set_state(&mut self, state: State) {
-        self.state = state;
+    pub fn set_state(&mut self, state: AdjMatrixState) {
+        self.adj_state.update(state.m, state.colored, state.deleted)
     }
 
     pub fn set_power(&mut self, power: usize) {
         self.power = power;
-        if power > 1 {
-            self.m_powered = self.state.m.clone();
-            (1..power).for_each(|_| {
-                self.m_powered = self.m_powered.dot(&self.state.m);
-            });
-        }
+        self.m_powered = self.adj_state.power(power).m
     }
 
     // row index column
@@ -49,12 +42,12 @@ impl Matrix {
             },
         )];
         (0..n).for_each(|i| {
-            if self.state.deleted.rows.contains(&i) {
+            if self.adj_state.deleted.rows.contains(&i) {
                 return;
             }
 
             let el_string = format!("{}", i);
-            if self.state.colored.rows.contains(&i) && self.power == 1 {
+            if self.adj_state.colored.rows.contains(&i) && self.power == 1 {
                 res.push((
                     el_string,
                     TextFormat {
@@ -89,7 +82,7 @@ impl Matrix {
 
         // first symbol in col is col index
         let idx_string = format!("{}", col_idx);
-        if self.state.colored.cols.contains(&col_idx) && self.power == 1 {
+        if self.adj_state.colored.cols.contains(&col_idx) && self.power == 1 {
             res.push((
                 idx_string,
                 TextFormat {
@@ -112,13 +105,13 @@ impl Matrix {
         }
 
         (0..n).for_each(|i| {
-            if self.state.deleted.rows.contains(&i) {
+            if self.adj_state.deleted.rows.contains(&i) {
                 return;
             }
 
             let el = m[[col_idx, i]];
             let el_string = format!("{}", el);
-            if self.state.colored.elements.contains(&(i, col_idx)) && self.power == 1 {
+            if self.adj_state.colored.elements.contains(&(i, col_idx)) && self.power == 1 {
                 res.push((
                     el_string,
                     TextFormat {
@@ -154,15 +147,15 @@ impl Matrix {
 
 impl AppWidget for Matrix {
     fn show(&mut self, ui: &mut egui::Ui) {
-        let n = self.state.m.len_of(Axis(0));
+        let n = self.adj_state.m.len_of(Axis(0));
 
         let mut cols = vec![self.first_colum(n)];
         (0..n).for_each(|i| {
-            if self.state.deleted.cols.contains(&i) {
+            if self.adj_state.deleted.cols.contains(&i) {
                 return;
             }
 
-            let mut m = &self.state.m;
+            let mut m = &self.adj_state.m;
             if self.power > 1 {
                 m = &self.m_powered;
             }

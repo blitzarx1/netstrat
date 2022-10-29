@@ -55,7 +55,7 @@ impl NetProps {
             data: data.clone(),
         });
 
-        let adj_matrix = Matrix::new(data.matrix(), Box::new(Bus::new()));
+        let adj_matrix = Matrix::new(data.matrix());
         let adj_matrix_power = adj_matrix.clone();
 
         let mut s = Self {
@@ -673,6 +673,22 @@ impl NetProps {
                 .auto_shrink([false, true])
                 .show(ui, |ui| {
                     ui.collapsing("Adj", |ui| {
+                        self.adj_matrix.show(ui);
+                        ui.collapsing("Power", |ui| {
+                            ui.horizontal_top(|ui| {
+                                ui.add(
+                                    TextEdit::singleline(&mut inter.matrix_power_input)
+                                        .desired_width(50.0),
+                                );
+                                if ui.button("Apply").clicked() {
+                                    inter.clicks.apply_power = true
+                                }
+                            });
+                            ui.add_space(5.0);
+                            self.adj_matrix_power.show(ui);
+                        });
+                    });
+                    ui.collapsing("Reach", |ui| {
                         self.adj_matrix.show(ui);
                         ui.collapsing("Power", |ui| {
                             ui.horizontal_top(|ui| {

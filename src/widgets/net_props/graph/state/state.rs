@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::vec;
 
+use crate::widgets::matrix::AdjMatrixState;
 use crate::widgets::matrix::Elements as MatrixElements;
-use crate::widgets::matrix::State as MatrixState;
 use crate::widgets::net_props::graph::cycle::Cycle;
 use crate::widgets::net_props::graph::elements::Elements;
 use lazy_static::lazy_static;
@@ -396,7 +396,7 @@ impl State {
         self.calculated.dot.clone()
     }
 
-    pub fn matrix(&self) -> MatrixState {
+    pub fn matrix(&self) -> AdjMatrixState {
         self.calculated.adj_mat.clone()
     }
 
@@ -497,8 +497,8 @@ impl State {
         info!("graph metadata recalculated");
     }
 
-    fn calc_adj_mat(&self) -> MatrixState {
-        MatrixState::new(
+    fn calc_adj_mat(&self) -> AdjMatrixState {
+        AdjMatrixState::new(
             self.adj_mat(),
             self.elements_to_matrix_elements(&self.calculated.colored),
             self.elements_to_matrix_elements(&self.calculated.deleted),
