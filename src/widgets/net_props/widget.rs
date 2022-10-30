@@ -33,12 +33,12 @@ use super::settings::{EdgeWeight, NetSettings};
 pub struct NetProps {
     graph_state: State,
     adj_matrix: Matrix,
-    adj_matrix_power: Matrix,
     net_settings: NetSettings,
     history: History,
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
     matrix_power_input: String,
+    matrix_power: usize,
     open_drop_file: OpenDropFile,
     net_drawer: Arc<Mutex<Box<dyn Drawer>>>,
     drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>,
@@ -56,14 +56,13 @@ impl NetProps {
         });
 
         let adj_matrix = Matrix::new(data.matrix());
-        let adj_matrix_power = adj_matrix.clone();
 
         let mut s = Self {
             drawer_pub,
             history,
             adj_matrix,
-            adj_matrix_power,
             graph_state: data,
+            matrix_power: 1,
             net_drawer: Arc::new(Mutex::new(Box::new(image_drawer::ImageDrawer::default()))),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             open_drop_file: Default::default(),
@@ -185,19 +184,7 @@ impl NetProps {
     fn update_data(&mut self) {
         debug!("updating graph state");
 
-        let matrix_state = self.graph_state.matrix();
-        if !self.matrix_power_input.is_empty() {
-            let power_result = self.matrix_power_input.parse::<usize>();
-            if let Err(err) = power_result.clone() {
-                self.handle_error(&format!("invalid power: {err:?}"));
-                return;
-            }
-
-            self.adj_matrix.set_state(matrix_state.clone());
-            self.adj_matrix_power.set_state(matrix_state);
-            self.adj_matrix_power.set_power(power_result.unwrap());
-        }
-
+        self.adj_matrix.set_state(self.graph_state.matrix());
         self.update_frame();
         self.trigger_changed_toast();
     }
@@ -240,7 +227,7 @@ impl NetProps {
 
         if clicks.apply_power {
             info!("applying matrix cycles");
-            self.update_data();
+            self.apply_power();
         }
 
         if let Some(history_click) = self.history.last_click() {
@@ -337,6 +324,21 @@ impl NetProps {
             ))
             .unwrap();
         }
+    }
+
+    fn apply_power(&mut self) {
+        let mut power = 1;
+        if !self.matrix_power_input.is_empty() {
+            let power_result = self.matrix_power_input.parse::<usize>();
+            if let Err(err) = power_result.clone() {
+                self.handle_error(&format!("invalid power: {err:?}"));
+                return;
+            }
+
+            power = power_result.unwrap()
+        }
+
+        self.matrix_power = power;
     }
 
     fn delete_cycles(&mut self) {
@@ -685,23 +687,7 @@ impl NetProps {
                                 }
                             });
                             ui.add_space(5.0);
-                            self.adj_matrix_power.show(ui);
-                        });
-                    });
-                    ui.collapsing("Reach", |ui| {
-                        self.adj_matrix.show(ui);
-                        ui.collapsing("Power", |ui| {
-                            ui.horizontal_top(|ui| {
-                                ui.add(
-                                    TextEdit::singleline(&mut inter.matrix_power_input)
-                                        .desired_width(50.0),
-                                );
-                                if ui.button("Apply").clicked() {
-                                    inter.clicks.apply_power = true
-                                }
-                            });
-                            ui.add_space(5.0);
-                            self.adj_matrix_power.show(ui);
+                            self.adj_matrix.powered(self.matrix_power).show(ui);
                         });
                     });
                 });
