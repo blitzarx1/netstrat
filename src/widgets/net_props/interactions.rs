@@ -13,6 +13,7 @@ pub struct Interactions {
     pub selected_cycles: HashSet<usize>,
     pub selected_history_step: usize,
     pub matrix_power_input: String,
+    pub reach_matrix_power_input: String,
 }
 
 impl Interactions {
@@ -23,6 +24,7 @@ impl Interactions {
         selected_history_step: usize,
         nodes_and_edges_settings: NodesAndEdgeSettings,
         matrix_power_input: String,
+        reach_matrix_power_input: String,
     ) -> Self {
         Self {
             selected_cycles,
@@ -31,6 +33,7 @@ impl Interactions {
             selected_history_step,
             nodes_and_edges_settings,
             matrix_power_input,
+            reach_matrix_power_input,
             clicks: Default::default(),
         }
     }

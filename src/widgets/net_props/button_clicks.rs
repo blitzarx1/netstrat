@@ -12,4 +12,5 @@ pub struct ButtonClicks {
     pub delete_nodes_and_edges: bool,
     pub open_dot_preview: bool,
     pub apply_power: bool,
+    pub apply_reach_power: bool,
 }

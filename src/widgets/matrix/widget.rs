@@ -34,6 +34,13 @@ impl Matrix {
         }
     }
 
+    pub fn reach(&mut self, steps: isize) -> Self {
+        Self {
+            state: self.state.reach_matrix(steps),
+            last_powers: Default::default(),
+        }
+    }
+
     fn get_power(&mut self, n: usize) -> State {
         if let Some(computed_power) = self.last_powers.get(&n) {
             debug!("got adj matrix power from cash");

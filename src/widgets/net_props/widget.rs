@@ -39,6 +39,8 @@ pub struct NetProps {
     nodes_and_edges_settings: NodesAndEdgeSettings,
     matrix_power_input: String,
     matrix_power: usize,
+    reach_matrix_power_input: String,
+    reach_matrix_power: usize,
     open_drop_file: OpenDropFile,
     net_drawer: Arc<Mutex<Box<dyn Drawer>>>,
     drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>,
@@ -55,7 +57,7 @@ impl NetProps {
             data: data.clone(),
         });
 
-        let adj_matrix = Matrix::new(data.matrix());
+        let adj_matrix = Matrix::new(data.adj_matrix());
 
         let mut s = Self {
             drawer_pub,
@@ -63,12 +65,14 @@ impl NetProps {
             adj_matrix,
             graph_state: data,
             matrix_power: 1,
+            reach_matrix_power: 1,
             net_drawer: Arc::new(Mutex::new(Box::new(image_drawer::ImageDrawer::default()))),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
             open_drop_file: Default::default(),
             net_settings: Default::default(),
             cone_settings: Default::default(),
             matrix_power_input: Default::default(),
+            reach_matrix_power_input: Default::default(),
             selected_cycles: Default::default(),
             nodes_and_edges_settings: Default::default(),
         };
@@ -125,6 +129,7 @@ impl NetProps {
         self.update_nodes_and_edges_settings(inter.nodes_and_edges_settings);
         self.handle_selected_cycles(inter.selected_cycles);
         self.handle_matrix_power(inter.matrix_power_input);
+        self.handle_reach_matrix_power(inter.reach_matrix_power_input);
         self.handle_clicks(inter.clicks);
         self.handle_opened_file();
     }
@@ -181,10 +186,18 @@ impl NetProps {
         self.matrix_power_input = matrix_power_input;
     }
 
+    fn handle_reach_matrix_power(&mut self, reach_matrix_power_input: String) {
+        if self.reach_matrix_power_input == reach_matrix_power_input {
+            return;
+        }
+
+        self.reach_matrix_power_input = reach_matrix_power_input;
+    }
+
     fn update_data(&mut self) {
         debug!("updating graph state");
 
-        self.adj_matrix.set_state(self.graph_state.matrix());
+        self.adj_matrix.set_state(self.graph_state.adj_matrix());
         self.update_frame();
         self.trigger_changed_toast();
     }
@@ -226,8 +239,13 @@ impl NetProps {
         }
 
         if clicks.apply_power {
-            info!("applying matrix cycles");
+            info!("applying matrix power");
             self.apply_power();
+        }
+
+        if clicks.apply_reach_power {
+            info!("applying reach matrix power");
+            self.apply_reach_power();
         }
 
         if let Some(history_click) = self.history.last_click() {
@@ -324,6 +342,21 @@ impl NetProps {
             ))
             .unwrap();
         }
+    }
+
+    fn apply_reach_power(&mut self) {
+        let mut power = 1;
+        if !self.reach_matrix_power_input.is_empty() {
+            let power_result = self.reach_matrix_power_input.parse::<usize>();
+            if let Err(err) = power_result.clone() {
+                self.handle_error(&format!("invalid power: {err:?}"));
+                return;
+            }
+
+            power = power_result.unwrap()
+        }
+
+        self.reach_matrix_power = power;
     }
 
     fn apply_power(&mut self) {
@@ -690,6 +723,24 @@ impl NetProps {
                             self.adj_matrix.powered(self.matrix_power).show(ui);
                         });
                     });
+                    ui.collapsing("Reach", |ui| {
+                        self.adj_matrix.reach(-1).show(ui);
+                        ui.collapsing("Steps", |ui| {
+                            ui.horizontal_top(|ui| {
+                                ui.add(
+                                    TextEdit::singleline(&mut inter.reach_matrix_power_input)
+                                        .desired_width(50.0),
+                                );
+                                if ui.button("Apply").clicked() {
+                                    inter.clicks.apply_reach_power = true
+                                }
+                            });
+                            ui.add_space(5.0);
+                            self.adj_matrix
+                                .reach(self.reach_matrix_power as isize)
+                                .show(ui);
+                        });
+                    });
                 });
         });
     }
@@ -721,6 +772,7 @@ impl AppWidget for NetProps {
             self.history.get_current_step().unwrap(),
             self.nodes_and_edges_settings.clone(),
             self.matrix_power_input.clone(),
+            self.reach_matrix_power_input.clone(),
         );
 
         self.draw_create_section(ui, &mut interactions);

@@ -9,8 +9,8 @@ use crate::widgets::net_props::graph::elements::Elements;
 use lazy_static::lazy_static;
 use ndarray::Array;
 use ndarray::Array2;
-use ndarray::Ix2;
-use ndarray::ShapeBuilder;
+use petgraph::algo::all_simple_paths;
+use petgraph::algo::simple_paths;
 use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
 use petgraph::prelude::{EdgeRef, StableDiGraph};
@@ -396,13 +396,13 @@ impl State {
         self.calculated.dot.clone()
     }
 
-    pub fn matrix(&self) -> MatrixState {
+    pub fn adj_matrix(&self) -> MatrixState {
         self.calculated.adj_mat.clone()
     }
 
     fn adj_mat(&self) -> Array2<isize> {
         let n = self.graph.node_bound();
-        let mut mat = Array::<isize, Ix2>::zeros((n, n).f());
+        let mut mat = Array::zeros((n, n));
 
         self.graph.edge_references().for_each(|e| {
             let row = e.source().index();
@@ -489,6 +489,7 @@ impl State {
     fn recalculate_metadata(&mut self) {
         self.calculated.ini_set = self.collect_ini_set();
         self.calculated.fin_set = self.collect_fin_set();
+        self.calculated.longest_path = self.calc_longest_path();
 
         self.calculated.cycles = self.calc_cycles();
         self.calculated.dot = self.calc_dot();
@@ -497,12 +498,30 @@ impl State {
         info!("graph metadata recalculated");
     }
 
+    fn calc_longest_path(&self) -> usize {
+        let mut longest_path = 0;
+        self.calculated.ini_set.iter().for_each(|ini| {
+            self.calculated.fin_set.iter().for_each(|fin| {
+                let curr_max_path_length =
+                    all_simple_paths::<Vec<_>, _>(&self.graph, *ini, *fin, 0, None)
+                        .max_by(|left, right| left.len().cmp(&right.len()))
+                        .unwrap_or_default()
+                        .len();
+                if curr_max_path_length > longest_path {
+                    longest_path = curr_max_path_length
+                }
+            })
+        });
+        longest_path
+    }
+
     fn calc_adj_mat(&self) -> MatrixState {
-        MatrixState::new(
-            self.adj_mat(),
-            self.elements_to_matrix_elements(&self.calculated.colored),
-            self.elements_to_matrix_elements(&self.calculated.deleted),
-        )
+        MatrixState {
+            m: self.adj_mat(),
+            colored: self.elements_to_matrix_elements(&self.calculated.colored),
+            deleted: self.elements_to_matrix_elements(&self.calculated.deleted),
+            longest_path: self.calculated.longest_path,
+        }
     }
 
     fn calc_dot(&self) -> String {
