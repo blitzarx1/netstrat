@@ -24,7 +24,8 @@ impl Matrix {
     }
 
     pub fn set_state(&mut self, state: State) {
-        self.state = state
+        self.state = state;
+        self.last_powers = Default::default();
     }
 
     pub fn powered(&mut self, n: usize) -> Self {
