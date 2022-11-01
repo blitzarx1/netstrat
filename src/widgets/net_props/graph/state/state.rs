@@ -5,6 +5,7 @@ use std::vec;
 use crate::widgets::matrix::Elements as MatrixElements;
 use crate::widgets::matrix::State as MatrixState;
 use crate::widgets::net_props::graph::cycle::Cycle;
+use crate::widgets::net_props::graph::elements;
 use crate::widgets::net_props::graph::elements::Elements;
 use lazy_static::lazy_static;
 use ndarray::Array;
@@ -255,13 +256,16 @@ impl State {
         self.recalculate_metadata();
     }
 
-    pub fn color_cones(&mut self, cones_settings: Vec<ConeSettings>) {
+    pub fn color_cones(&mut self, cones_settings: Vec<ConeSettings>) -> Option<()> {
         let mut elements = Elements::default();
+        let mut has_errors = false;
+
         cones_settings.iter().for_each(|settings| {
             settings.roots_weights.iter().for_each(|weight| {
                 let root_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
                 if root_find_result.is_none() {
-                    warn!("node with weight {} not found", *weight);
+                    error!("node with weight {} not found", *weight);
+                    has_errors = true;
                     return;
                 }
 
@@ -270,17 +274,24 @@ impl State {
             });
         });
 
+        if has_errors {
+            return None;
+        }
+
         self.calculated.colored = elements;
         self.recalculate_metadata();
+        Some(())
     }
 
-    pub fn delete_cones(&mut self, cones_settings: Vec<ConeSettings>) {
+    pub fn delete_cones(&mut self, cones_settings: Vec<ConeSettings>) -> Option<()> {
         let mut elements = Elements::default();
+        let mut has_errors = false;
         cones_settings.iter().for_each(|settings| {
             settings.roots_weights.iter().for_each(|weight| {
                 let root_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
                 if root_find_result.is_none() {
-                    warn!("node with weight {} not found", *weight);
+                    error!("node with weight {} not found", *weight);
+                    has_errors = true;
                     return;
                 }
 
@@ -289,7 +300,12 @@ impl State {
             });
         });
 
-        self.delete_elements(elements)
+        if has_errors {
+            return None;
+        }
+
+        self.delete_elements(elements);
+        Some(())
     }
 
     pub fn color_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
@@ -379,13 +395,50 @@ impl State {
         self.delete_elements(elements)
     }
 
-    pub fn color_nodes_and_edges(&mut self, nodes: Vec<String>, edges: Vec<[String; 2]>) {
-        self.calculated.colored = self.find_nodes_and_edges(nodes, edges);
+    pub fn color_nodes_and_edges(
+        &mut self,
+        nodes: Vec<String>,
+        edges: Vec<[String; 2]>,
+    ) -> Option<()> {
+        let mut nodes_set = Default::default();
+        if !nodes.is_empty() {
+            let nodes_res = self.find_nodes(nodes);
+            nodes_set = nodes_res?.nodes()
+        }
+
+        let mut edges_set = Default::default();
+        if !edges.is_empty() {
+            let edges_res = self.find_edges(edges);
+            edges_set = edges_res?.edges();
+        }
+
+        self.calculated.colored = Elements::new(nodes_set, edges_set);
         self.recalculate_metadata();
+
+        Some(())
     }
 
-    pub fn delete_nodes_and_edges(&mut self, nodes: Vec<String>, edges: Vec<[String; 2]>) {
-        self.delete_elements(self.find_nodes_and_edges(nodes, edges));
+    pub fn delete_nodes_and_edges(
+        &mut self,
+        nodes: Vec<String>,
+        edges: Vec<[String; 2]>,
+    ) -> Option<()> {
+        let mut nodes_set = Default::default();
+        if !nodes.is_empty() {
+            let nodes_res = self.find_nodes(nodes);
+            nodes_set = nodes_res?.nodes()
+        }
+
+        let mut edges_set = Default::default();
+        if !edges.is_empty() {
+            let edges_res = self.find_edges(edges);
+            edges_set = edges_res?.edges();
+        }
+
+        let elements = Elements::new(nodes_set, edges_set);
+
+        self.delete_elements(elements);
+        Some(())
     }
 
     pub fn cycles(self) -> Vec<Cycle> {
@@ -414,14 +467,14 @@ impl State {
         mat
     }
 
-    fn find_nodes_and_edges(&self, nodes: Vec<String>, edges: Vec<[String; 2]>) -> Elements {
-        let mut nodes_set = HashSet::with_capacity(nodes.len());
-        let mut edges_set = HashSet::with_capacity(edges.len());
-
-        nodes.iter().for_each(|weight| {
+    fn find_nodes(&self, weights: Vec<String>) -> Option<Elements> {
+        let mut nodes_set = HashSet::with_capacity(weights.len());
+        let mut has_errors = false;
+        weights.iter().for_each(|weight| {
             let node_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
             if node_find_result.is_none() {
-                warn!("node with weight {} not found", *weight);
+                error!("node with weight {} not found", *weight);
+                has_errors = true;
                 return;
             }
 
@@ -429,14 +482,25 @@ impl State {
             nodes_set.insert(node_idx);
         });
 
-        edges.iter().for_each(|edge| {
+        if has_errors {
+            return None;
+        }
+        Some(Elements::new(nodes_set, Default::default()))
+    }
+
+    fn find_edges(&self, bounds: Vec<[String; 2]>) -> Option<Elements> {
+        let mut edges_set = HashSet::with_capacity(bounds.len());
+        let mut has_errors = false;
+
+        bounds.iter().for_each(|edge| {
             let start_weight = edge.first().unwrap();
             let start_result = self
                 .graph
                 .node_references()
                 .find(|node| *node.1 == *start_weight);
             if start_result.is_none() {
-                warn!("node with weight {} not found", start_weight);
+                error!("node with weight {} not found", start_weight);
+                has_errors = true;
                 return;
             }
             let (start, _) = start_result.unwrap();
@@ -447,14 +511,16 @@ impl State {
                 .node_references()
                 .find(|node| *node.1 == *end_weight);
             if end_result.is_none() {
-                warn!("node with weight {} not found", end_weight);
+                error!("node with weight {} not found", end_weight);
+                has_errors = true;
                 return;
             }
             let (end, _) = end_result.unwrap();
 
             let edge_find_result = self.graph.find_edge(start, end);
             if edge_find_result.is_none() {
-                warn!("edge {edge:?} not found");
+                error!("edge {edge:?} not found");
+                has_errors = true;
                 return;
             }
 
@@ -462,7 +528,11 @@ impl State {
             edges_set.insert(edge_idx);
         });
 
-        Elements::new(nodes_set, edges_set)
+        if has_errors {
+            return None;
+        }
+
+        Some(Elements::new(Default::default(), edges_set))
     }
 
     fn delete_elements(&mut self, elements: Elements) {

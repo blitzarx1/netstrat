@@ -285,10 +285,15 @@ impl NetProps {
 
         if clicks.delete_nodes_and_edges {
             info!("deleting nodes and edges");
-            self.graph_state.delete_nodes_and_edges(
+            let deleted = self.graph_state.delete_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
+
+            if deleted.is_none() {
+                self.handle_error("failed to delete node or edge");
+                return;
+            }
 
             if self
                 .history
@@ -306,10 +311,15 @@ impl NetProps {
 
         if clicks.color_nodes_and_edges {
             info!("coloring nodes and edges");
-            self.graph_state.color_nodes_and_edges(
+            let colored = self.graph_state.color_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
+
+            if colored.is_none() {
+                self.handle_error("failed to color node or edge");
+                return;
+            }
 
             if self
                 .history
@@ -460,7 +470,7 @@ impl NetProps {
     }
 
     fn color_cones(&mut self) {
-        match self.cone_settings.cone_type {
+        let colored = match self.cone_settings.cone_type {
             ConeType::Custom => self.graph_state.color_cones(
                 self.cone_settings
                     .settings
@@ -468,8 +478,19 @@ impl NetProps {
                     .map(|input| input.prepare_settings())
                     .collect(),
             ),
-            ConeType::Initial => self.graph_state.color_ini_cones(),
-            ConeType::Final => self.graph_state.color_fin_cones(),
+            ConeType::Initial => {
+                self.graph_state.color_ini_cones();
+                Some(())
+            }
+            ConeType::Final => {
+                self.graph_state.color_fin_cones();
+                Some(())
+            }
+        };
+
+        if colored.is_none() {
+            self.handle_error("invalid cone");
+            return;
         }
 
         self.history.add_and_set_current_step(Step {
@@ -481,7 +502,7 @@ impl NetProps {
     }
 
     fn delete_cones(&mut self) {
-        match self.cone_settings.cone_type {
+        let deleted = match self.cone_settings.cone_type {
             ConeType::Custom => self.graph_state.delete_cones(
                 self.cone_settings
                     .settings
@@ -489,9 +510,20 @@ impl NetProps {
                     .map(|input| input.prepare_settings())
                     .collect(),
             ),
-            ConeType::Initial => self.graph_state.delete_initial_cone(),
-            ConeType::Final => self.graph_state.delete_final_cone(),
+            ConeType::Initial => {
+                self.graph_state.delete_initial_cone();
+                Some(())
+            }
+            ConeType::Final => {
+                self.graph_state.delete_final_cone();
+                Some(())
+            }
         };
+        if deleted.is_none() {
+            self.handle_error("invalid cone");
+            return;
+        }
+
         self.cone_settings = Default::default();
 
         self.history.add_and_set_current_step(Step {
