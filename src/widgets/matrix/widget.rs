@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, default};
 
 use egui::{text::LayoutJob, Align, Color32, FontId, Grid, Label, TextFormat};
 use ndarray::{Array2, ArrayBase, Axis, Ix2, ViewRepr};
@@ -14,31 +14,55 @@ use super::adj_matrix_state::State;
 pub struct Matrix {
     state: State,
     last_powers: HashMap<usize, State>,
+    last_reach: HashMap<isize, State>,
 }
 
 impl Matrix {
     pub fn new(state: State) -> Self {
         let mut last_powers = HashMap::with_capacity(MAX_CASH_LENGTH);
+        let mut last_reach = HashMap::with_capacity(MAX_CASH_LENGTH);
         last_powers.insert(1, state.clone());
-        Self { last_powers, state }
+        last_reach.insert(1, state.reach_matrix(1));
+        Self {
+            state,
+            last_powers,
+            last_reach,
+        }
     }
 
     pub fn set_state(&mut self, state: State) {
         self.state = state;
-        self.last_powers = Default::default();
+        self.last_powers = HashMap::with_capacity(MAX_CASH_LENGTH);
+        self.last_reach = HashMap::with_capacity(MAX_CASH_LENGTH);
     }
 
     pub fn powered(&mut self, n: usize) -> Self {
         Self {
             state: self.get_power(n),
             last_powers: Default::default(),
+            last_reach: Default::default(),
         }
     }
 
     pub fn reach(&mut self, steps: isize) -> Self {
+        if let Some(computed_reach) = self.last_reach.get(&steps) {
+            debug!("got reach matrix power from cash");
+            return Self {
+                state: computed_reach.clone(),
+                last_powers: Default::default(),
+                last_reach: Default::default(),
+            };
+        }
+
+        debug!("computing reach matrix power");
+
+        let res = self.state.reach_matrix(steps);
+        self.store_computed_reach(steps, res.clone());
+
         Self {
-            state: self.state.reach_matrix(steps),
+            state: res,
             last_powers: Default::default(),
+            last_reach: Default::default(),
         }
     }
 
@@ -49,10 +73,6 @@ impl Matrix {
         }
 
         debug!("computing adj matrix power");
-
-        if n == 1 {
-            return self.state.clone();
-        }
 
         let res = match n {
             0 => self.state.uni_matrix(),
@@ -71,6 +91,16 @@ impl Matrix {
         }
 
         self.last_powers.insert(n, computed_power);
+    }
+
+    fn store_computed_reach(&mut self, n: isize, computed_reach: State) {
+        if self.last_reach.len() > MAX_CASH_LENGTH {
+            debug!("cash reached max size; trimming");
+            let first_key = *self.last_reach.keys().next().unwrap();
+            self.last_reach.remove(&first_key);
+        }
+
+        self.last_reach.insert(n, computed_reach);
     }
 
     // row index column

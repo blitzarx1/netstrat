@@ -37,7 +37,7 @@ impl State {
         }
     }
 
-    pub fn reach_matrix(&mut self, steps: isize) -> Self {
+    pub fn reach_matrix(&self, steps: isize) -> Self {
         let n = self.m.len_of(Axis(0));
 
         let steps_cnt = match steps == -1 {
@@ -63,12 +63,11 @@ impl State {
     }
 }
 
-fn boolean_view(m: Array2<isize>) -> Array2<isize> {
-    let mut res = m.clone();
-    res.iter_mut().for_each(|el| {
+fn boolean_view(mut m: Array2<isize>) -> Array2<isize> {
+    m.iter_mut().for_each(|el| {
         if *el > 1 {
             *el = 1
         }
     });
-    res
+    m
 }
