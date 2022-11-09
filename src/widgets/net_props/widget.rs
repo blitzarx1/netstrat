@@ -773,6 +773,9 @@ impl NetProps {
                                 .show(ui);
                         });
                     });
+                    ui.collapsing("Cone Distance", |ui| {
+                        self.adj_matrix.cone_distance().show(ui);
+                    });
                 });
         });
     }

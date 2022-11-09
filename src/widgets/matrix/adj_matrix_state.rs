@@ -1,3 +1,5 @@
+use std::iter::zip;
+
 use ndarray::{Array2, Axis, Ix2};
 
 use super::elements::Elements;
@@ -56,6 +58,38 @@ impl State {
 
         Self {
             m: boolean_view(m),
+            longest_path: self.longest_path,
+            deleted: self.deleted.clone(),
+            colored: Elements::default(),
+        }
+    }
+
+    pub fn cone_distance_matrix(&self, reach_matrix: Array2<isize>) -> Self {
+        let n = self.m.len_of(Axis(0));
+        let mut m = Array2::zeros((n, n));
+
+        reach_matrix
+            .axis_iter(Axis(0))
+            .enumerate()
+            .for_each(|(i, rowI)| {
+                reach_matrix
+                    .axis_iter(Axis(0))
+                    .enumerate()
+                    .for_each(|(j, rowJ)| {
+                        if i == j {
+                            return;
+                        }
+
+                        let cell_result =
+                            zip(rowI, rowJ).map(|(a, b)| (a - b).abs()).sum::<isize>();
+
+                        m[[i, j]] = cell_result;
+                        m[[j, i]] = cell_result;
+                    });
+            });
+
+        Self {
+            m,
             longest_path: self.longest_path,
             deleted: self.deleted.clone(),
             colored: Elements::default(),

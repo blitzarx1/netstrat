@@ -66,6 +66,17 @@ impl Matrix {
         }
     }
 
+    pub fn cone_distance(&mut self) -> Self {
+        let reach = self.reach(-1);
+
+        let res = self.state.cone_distance_matrix(reach.state.m);
+        Self {
+            state: res,
+            last_powers: Default::default(),
+            last_reach: Default::default(),
+        }
+    }
+
     fn get_power(&mut self, n: usize) -> State {
         if let Some(computed_power) = self.last_powers.get(&n) {
             debug!("got adj matrix power from cash");
