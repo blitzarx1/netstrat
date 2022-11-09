@@ -2,7 +2,7 @@ use std::{collections::HashMap, default};
 
 use egui::{text::LayoutJob, Align, Color32, FontId, Grid, Label, TextFormat};
 use ndarray::{Array2, ArrayBase, Axis, Ix2, ViewRepr};
-use tracing::debug;
+use tracing::{debug, info, trace};
 
 use crate::widgets::AppWidget;
 
@@ -15,18 +15,22 @@ pub struct Matrix {
     state: State,
     last_powers: HashMap<usize, State>,
     last_reach: HashMap<isize, State>,
+    last_cone_distance: Option<State>,
 }
 
 impl Matrix {
     pub fn new(state: State) -> Self {
         let mut last_powers = HashMap::with_capacity(MAX_CASH_LENGTH);
         let mut last_reach = HashMap::with_capacity(MAX_CASH_LENGTH);
+        let reach_matrix = state.reach_matrix(-1);
         last_powers.insert(1, state.clone());
-        last_reach.insert(1, state.reach_matrix(1));
+        last_reach.insert(-1, reach_matrix.clone());
+        let last_cone_distance = Some(state.cone_distance_matrix(reach_matrix.m));
         Self {
             state,
             last_powers,
             last_reach,
+            last_cone_distance,
         }
     }
 
@@ -34,6 +38,7 @@ impl Matrix {
         self.state = state;
         self.last_powers = HashMap::with_capacity(MAX_CASH_LENGTH);
         self.last_reach = HashMap::with_capacity(MAX_CASH_LENGTH);
+        self.last_cone_distance = None;
     }
 
     pub fn powered(&mut self, n: usize) -> Self {
@@ -41,20 +46,22 @@ impl Matrix {
             state: self.get_power(n),
             last_powers: Default::default(),
             last_reach: Default::default(),
+            last_cone_distance: Default::default(),
         }
     }
 
     pub fn reach(&mut self, steps: isize) -> Self {
         if let Some(computed_reach) = self.last_reach.get(&steps) {
-            debug!("got reach matrix power from cash");
+            trace!("got reach matrix power from cash");
             return Self {
                 state: computed_reach.clone(),
                 last_powers: Default::default(),
                 last_reach: Default::default(),
+                last_cone_distance: Default::default(),
             };
         }
 
-        debug!("computing reach matrix power");
+        info!("computing reach matrix power");
 
         let res = self.state.reach_matrix(steps);
         self.store_computed_reach(steps, res.clone());
@@ -63,10 +70,23 @@ impl Matrix {
             state: res,
             last_powers: Default::default(),
             last_reach: Default::default(),
+            last_cone_distance: Default::default(),
         }
     }
 
     pub fn cone_distance(&mut self) -> Self {
+        if let Some(cone_distance) = self.last_cone_distance.clone() {
+            trace!("got cone distance matrix from cash");
+            return Self {
+                state: cone_distance,
+                last_powers: Default::default(),
+                last_reach: Default::default(),
+                last_cone_distance: Default::default(),
+            };
+        }
+
+        info!("computing cone distance matrix");
+
         let reach = self.reach(-1);
 
         let res = self.state.cone_distance_matrix(reach.state.m);
@@ -74,16 +94,17 @@ impl Matrix {
             state: res,
             last_powers: Default::default(),
             last_reach: Default::default(),
+            last_cone_distance: Default::default(),
         }
     }
 
     fn get_power(&mut self, n: usize) -> State {
         if let Some(computed_power) = self.last_powers.get(&n) {
-            debug!("got adj matrix power from cash");
+            trace!("got adj matrix power from cash");
             return computed_power.clone();
         }
 
-        debug!("computing adj matrix power");
+        info!("computing adj matrix power");
 
         let res = match n {
             0 => self.state.uni_matrix(),
