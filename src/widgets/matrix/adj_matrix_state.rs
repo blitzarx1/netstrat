@@ -71,17 +71,17 @@ impl State {
         reach_matrix
             .axis_iter(Axis(0))
             .enumerate()
-            .for_each(|(i, rowI)| {
+            .for_each(|(i, row_i)| {
                 reach_matrix
                     .axis_iter(Axis(0))
                     .enumerate()
-                    .for_each(|(j, rowJ)| {
+                    .for_each(|(j, row_j)| {
                         if i == j {
                             return;
                         }
 
                         let cell_result =
-                            zip(rowI, rowJ).map(|(a, b)| (a - b).abs()).sum::<isize>();
+                            zip(row_i, row_j).map(|(a, b)| (a - b).abs()).sum::<isize>();
 
                         m[[i, j]] = cell_result;
                         m[[j, i]] = cell_result;
