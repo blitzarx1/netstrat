@@ -11,16 +11,19 @@ use super::{
 };
 
 pub const SIMULATION_WIDGET_NAME: &str = "simulation";
+const INFO_MSG_PLACEHOLDER: &str = "Press ▶ to start simulation";
 
 pub struct SimulationProps {
     bus: Bus,
     step: Option<usize>,
+    info_msg: String,
 }
 
 impl SimulationProps {
     pub fn new(bus: Bus) -> Self {
         Self {
             bus,
+            info_msg: INFO_MSG_PLACEHOLDER.to_string(),
             step: Default::default(),
         }
     }
@@ -35,7 +38,8 @@ impl SimulationProps {
         }
 
         if controls.reset_pressed {
-            payload_operation = Some(OperationType::Reset)
+            payload_operation = Some(OperationType::Reset);
+            self.info_msg = INFO_MSG_PLACEHOLDER.to_string();
         }
 
         if payload_operation.is_none() {
@@ -53,7 +57,9 @@ impl SimulationProps {
 
     fn check_events(&mut self) {
         if let Ok(msg) = self.bus.read(SIMULATION_WIDGET_NAME.to_string()) {
-            self.step = Some(msg.payload().parse::<usize>().unwrap())
+            let step = msg.payload().parse::<usize>().unwrap();
+            self.step = Some(step);
+            self.info_msg = format!("Step: {step}");
         }
     }
 }
@@ -66,7 +72,6 @@ impl AppWidget for SimulationProps {
             if ui.button("▶").clicked() {
                 controls.next_step_pressed = true
             };
-            ui.add_space(5.0);
             if ui.button("⟲").clicked() {
                 controls.reset_pressed = true
             }
@@ -74,11 +79,7 @@ impl AppWidget for SimulationProps {
 
         ui.separator();
 
-        if self.step.is_some() {
-            ui.label(format!("Step: {:?}", self.step.unwrap()));
-        } else {
-            ui.label("Press ▶ to start simulation");
-        };
+        ui.label(self.info_msg.clone());
 
         self.update(controls);
     }
