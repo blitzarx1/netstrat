@@ -824,8 +824,9 @@ impl NetProps {
         .unwrap();
 
         match msg_operation.operation() {
-            OperationType::NextStep => self.graph_state.next_simulation_step(),
-            OperationType::Reset => self.graph_state.reset_simulation(),
+            OperationType::NextStep => self.graph_state.simulation_step_forward(),
+            OperationType::Reset => self.graph_state.simulation_reset(),
+            OperationType::BackStep => self.graph_state.simulation_step_back(),
         };
 
         if let Some(step) = self.graph_state.simulation_step() {

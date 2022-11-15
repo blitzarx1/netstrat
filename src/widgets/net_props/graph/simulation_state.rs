@@ -20,4 +20,18 @@ impl SimulationState {
 
         self.step = Some(0);
     }
+
+    pub fn dec(&mut self) {
+        if self.step.is_none() {
+            return;
+        }
+
+        let step = self.step.unwrap();
+        if step == 0 {
+            self.step = None;
+            return;
+        }
+
+        self.step = Some(step - 1);
+    }
 }

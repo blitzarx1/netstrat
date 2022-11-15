@@ -195,41 +195,39 @@ impl Props {
 
         let path = Path::new(&name);
         let f_res = File::create(&path);
-        match f_res {
-            Ok(f) => {
-                let abs_path = path.canonicalize().unwrap();
-                debug!("saving to file: {}", abs_path.display());
+        if let Err(err) = f_res {
+            error!("failed to create file with error: {err}");
+            return;
+        }
 
-                let mut wtr = csv::Writer::from_writer(f);
+        let abs_path = path.canonicalize().unwrap();
+        debug!("saving to file: {}", abs_path.display());
 
-                let mut data = self.candles.get_data().vals;
-                data.sort_by(|a, b| {
-                    if a.t_close < b.t_close {
-                        return Ordering::Less;
-                    }
+        let mut wtr = csv::Writer::from_writer(f_res.unwrap());
 
-                    if a.t_close > b.t_close {
-                        return Ordering::Greater;
-                    }
-
-                    Ordering::Equal
-                });
-                data.iter().for_each(|el| {
-                    wtr.serialize(el).unwrap();
-                });
-
-                if let Some(err) = wtr.flush().err() {
-                    error!("failed to write to file with error: {err}");
-                } else {
-                    self.toasts
-                        .success("File exported")
-                        .set_duration(Some(Duration::from_secs(3)));
-                    info!("exported to file: {abs_path:?}");
-                }
+        let mut data = self.candles.get_data().vals;
+        data.sort_by(|a, b| {
+            if a.t_close < b.t_close {
+                return Ordering::Less;
             }
-            Err(err) => {
-                error!("failed to create file with error: {err}");
+
+            if a.t_close > b.t_close {
+                return Ordering::Greater;
             }
+
+            Ordering::Equal
+        });
+        data.iter().for_each(|el| {
+            wtr.serialize(el).unwrap();
+        });
+
+        if let Some(err) = wtr.flush().err() {
+            error!("failed to write to file with error: {err}");
+        } else {
+            self.toasts
+                .success("File exported")
+                .set_duration(Some(Duration::from_secs(3)));
+            info!("exported to file: {abs_path:?}");
         }
 
         self.export_state.triggered = false;
@@ -271,6 +269,7 @@ impl Props {
 
             self.export_state.triggered = true;
 
+            self.candles.clear();
             self.start_download(props, true);
         }
 

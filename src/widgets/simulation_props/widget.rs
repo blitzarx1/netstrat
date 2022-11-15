@@ -36,6 +36,10 @@ impl SimulationProps {
     fn handle_controls(&mut self, controls: Controls) {
         let mut payload_operation = None;
 
+        if controls.back_step_pressed {
+            payload_operation = Some(OperationType::BackStep)
+        }
+
         if controls.next_step_pressed {
             payload_operation = Some(OperationType::NextStep)
         }
@@ -72,6 +76,9 @@ impl AppWidget for SimulationProps {
         let mut controls = Controls::default();
 
         ui.horizontal_top(|ui| {
+            if ui.button("◀").clicked() {
+                controls.back_step_pressed = true
+            }
             if ui.button("▶").clicked() {
                 controls.next_step_pressed = true
             };

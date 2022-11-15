@@ -17,6 +17,7 @@ impl MessageOperation {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum OperationType {
+    BackStep,
     NextStep,
     Reset,
 }

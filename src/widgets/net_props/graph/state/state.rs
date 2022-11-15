@@ -227,12 +227,17 @@ impl State {
         Some(data)
     }
 
-    pub fn next_simulation_step(&mut self) {
-        self.propagate_signal();
+    pub fn simulation_step_forward(&mut self) {
+        self.signal_forward();
         self.simulation_state.inc();
     }
 
-    pub fn reset_simulation(&mut self) {
+    pub fn simulation_step_back(&mut self) {
+        self.signal_backward();
+        self.simulation_state.dec();
+    }
+
+    pub fn simulation_reset(&mut self) {
         self.simulation_state.reset();
         self.calculated.signal_holders = Default::default();
         self.calculated.colored = Default::default();
@@ -461,8 +466,8 @@ impl State {
         self.simulation_state.step()
     }
 
-    fn propagate_signal(&mut self) {
-        debug!("propagating signal");
+    fn signal_forward(&mut self) {
+        debug!("propagating signal forward");
 
         if self.calculated.signal_holders.is_empty() {
             self.simulation_state.reset();
@@ -491,6 +496,36 @@ impl State {
                     new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().1);
                 });
 
+            self.calculated.signal_holders = Elements::new(new_nodes, new_edges)
+        }
+
+        self.color_signal_holders();
+    }
+
+    fn signal_backward(&mut self) {
+        debug!("propagating signal backward");
+
+        if self.calculated.signal_holders.is_empty() {
+            self.simulation_state.reset();
+        } else {
+            let mut new_nodes = HashSet::new();
+            let mut new_edges = HashSet::new();
+            self.calculated
+                .signal_holders
+                .nodes()
+                .iter()
+                .for_each(|node| {
+                    self.graph.edges_directed(*node, Incoming).for_each(|edge| {
+                        new_edges.insert(edge.id());
+                    });
+                });
+            self.calculated
+                .signal_holders
+                .edges()
+                .iter()
+                .for_each(|edge| {
+                    new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().0);
+                });
             self.calculated.signal_holders = Elements::new(new_nodes, new_edges)
         }
 
