@@ -18,10 +18,10 @@ use urlencoding::encode;
 
 use crate::netstrat::{Bus, Drawer};
 use crate::widgets::history::{Clicks, History, Step};
-use crate::widgets::image_drawer;
 use crate::widgets::matrix::Matrix;
 use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
+use crate::widgets::{image_drawer, SIMULATION_WIDGET_NAME};
 use crate::windows::{AppWindow, Simulator};
 
 use super::button_clicks::ButtonClicks;
@@ -811,7 +811,12 @@ impl NetProps {
     }
 
     fn check_events(&mut self) {
-        let msg = self.bus.read("simulator".to_string());
+        if self.bus.read(SIMULATION_WIDGET_NAME.to_string()).is_err() {
+            return;
+        }
+
+        self.graph_state.next_simulation_step();
+        self.update_data();
     }
 }
 

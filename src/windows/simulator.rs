@@ -3,7 +3,7 @@ use egui::Window;
 use super::AppWindow;
 use crate::{
     netstrat::Bus,
-    widgets::{AppWidget, Simulator as WidgetSimulator},
+    widgets::{AppWidget, SimulationProps as WidgetSimulator},
 };
 
 const WINDOW_NAME: &str = "simulator";

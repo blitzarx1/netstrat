@@ -7,22 +7,24 @@ use crate::{
 
 use super::Controls;
 
-const WIDGET_NAME: &str = "simulator";
+pub const SIMULATION_WIDGET_NAME: &str = "simulation";
 
-pub struct Simulator {
+pub struct SimulationProps {
     bus: Bus,
 }
 
-impl Simulator {
+impl SimulationProps {
     pub fn new(bus: Bus) -> Self {
         Self { bus }
     }
 
     fn update(&mut self, controls: Controls) {
         if controls.next_step_pressed {
+            // TODO: get payload from message serialization
+            let payload = "pressed";
             if let Err(err) = self
                 .bus
-                .write(WIDGET_NAME.to_string(), Message::new("pressed".to_string()))
+                .write(SIMULATION_WIDGET_NAME.to_string(), Message::new(payload.to_string()))
             {
                 error!("failed to publish message: {err}");
             }
@@ -30,11 +32,11 @@ impl Simulator {
     }
 }
 
-impl AppWidget for Simulator {
+impl AppWidget for SimulationProps {
     fn show(&mut self, ui: &mut egui::Ui) {
         let mut controls = Controls::default();
 
-        if ui.button("next step").clicked() {
+        if ui.button("▶").clicked() {
             controls.next_step_pressed = true
         }
 
