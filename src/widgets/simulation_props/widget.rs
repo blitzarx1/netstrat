@@ -29,8 +29,11 @@ impl SimulationProps {
     }
 
     fn update(&mut self, controls: Controls) {
-        self.check_events();
+        self.handle_incoming_events();
+        self.handle_controls(controls);
+    }
 
+    fn handle_controls(&mut self, controls: Controls) {
         let mut payload_operation = None;
 
         if controls.next_step_pressed {
@@ -55,7 +58,7 @@ impl SimulationProps {
         }
     }
 
-    fn check_events(&mut self) {
+    fn handle_incoming_events(&mut self) {
         if let Ok(msg) = self.bus.read(SIMULATION_WIDGET_NAME.to_string()) {
             let step = msg.payload().parse::<usize>().unwrap();
             self.step = Some(step);
