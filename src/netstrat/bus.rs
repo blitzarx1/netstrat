@@ -1,14 +1,14 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc, sync::Mutex};
 
-use crossbeam::channel::{Receiver, Sender};
+use crossbeam::channel::{unbounded, Receiver, Sender};
 use std::time::Duration;
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 
 use super::{errors, Message};
 
 #[derive(Default, Clone)]
 pub struct Bus {
-    channels: HashMap<String, (Sender<Message>, Receiver<Message>)>,
+    channels: Rc<Mutex<HashMap<String, (Sender<Message>, Receiver<Message>)>>>,
 }
 
 impl Bus {
@@ -18,10 +18,10 @@ impl Bus {
         }
     }
 
-    pub fn read(&self, ch_name: String) -> Result<Message, errors::Bus> {
-        debug!("reading from channel: {ch_name}");
+    pub fn read(&mut self, ch_name: String) -> Result<Message, errors::Bus> {
+        trace!("reading from channel: {ch_name}");
 
-        let receiver = self.channel_get(ch_name)?.1;
+        let receiver = self.channel_get_or_create(ch_name).1;
         let msg = receiver.recv_timeout(Duration::from_nanos(1))?;
 
         debug!("successfully read from channel: {msg:?}");
@@ -31,21 +31,26 @@ impl Bus {
 
     pub fn write(&mut self, ch_name: String, msg: Message) -> Result<(), errors::Bus> {
         debug!("writing to channel; channel: {ch_name}, message: {msg:?}");
-        let sender = self.channel_get(ch_name)?.0;
+
+        let sender = self.channel_get_or_create(ch_name).0;
+        sender.send(msg)?;
+
         debug!("successfully sent to channel");
-        Ok(sender.send(msg)?)
+
+        Ok(())
     }
 
-    fn channel_get(
-        &self,
-        ch_name: String,
-    ) -> Result<(Sender<Message>, Receiver<Message>), errors::Bus> {
-        let channel_wrapped = self.channels.get(&ch_name);
+    fn channel_get_or_create(&mut self, ch_name: String) -> (Sender<Message>, Receiver<Message>) {
+        let mut locked_channesls = self.channels.lock().unwrap();
+        let channel_wrapped = locked_channesls.get(&ch_name);
         if channel_wrapped.is_none() {
-            error!("channel not found: {ch_name}");
-            return Err(errors::Bus::ChannelNotFound(ch_name));
+            debug!("channel not found: {ch_name}; creating new...");
+
+            let res = unbounded();
+            locked_channesls.insert(ch_name, res.clone());
+            return res;
         };
 
-        Ok(channel_wrapped.unwrap().clone())
+        channel_wrapped.unwrap().clone()
     }
 }

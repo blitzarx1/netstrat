@@ -1,45 +1,36 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::vec;
-
+use super::calculated::Calculated;
 use crate::widgets::matrix::Elements as MatrixElements;
 use crate::widgets::matrix::State as MatrixState;
 use crate::widgets::net_props::graph::cycle::Cycle;
-use crate::widgets::net_props::graph::elements;
 use crate::widgets::net_props::graph::elements::Elements;
+use crate::widgets::net_props::graph::path::Path;
+use crate::widgets::net_props::graph::simulation_state::SimulationState;
+use crate::widgets::net_props::settings::{ConeSettings, EdgeWeight, NetSettings};
 use lazy_static::lazy_static;
 use ndarray::Array;
 use ndarray::Array2;
 use petgraph::algo::all_simple_paths;
-use petgraph::algo::simple_paths;
 use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
 use petgraph::prelude::{EdgeRef, StableDiGraph};
-use petgraph::visit::depth_first_search;
-use petgraph::visit::IntoEdgeReferences;
-use petgraph::visit::IntoNodeReferences;
-use petgraph::visit::NodeIndexable;
+use petgraph::stable_graph::EdgeIndex;
+use petgraph::visit::{depth_first_search, IntoEdgeReferences, IntoNodeReferences, NodeIndexable};
 use petgraph::{Direction, Incoming, Outgoing};
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use regex::Regex;
-use tracing::info;
-use tracing::trace;
-use tracing::warn;
-use tracing::{debug, error};
+use std::collections::{HashMap, HashSet};
+use std::vec;
+use tracing::{debug, error, info, trace};
 
-use crate::widgets::net_props::graph::path::Path;
-use crate::widgets::net_props::settings::ConeSettings;
-use crate::widgets::net_props::settings::EdgeWeight;
-use crate::widgets::net_props::settings::NetSettings;
-
-use super::calculated::Calculated;
+type ConeSettingsList = Vec<ConeSettings>;
 
 const MAX_DOT_WEIGHT: f64 = 5.0;
 
 #[derive(Clone, Default)]
 pub struct State {
     graph: StableDiGraph<String, f64>,
+    simulation_state: SimulationState,
     settings: NetSettings,
     calculated: Calculated,
 }
@@ -157,6 +148,7 @@ impl State {
         let mut data = Self {
             graph,
             calculated,
+            simulation_state: Default::default(),
             settings: settings.clone(),
         };
 
@@ -235,6 +227,11 @@ impl State {
         Some(data)
     }
 
+    pub fn next_simulation_step(&mut self) {
+        self.propagate_signal();
+        self.simulation_state.inc();
+    }
+
     pub fn color_ini_cones(&mut self) {
         let mut elements = Elements::default();
 
@@ -256,7 +253,7 @@ impl State {
         self.recalculate_metadata();
     }
 
-    pub fn color_cones(&mut self, cones_settings: Vec<ConeSettings>) -> Option<()> {
+    pub fn color_cones(&mut self, cones_settings: ConeSettingsList) -> Option<()> {
         let mut elements = Elements::default();
         let mut has_errors = false;
 
@@ -283,7 +280,7 @@ impl State {
         Some(())
     }
 
-    pub fn delete_cones(&mut self, cones_settings: Vec<ConeSettings>) -> Option<()> {
+    pub fn delete_cones(&mut self, cones_settings: ConeSettingsList) -> Option<()> {
         let mut elements = Elements::default();
         let mut has_errors = false;
         cones_settings.iter().for_each(|settings| {
@@ -451,6 +448,45 @@ impl State {
 
     pub fn adj_matrix(&self) -> MatrixState {
         self.calculated.adj_mat.clone()
+    }
+
+    fn propagate_signal(&mut self) {
+        debug!("propagating signal");
+
+        if self.calculated.signal_holders.is_empty() {
+            self.calculated.signal_holders =
+                Elements::new(self.calculated.ini_set.clone(), Default::default())
+        } else {
+            let mut new_nodes = HashSet::new();
+            let mut new_edges = HashSet::new();
+
+            self.calculated
+                .signal_holders
+                .nodes()
+                .iter()
+                .for_each(|node| {
+                    self.graph.edges_directed(*node, Outgoing).for_each(|edge| {
+                        new_edges.insert(EdgeIndex::from(edge.id()));
+                    });
+                });
+
+            self.calculated
+                .signal_holders
+                .edges()
+                .iter()
+                .for_each(|edge| {
+                    new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().1);
+                });
+
+            self.calculated.signal_holders = Elements::new(new_nodes, new_edges)
+        }
+
+        self.color_signal_holders();
+    }
+
+    fn color_signal_holders(&mut self) {
+        self.calculated.colored = self.calculated.signal_holders.clone();
+        self.recalculate_metadata()
     }
 
     fn adj_mat(&self) -> Array2<isize> {

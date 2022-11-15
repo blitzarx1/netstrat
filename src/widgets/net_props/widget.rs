@@ -18,10 +18,11 @@ use urlencoding::encode;
 
 use crate::netstrat::{Bus, Drawer};
 use crate::widgets::history::{Clicks, History, Step};
-use crate::widgets::image_drawer;
 use crate::widgets::matrix::Matrix;
 use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
+use crate::widgets::{image_drawer, SIMULATION_WIDGET_NAME};
+use crate::windows::{AppWindow, Simulator};
 
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
@@ -31,6 +32,8 @@ use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, NetSettings};
 
 pub struct NetProps {
+    bus: Bus,
+    windows: Vec<Box<dyn AppWindow>>,
     graph_state: State,
     adj_matrix: Matrix,
     net_settings: NetSettings,
@@ -58,6 +61,7 @@ impl NetProps {
         });
 
         let adj_matrix = Matrix::new(data.adj_matrix());
+        let bus = Bus::new();
 
         let mut s = Self {
             drawer_pub,
@@ -66,8 +70,10 @@ impl NetProps {
             graph_state: data,
             matrix_power: 1,
             reach_matrix_power: 1,
+            bus: bus.clone(),
             net_drawer: Arc::new(Mutex::new(Box::new(image_drawer::ImageDrawer::default()))),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
+            windows: vec![Box::new(Simulator::new(false, bus))],
             open_drop_file: Default::default(),
             net_settings: Default::default(),
             cone_settings: Default::default(),
@@ -796,10 +802,32 @@ impl NetProps {
                 });
         });
     }
+
+    fn draw_windows(&mut self, ui: &mut Ui) {
+        self.windows.iter_mut().for_each(|w| {
+            w.toggle_btn(ui);
+            w.show(ui);
+        });
+    }
+
+    fn check_events(&mut self) {
+        if self.bus.read(SIMULATION_WIDGET_NAME.to_string()).is_err() {
+            return;
+        }
+
+        self.graph_state.next_simulation_step();
+        self.update_data();
+    }
 }
 
 impl AppWidget for NetProps {
     fn show(&mut self, ui: &mut Ui) {
+        self.draw_windows(ui);
+        self.toasts.show(ui.ctx());
+        self.check_events();
+
+        ui.separator();
+
         let mut interactions = Interactions::new(
             self.selected_cycles.clone(),
             self.net_settings.clone(),
@@ -809,7 +837,6 @@ impl AppWidget for NetProps {
             self.matrix_power_input.clone(),
             self.reach_matrix_power_input.clone(),
         );
-
         self.draw_create_section(ui, &mut interactions);
         self.draw_import_export_section(ui, &mut interactions);
         self.draw_nodes_and_edges_section(ui, &mut interactions);
@@ -823,7 +850,6 @@ impl AppWidget for NetProps {
             self.drawer_pub.send(self.net_drawer.clone()).unwrap();
         }
 
-        self.toasts.show(ui.ctx());
         self.update(interactions);
     }
 }
