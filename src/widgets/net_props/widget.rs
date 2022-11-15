@@ -16,7 +16,7 @@ use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
-use crate::netstrat::{Bus, Drawer};
+use crate::netstrat::{Bus, Drawer, Message};
 use crate::widgets::history::{Clicks, History, Step};
 use crate::widgets::matrix::Matrix;
 use crate::widgets::AppWidget;
@@ -130,6 +130,7 @@ impl NetProps {
     }
 
     fn update(&mut self, inter: Interactions) {
+        self.check_events();
         self.update_graph_settings(inter.graph_settings);
         self.update_cone_settings(inter.cone_settings);
         self.update_nodes_and_edges_settings(inter.nodes_and_edges_settings);
@@ -816,6 +817,16 @@ impl NetProps {
         }
 
         self.graph_state.next_simulation_step();
+
+        if let Some(step) = self.graph_state.simulation_step() {
+            if let Err(err) = self.bus.write(
+                SIMULATION_WIDGET_NAME.to_string(),
+                Message::new(format!("{step}")),
+            ) {
+                self.handle_error("failed to send step to simualtion widget: {err}")
+            }
+        };
+
         self.update_data();
     }
 }
@@ -823,8 +834,6 @@ impl NetProps {
 impl AppWidget for NetProps {
     fn show(&mut self, ui: &mut Ui) {
         self.draw_windows(ui);
-        self.toasts.show(ui.ctx());
-        self.check_events();
 
         ui.separator();
 
@@ -851,6 +860,7 @@ impl AppWidget for NetProps {
         }
 
         self.update(interactions);
+        self.toasts.show(ui.ctx());
     }
 }
 

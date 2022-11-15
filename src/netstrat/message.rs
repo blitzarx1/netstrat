@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{Date, DateTime, Utc};
 
 #[derive(Debug)]
 pub struct Message {
@@ -12,5 +12,13 @@ impl Message {
             payload,
             ts: Utc::now(),
         }
+    }
+
+    pub fn payload(&self) -> String {
+        self.payload.clone()
+    }
+
+    pub fn ts(&self) -> DateTime<Utc> {
+        self.ts
     }
 }
