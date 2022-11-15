@@ -5,7 +5,10 @@ use crate::{
     widgets::AppWidget,
 };
 
-use super::Controls;
+use super::{
+    messages::{MessageOperation, OperationType},
+    Controls,
+};
 
 pub const SIMULATION_WIDGET_NAME: &str = "simulation";
 
@@ -25,13 +28,26 @@ impl SimulationProps {
     fn update(&mut self, controls: Controls) {
         self.check_events();
 
+        let mut payload_operation = None;
+
         if controls.next_step_pressed {
-            if let Err(err) = self.bus.write(
-                SIMULATION_WIDGET_NAME.to_string(),
-                Message::new("".to_string()),
-            ) {
-                error!("failed to publish message: {err}");
-            }
+            payload_operation = Some(OperationType::NextStep)
+        }
+
+        if controls.reset_pressed {
+            payload_operation = Some(OperationType::Reset)
+        }
+
+        if payload_operation.is_none() {
+            return;
+        }
+
+        let msg = Message::new(
+            serde_json::to_string(&MessageOperation::new(payload_operation.unwrap())).unwrap(),
+        );
+
+        if let Err(err) = self.bus.write(SIMULATION_WIDGET_NAME.to_string(), msg) {
+            error!("failed to publish message: {err}");
         }
     }
 
@@ -50,11 +66,19 @@ impl AppWidget for SimulationProps {
             if ui.button("▶").clicked() {
                 controls.next_step_pressed = true
             };
-            if self.step.is_some() {
-                ui.add_space(5.0);
-                ui.label(format!("step: {:?}", self.step.unwrap()));
-            };
+            ui.add_space(5.0);
+            if ui.button("⟲").clicked() {
+                controls.reset_pressed = true
+            }
         });
+
+        ui.separator();
+
+        if self.step.is_some() {
+            ui.label(format!("Step: {:?}", self.step.unwrap()));
+        } else {
+            ui.label("Press ▶ to start simulation");
+        };
 
         self.update(controls);
     }

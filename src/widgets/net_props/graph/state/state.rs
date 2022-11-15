@@ -232,6 +232,13 @@ impl State {
         self.simulation_state.inc();
     }
 
+    pub fn reset_simulation(&mut self) {
+        self.simulation_state.reset();
+        self.calculated.signal_holders = Default::default();
+        self.calculated.colored = Default::default();
+        self.recalculate_metadata();
+    }
+
     pub fn color_ini_cones(&mut self) {
         let mut elements = Elements::default();
 
@@ -459,7 +466,7 @@ impl State {
 
         if self.calculated.signal_holders.is_empty() {
             self.simulation_state.reset();
-            
+
             self.calculated.signal_holders =
                 Elements::new(self.calculated.ini_set.clone(), Default::default())
         } else {

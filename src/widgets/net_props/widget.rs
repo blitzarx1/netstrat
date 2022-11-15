@@ -19,9 +19,10 @@ use urlencoding::encode;
 use crate::netstrat::{Bus, Drawer, Message};
 use crate::widgets::history::{Clicks, History, Step};
 use crate::widgets::matrix::Matrix;
-use crate::widgets::AppWidget;
+use crate::widgets::simulation_props::messages::OperationType;
 use crate::widgets::OpenDropFile;
 use crate::widgets::{image_drawer, SIMULATION_WIDGET_NAME};
+use crate::widgets::{simulation_props, AppWidget};
 use crate::windows::{AppWindow, Simulator};
 
 use super::button_clicks::ButtonClicks;
@@ -812,11 +813,20 @@ impl NetProps {
     }
 
     fn check_events(&mut self) {
-        if self.bus.read(SIMULATION_WIDGET_NAME.to_string()).is_err() {
+        let operation_wrapped = self.bus.read(SIMULATION_WIDGET_NAME.to_string());
+        if operation_wrapped.is_err() {
             return;
         }
 
-        self.graph_state.next_simulation_step();
+        let msg_operation = serde_json::from_str::<simulation_props::messages::MessageOperation>(
+            operation_wrapped.unwrap().payload().as_str(),
+        )
+        .unwrap();
+
+        match msg_operation.operation() {
+            OperationType::NextStep => self.graph_state.next_simulation_step(),
+            OperationType::Reset => self.graph_state.reset_simulation(),
+        };
 
         if let Some(step) = self.graph_state.simulation_step() {
             if let Err(err) = self.bus.write(
