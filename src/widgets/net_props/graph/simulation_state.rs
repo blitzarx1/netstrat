@@ -8,6 +8,10 @@ impl SimulationState {
         self.step
     }
 
+    pub fn reset(&mut self) {
+        self.step = None
+    }
+
     pub fn inc(&mut self) {
         if let Some(step) = self.step {
             self.step = Some(step + 1);

@@ -450,10 +450,16 @@ impl State {
         self.calculated.adj_mat.clone()
     }
 
+    pub fn simulation_step(&self) -> Option<usize> {
+        self.simulation_state.step()
+    }
+
     fn propagate_signal(&mut self) {
         debug!("propagating signal");
 
         if self.calculated.signal_holders.is_empty() {
+            self.simulation_state.reset();
+            
             self.calculated.signal_holders =
                 Elements::new(self.calculated.ini_set.clone(), Default::default())
         } else {
