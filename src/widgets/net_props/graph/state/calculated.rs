@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use petgraph::graph::NodeIndex;
+use serde::{Deserialize, Serialize};
 
 use crate::widgets::matrix::State as MatrixState;
 use crate::widgets::net_props::graph::{cycle::Cycle, elements::Elements};
@@ -15,5 +16,5 @@ pub struct Calculated {
     pub dot: String,
     pub colored: Elements,
     pub deleted: Elements,
-    pub signal_holders: Elements,
+    pub signal_holders: Option<Elements>,
 }

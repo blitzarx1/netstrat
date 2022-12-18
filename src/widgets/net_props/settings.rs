@@ -1,12 +1,21 @@
+use chrono::format::Fixed;
+use graphviz_rust::dot_structures::Edge;
 use petgraph::Direction;
+use serde::{Deserialize, Serialize};
 use Direction::Outgoing;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub enum EdgeWeight {
     /// Fixed weight
     Fixed,
-    /// Random weigh in range 0..1
+    /// Random weight in range 0..1
     Random,
+}
+
+impl Default for EdgeWeight {
+    fn default() -> Self {
+        EdgeWeight::Fixed
+    }
 }
 
 #[derive(PartialEq, Clone, Debug)]

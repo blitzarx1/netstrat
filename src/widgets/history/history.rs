@@ -8,41 +8,42 @@ use graphviz_rust::{
 use petgraph::{
     dot::Dot,
     stable_graph::{NodeIndex, StableDiGraph},
-    visit::EdgeRef,
+    visit::{EdgeRef, IntoNodeReferences},
     Direction::{Incoming, Outgoing},
 };
 
-use crate::{widgets::{AppWidget, image_drawer}, netstrat::Drawer};
+use crate::{
+    netstrat::Drawer,
+    widgets::{image_drawer, AppWidget},
+};
 
 use super::{Clicks, Step};
 
 pub struct Builder {
     tree: StableDiGraph<Step, usize>,
-    initial_step: Option<usize>,
     root: Option<usize>,
 }
 
 impl Builder {
-    pub fn new() -> Self {
-        Builder {
+    pub fn new(root: Step) -> Self {
+        let mut b = Builder {
             tree: StableDiGraph::default(),
-            initial_step: None,
-            root: None,
-        }
-    }
+            root: Default::default(),
+        };
 
-    pub fn with_initial_step(&mut self, history_step: Step) {
-        let root_idx = self.tree.add_node(history_step).index();
-        self.root = Some(root_idx);
-        self.initial_step = Some(root_idx);
+        let root_idx = b.tree.add_node(root).index();
+
+        b.root = Some(root_idx);
+
+        b
     }
 
     pub fn build(&self) -> History {
         let mut h = History {
             max_gen: 0,
             root: self.root,
+            current_step: self.root,
             tree: self.tree.clone(),
-            current_step: self.initial_step,
             last_click: None,
             drawer: Default::default(),
         };
@@ -53,6 +54,7 @@ impl Builder {
     }
 }
 
+#[derive(Clone, Default)]
 pub struct History {
     tree: StableDiGraph<Step, usize>,
     current_step: Option<usize>,
@@ -63,8 +65,8 @@ pub struct History {
 }
 
 impl History {
-    pub fn builder() -> Builder {
-        Builder::new()
+    pub fn new_builder(root: Step) -> Builder {
+        Builder::new(root)
     }
 
     pub fn last_click(&self) -> &Option<Clicks> {
@@ -73,12 +75,6 @@ impl History {
 
     pub fn drawer(&self) -> image_drawer::ImageDrawer {
         self.drawer.clone()
-    }
-
-    pub fn new_with_initial_step(history_step: Step) -> Self {
-        let mut history_builder = History::builder();
-        history_builder.with_initial_step(history_step);
-        history_builder.build()
     }
 
     pub fn get_current_step(&self) -> Option<usize> {
@@ -148,19 +144,14 @@ impl History {
             .map(|e| e.target())
             .next();
 
-        let mut new_current: NodeIndex;
-        match next_gen_wrapped {
-            Some(next_gen) => {
-                new_current = next_gen;
-            }
-            None => {
-                new_current = self
-                    .tree
-                    .edges_directed(parent_idx, Outgoing)
-                    .min_by(|e1, e2| e1.weight().cmp(e2.weight()))
-                    .unwrap()
-                    .target();
-            }
+        let new_current = match next_gen_wrapped {
+            Some(next_gen) => next_gen,
+            None => self
+                .tree
+                .edges_directed(parent_idx, Outgoing)
+                .min_by(|e1, e2| e1.weight().cmp(e2.weight()))
+                .unwrap()
+                .target(),
         };
 
         self.current_step = Some(new_current.index());
@@ -170,8 +161,8 @@ impl History {
     }
 
     /// adds step to history creating new generation or extending current one
-    pub fn add_and_set_current_step(&mut self, history_step: Step) -> Option<()> {
-        let new_node_idx = self.tree.add_node(history_step);
+    pub fn add_and_set_current_step(&mut self, step: Step) -> Option<()> {
+        let new_node_idx = self.tree.add_node(step);
 
         match self.is_leaf(self.current_step?) {
             true => self.push(new_node_idx),
@@ -179,6 +170,30 @@ impl History {
         };
 
         self.current_step = Some(new_node_idx.index());
+        self.update_image();
+
+        Some(())
+    }
+
+    /// cycles history searching for provided step name in the tree
+    pub fn cycle_and_set_step(&mut self, step_name: String) -> Option<()> {
+        let dest_idx = self
+            .tree
+            .node_references()
+            .find(|(_idx, node_step)| node_step.name == step_name)?
+            .0;
+
+        let start_idx = NodeIndex::from(self.get_current_step()? as u32);
+
+        if self.tree.find_edge(start_idx, dest_idx).is_none() {
+            self.tree.add_edge(
+                start_idx,
+                dest_idx,
+                self.get_generation(self.get_current_step()?)?,
+            );
+        }
+
+        self.current_step = Some(dest_idx.index());
         self.update_image();
 
         Some(())
@@ -282,8 +297,7 @@ impl AppWidget for History {
                     click = Some(Clicks::Right);
                 };
             });
-            ui.add_space(5.0);
-            ui.add_space(10.0);
+            ui.add_space(15.0);
             self.drawer().show(ui);
         });
 

@@ -18,8 +18,8 @@ use urlencoding::encode;
 
 use crate::netstrat::{Bus, Drawer, Message};
 use crate::widgets::history::{Clicks, History, Step};
-use crate::widgets::matrix::Matrix;
-use crate::widgets::simulation_props::messages::OperationType;
+use crate::widgets::matrix::{Elements, Matrix};
+use crate::widgets::simulation_props::messages::{MessageOperationResult, OperationType};
 use crate::widgets::OpenDropFile;
 use crate::widgets::{image_drawer, SIMULATION_WIDGET_NAME};
 use crate::widgets::{simulation_props, AppWidget};
@@ -31,6 +31,7 @@ use super::graph::State;
 use super::interactions::Interactions;
 use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, NetSettings};
+use super::FrozenElements;
 
 pub struct NetProps {
     bus: Bus,
@@ -56,10 +57,11 @@ impl NetProps {
     pub fn new(drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>) -> Self {
         let data = NetProps::reset_data();
 
-        let history = History::new_with_initial_step(Step {
+        let history = History::new_builder(Step {
             name: "create".to_string(),
-            data: data.clone(),
-        });
+            state: data.clone(),
+        })
+        .build();
 
         let adj_matrix = Matrix::new(data.adj_matrix());
         let bus = Bus::new();
@@ -96,10 +98,11 @@ impl NetProps {
     fn reset(&mut self) {
         self.graph_state = NetProps::reset_data();
 
-        self.history = History::new_with_initial_step(Step {
+        self.history = History::new_builder(Step {
             name: "reset".to_string(),
-            data: self.graph_state.clone(),
-        });
+            state: self.graph_state.clone(),
+        })
+        .build();
 
         self.update_data();
         self.reset_settings();
@@ -114,12 +117,22 @@ impl NetProps {
     fn create(&mut self) {
         self.graph_state = State::new(self.net_settings.clone());
 
-        self.history = History::new_with_initial_step(Step {
+        self.history = History::new_builder(Step {
             name: "create".to_string(),
-            data: self.graph_state.clone(),
-        });
+            state: self.graph_state.clone(),
+        })
+        .build();
 
         self.update_data();
+
+        if let Err(err) = self.bus.write(
+            SIMULATION_WIDGET_NAME.to_string(),
+            Message::new(
+                serde_json::to_string(&MessageOperationResult::new(Default::default())).unwrap(),
+            ),
+        ) {
+            self.handle_error("failed to send step to simualtion widget: {err}")
+        }
     }
 
     fn update_graph_settings(&mut self, graph_settings: NetSettings) {
@@ -169,10 +182,11 @@ impl NetProps {
             }
 
             self.graph_state = data.unwrap();
-            self.history = History::new_with_initial_step(Step {
+            self.history = History::new_builder(Step {
                 name: "load from file".to_string(),
-                data: self.graph_state.clone(),
-            });
+                state: self.graph_state.clone(),
+            })
+            .build();
             self.update_data();
             self.reset_settings();
         }
@@ -262,7 +276,7 @@ impl NetProps {
                     info!("navigating history up");
                     match self.history.go_up() {
                         Some(loaded_step) => {
-                            self.graph_state = loaded_step.data;
+                            self.graph_state = loaded_step.state;
                             self.update_data()
                         }
                         None => self.handle_error("failed to load history"),
@@ -272,7 +286,7 @@ impl NetProps {
                     info!("navigating history down");
                     match self.history.go_down() {
                         Some(loaded_step) => {
-                            self.graph_state = loaded_step.data;
+                            self.graph_state = loaded_step.state;
                             self.update_data()
                         }
                         None => self.handle_error("failed to load history"),
@@ -282,7 +296,7 @@ impl NetProps {
                     info!("navigating to history sibling");
                     match self.history.go_sibling() {
                         Some(loaded_step) => {
-                            self.graph_state = loaded_step.data;
+                            self.graph_state = loaded_step.state;
                             self.update_data()
                         }
                         None => self.handle_error("failed to load history"),
@@ -307,7 +321,7 @@ impl NetProps {
                 .history
                 .add_and_set_current_step(Step {
                     name: "delete node or edge".to_string(),
-                    data: self.graph_state.clone(),
+                    state: self.graph_state.clone(),
                 })
                 .is_none()
             {
@@ -333,7 +347,7 @@ impl NetProps {
                 .history
                 .add_and_set_current_step(Step {
                     name: "color node or edge".to_string(),
-                    data: self.graph_state.clone(),
+                    state: self.graph_state.clone(),
                 })
                 .is_none()
             {
@@ -398,7 +412,7 @@ impl NetProps {
 
         self.history.add_and_set_current_step(Step {
             name: "delete cycle".to_string(),
-            data: self.graph_state.clone(),
+            state: self.graph_state.clone(),
         });
 
         self.update_data();
@@ -503,7 +517,7 @@ impl NetProps {
 
         self.history.add_and_set_current_step(Step {
             name: "color cone".to_string(),
-            data: self.graph_state.clone(),
+            state: self.graph_state.clone(),
         });
 
         self.update_data();
@@ -536,7 +550,7 @@ impl NetProps {
 
         self.history.add_and_set_current_step(Step {
             name: "delete cone".to_string(),
-            data: self.graph_state.clone(),
+            state: self.graph_state.clone(),
         });
         self.update_data();
     }
@@ -546,7 +560,7 @@ impl NetProps {
 
         self.history.add_and_set_current_step(Step {
             name: "color cycle".to_string(),
-            data: self.graph_state.clone(),
+            state: self.graph_state.clone(),
         });
         self.update_data();
     }
@@ -823,20 +837,28 @@ impl NetProps {
         )
         .unwrap();
 
+        let mut signal_holders = Default::default();
         match msg_operation.operation() {
-            OperationType::NextStep => self.graph_state.simulation_step_forward(),
+            OperationType::NextStep => signal_holders = self.graph_state.signal_forward(),
+            OperationType::BackStep => signal_holders = self.graph_state.signal_backward(),
             OperationType::Reset => self.graph_state.simulation_reset(),
-            OperationType::BackStep => self.graph_state.simulation_step_back(),
         };
 
-        if let Some(step) = self.graph_state.simulation_step() {
-            if let Err(err) = self.bus.write(
-                SIMULATION_WIDGET_NAME.to_string(),
-                Message::new(format!("{step}")),
-            ) {
-                self.handle_error("failed to send step to simualtion widget: {err}")
-            }
-        };
+        if signal_holders.is_none() {
+            signal_holders = Some(Default::default());
+        }
+
+        if let Err(err) = self.bus.write(
+            SIMULATION_WIDGET_NAME.to_string(),
+            Message::new(
+                serde_json::to_string(&MessageOperationResult::new(FrozenElements::from_elements(
+                    &signal_holders.unwrap(),
+                )))
+                .unwrap(),
+            ),
+        ) {
+            self.handle_error("failed to send step to simualtion widget: {err}")
+        }
 
         self.update_data();
     }

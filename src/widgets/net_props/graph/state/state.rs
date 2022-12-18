@@ -1,10 +1,10 @@
 use super::calculated::Calculated;
+use crate::widgets::history::History;
 use crate::widgets::matrix::Elements as MatrixElements;
 use crate::widgets::matrix::State as MatrixState;
 use crate::widgets::net_props::graph::cycle::Cycle;
 use crate::widgets::net_props::graph::elements::Elements;
 use crate::widgets::net_props::graph::path::Path;
-use crate::widgets::net_props::graph::simulation_state::SimulationState;
 use crate::widgets::net_props::settings::{ConeSettings, EdgeWeight, NetSettings};
 use lazy_static::lazy_static;
 use ndarray::Array;
@@ -30,8 +30,8 @@ const MAX_DOT_WEIGHT: f64 = 5.0;
 #[derive(Clone, Default)]
 pub struct State {
     graph: StableDiGraph<String, f64>,
-    simulation_state: SimulationState,
-    settings: NetSettings,
+    edge_weight: f64,
+    edge_weight_type: EdgeWeight,
     calculated: Calculated,
 }
 
@@ -148,8 +148,8 @@ impl State {
         let mut data = Self {
             graph,
             calculated,
-            simulation_state: Default::default(),
-            settings: settings.clone(),
+            edge_weight: settings.edge_weight,
+            edge_weight_type: settings.edge_weight_type,
         };
 
         if settings.diamond_filter {
@@ -227,18 +227,7 @@ impl State {
         Some(data)
     }
 
-    pub fn simulation_step_forward(&mut self) {
-        self.signal_forward();
-        self.simulation_state.inc();
-    }
-
-    pub fn simulation_step_back(&mut self) {
-        self.signal_backward();
-        self.simulation_state.dec();
-    }
-
     pub fn simulation_reset(&mut self) {
-        self.simulation_state.reset();
         self.calculated.signal_holders = Default::default();
         self.calculated.colored = Default::default();
         self.recalculate_metadata();
@@ -462,78 +451,87 @@ impl State {
         self.calculated.adj_mat.clone()
     }
 
-    pub fn simulation_step(&self) -> Option<usize> {
-        self.simulation_state.step()
+    pub fn signal_forward(&mut self) -> Option<Elements> {
+        let elements = self.calculate_signal_forward();
+        self.calculated.signal_holders = elements.clone();
+        self.color_signal_holders();
+        elements
     }
 
-    fn signal_forward(&mut self) {
+    pub fn signal_backward(&mut self) -> Option<Elements> {
+        debug!("propagating signal backward");
+        let elements = self.calculate_signal_backward();
+        self.calculated.signal_holders = elements.clone();
+        self.color_signal_holders();
+        elements
+    }
+
+    fn calculate_signal_forward(&self) -> Option<Elements> {
         debug!("propagating signal forward");
 
-        if self.calculated.signal_holders.is_empty() {
-            self.simulation_state.reset();
-
-            self.calculated.signal_holders =
-                Elements::new(self.calculated.ini_set.clone(), Default::default())
-        } else {
-            let mut new_nodes = HashSet::new();
-            let mut new_edges = HashSet::new();
-
-            self.calculated
-                .signal_holders
-                .nodes()
-                .iter()
-                .for_each(|node| {
-                    self.graph.edges_directed(*node, Outgoing).for_each(|edge| {
-                        new_edges.insert(EdgeIndex::from(edge.id()));
-                    });
-                });
-
-            self.calculated
-                .signal_holders
-                .edges()
-                .iter()
-                .for_each(|edge| {
-                    new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().1);
-                });
-
-            self.calculated.signal_holders = Elements::new(new_nodes, new_edges)
+        if self.calculated.signal_holders.is_none() {
+            return Some(Elements::new(
+                self.calculated.ini_set.clone(),
+                Default::default(),
+            ));
         }
 
-        self.color_signal_holders();
+        let mut new_nodes = HashSet::new();
+        let mut new_edges = HashSet::new();
+
+        self.calculated
+            .signal_holders
+            .as_ref()?
+            .nodes()
+            .iter()
+            .for_each(|node| {
+                self.graph.edges_directed(*node, Outgoing).for_each(|edge| {
+                    new_edges.insert(EdgeIndex::from(edge.id()));
+                });
+            });
+
+        self.calculated
+            .signal_holders
+            .as_ref()?
+            .edges()
+            .iter()
+            .for_each(|edge| {
+                new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().1);
+            });
+
+        return Some(Elements::new(new_nodes, new_edges));
     }
 
-    fn signal_backward(&mut self) {
-        debug!("propagating signal backward");
-
-        if self.calculated.signal_holders.is_empty() {
-            self.simulation_state.reset();
-        } else {
-            let mut new_nodes = HashSet::new();
-            let mut new_edges = HashSet::new();
-            self.calculated
-                .signal_holders
-                .nodes()
-                .iter()
-                .for_each(|node| {
-                    self.graph.edges_directed(*node, Incoming).for_each(|edge| {
-                        new_edges.insert(edge.id());
-                    });
-                });
-            self.calculated
-                .signal_holders
-                .edges()
-                .iter()
-                .for_each(|edge| {
-                    new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().0);
-                });
-            self.calculated.signal_holders = Elements::new(new_nodes, new_edges)
+    fn calculate_signal_backward(&self) -> Option<Elements> {
+        if self.calculated.signal_holders.is_none() {
+            return None;
         }
 
-        self.color_signal_holders();
+        let mut new_nodes = HashSet::new();
+        let mut new_edges = HashSet::new();
+        self.calculated
+            .signal_holders
+            .as_ref()?
+            .nodes()
+            .iter()
+            .for_each(|node| {
+                self.graph.edges_directed(*node, Incoming).for_each(|edge| {
+                    new_edges.insert(edge.id());
+                });
+            });
+        self.calculated
+            .signal_holders
+            .as_ref()?
+            .edges()
+            .iter()
+            .for_each(|edge| {
+                new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().0);
+            });
+        return Some(Elements::new(new_nodes, new_edges));
     }
 
     fn color_signal_holders(&mut self) {
-        self.calculated.colored = self.calculated.signal_holders.clone();
+        self.calculated.colored = self.calculated.signal_holders.as_ref().unwrap().clone();
         self.recalculate_metadata()
     }
 
@@ -680,11 +678,7 @@ impl State {
 
     fn calc_dot(&self) -> String {
         let dot = Dot::new(&self.graph).to_string();
-        if self.settings.edge_weight_type == EdgeWeight::Fixed {
-            return self.color_dot(dot, self.calculated.colored.clone());
-        }
-
-        self.color_dot(self.weight_dot(dot), self.calculated.colored.clone())
+        self.color_dot(dot, self.calculated.colored.clone())
     }
 
     fn elements_to_matrix_elements(&self, elements: &Elements) -> MatrixElements {
@@ -806,6 +800,7 @@ impl State {
             .collect()
     }
 
+    /// is not used now
     fn weight_dot(&self, dot: String) -> String {
         let max_weight_index = self
             .graph
@@ -949,6 +944,7 @@ fn color_line(line: String) -> String {
     format!("{first_part}, color=red ]")
 }
 
+/// is not used now
 fn weight_line(line: String, weight: f64) -> String {
     let first_part = line.replace(']', "");
     format!("{first_part}, penwidth={weight} ]")
