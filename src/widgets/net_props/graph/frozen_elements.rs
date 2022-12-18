@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::elements::Elements;
 
-#[derive(Hash, Default, Eq, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Hash, Default, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct FrozenElements {
     pub nodes: Vec<usize>,
     pub edges: Vec<usize>,
@@ -16,7 +16,6 @@ impl FrozenElements {
             .cloned()
             .map(|el| el.index())
             .collect();
-        nodes.sort();
 
         let mut edges: Vec<usize> = elements
             .edges()
@@ -24,7 +23,9 @@ impl FrozenElements {
             .cloned()
             .map(|el| el.index())
             .collect();
-        edges.sort();
+
+        nodes.sort_unstable();
+        edges.sort_unstable();
 
         Self { nodes, edges }
     }

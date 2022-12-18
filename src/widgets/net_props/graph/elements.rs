@@ -1,10 +1,10 @@
 use petgraph::graph::{EdgeIndex, NodeIndex};
-use serde::{ser::SerializeStruct, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashSet;
 
 use super::frozen_elements::FrozenElements;
 
-#[derive(Default, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct Elements {
     nodes: HashSet<NodeIndex>,
     edges: HashSet<EdgeIndex>,
@@ -16,22 +16,30 @@ impl Serialize for Elements {
     where
         S: serde::Serializer,
     {
-        let frozen = self.frozen();
-        let mut s = serializer.serialize_struct("Elements", 2)?;
-        s.serialize_field("nodes", &frozen.nodes)?;
-        s.serialize_field("edges", &frozen.edges)?;
-        s.end()
+        self.frozen().serialize(serializer)
     }
 }
 
-// impl Deserialize for Elements {
-//     fn deserialize<'de, D>(deserializer: D) -> Result<Self, dyn serde::de::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         todo!()
-//     }
-// }
+impl<'de> Deserialize<'de> for Elements {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let frozen = FrozenElements::deserialize(deserializer)?;
+
+        let mut nodes = HashSet::with_capacity(frozen.nodes.len());
+        frozen.nodes.iter().for_each(|n| {
+            nodes.insert(NodeIndex::from(*n as u32));
+        });
+
+        let mut edges = HashSet::with_capacity(frozen.edges.len());
+        frozen.edges.iter().for_each(|n| {
+            edges.insert(EdgeIndex::from(*n as u32));
+        });
+
+        Ok(Elements::new(nodes, edges))
+    }
+}
 
 impl Elements {
     pub fn new(nodes: HashSet<NodeIndex>, edges: HashSet<EdgeIndex>) -> Self {
@@ -50,11 +58,11 @@ impl Elements {
         self.nodes = self.nodes.union(&other.nodes).cloned().collect();
         self.edges = self.edges.union(&other.edges).cloned().collect();
 
-        self.frozen = FrozenElements::from_elements(&self);
+        self.frozen = FrozenElements::from_elements(self);
     }
 
     pub fn add_node(&mut self, n: NodeIndex) -> bool {
-        let res = self.nodes.insert(n.clone());
+        let res = self.nodes.insert(n);
         if res {
             self.frozen.nodes.push(n.index());
         };
@@ -63,7 +71,7 @@ impl Elements {
     }
 
     pub fn add_edge(&mut self, e: EdgeIndex) -> bool {
-        let res = self.edges.insert(e.clone());
+        let res = self.edges.insert(e);
         if res {
             self.frozen.edges.push(e.index());
         }
@@ -85,5 +93,40 @@ impl Elements {
 
     pub fn frozen(&self) -> &FrozenElements {
         &self.frozen
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const SERIALIZED_DATA: &str = r#"{"nodes":[1,2,3],"edges":[4,5]}"#;
+
+    fn elements() -> Elements {
+        let mut nodes = HashSet::new();
+        nodes.insert(NodeIndex::from(1));
+        nodes.insert(NodeIndex::from(2));
+        nodes.insert(NodeIndex::from(3));
+
+        let mut edges = HashSet::new();
+        edges.insert(EdgeIndex::from(4));
+        edges.insert(EdgeIndex::from(5));
+
+        Elements::new(nodes, edges)
+    }
+
+    #[test]
+    fn test_serialize() {
+        let elements = elements();
+
+        let res = serde_json::to_string(&elements).unwrap();
+        assert_eq!(res, SERIALIZED_DATA);
+    }
+
+    #[test]
+    fn test_deserialize() {
+        let res: Elements = serde_json::from_str(SERIALIZED_DATA).unwrap();
+
+        assert_eq!(res, elements());
     }
 }
