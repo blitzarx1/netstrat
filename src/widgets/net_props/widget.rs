@@ -738,41 +738,41 @@ impl NetProps {
         self.update_data();
     }
 
-    fn check_simulation_event(&mut self) {
-        let operation_wrapped = self.bus.read(channels::SIMULATION_CHANNEL.to_string());
-        if operation_wrapped.is_err() {
-            return;
-        }
-        let msg_operation = serde_json::from_str::<simulation_props::messages::MessageOperation>(
-            operation_wrapped.unwrap().payload().as_str(),
-        )
-        .unwrap();
+    // fn check_simulation_event(&mut self) {
+    //     let operation_wrapped = self.bus.read(channels::SIMULATION_CHANNEL.to_string());
+    //     if operation_wrapped.is_err() {
+    //         return;
+    //     }
+    //     let msg_operation = serde_json::from_str::<simulation_props::messages::MessageOperation>(
+    //         operation_wrapped.unwrap().payload().as_str(),
+    //     )
+    //     .unwrap();
 
-        let mut signal_holders = Default::default();
-        match msg_operation.operation() {
-            OperationType::NextStep => signal_holders = self.graph_state.signal_forward(),
-            OperationType::BackStep => signal_holders = self.graph_state.signal_backward(),
-            OperationType::Reset => self.graph_state.simulation_reset(),
-        };
+    //     let mut signal_holders = Default::default();
+    //     match msg_operation.operation() {
+    //         OperationType::NextStep => signal_holders = self.graph_state.signal_forward(),
+    //         OperationType::BackStep => signal_holders = self.graph_state.signal_backward(),
+    //         OperationType::Reset => self.graph_state.simulation_reset(),
+    //     };
 
-        if signal_holders.is_empty() {
-            signal_holders = Default::default();
-        }
+    //     if signal_holders.is_empty() {
+    //         signal_holders = Default::default();
+    //     }
 
-        if let Err(err) = self.bus.write(
-            channels::SIMULATION_CHANNEL.to_string(),
-            Message::new(
-                serde_json::to_string(&MessageOperationResult::new(FrozenElements::from_elements(
-                    &signal_holders,
-                )))
-                .unwrap(),
-            ),
-        ) {
-            self.handle_error("failed to send step to simualtion widget: {err}")
-        }
+    //     if let Err(err) = self.bus.write(
+    //         channels::SIMULATION_CHANNEL.to_string(),
+    //         Message::new(
+    //             serde_json::to_string(&MessageOperationResult::new(FrozenElements::from_elements(
+    //                 &signal_holders,
+    //             )))
+    //             .unwrap(),
+    //         ),
+    //     ) {
+    //         self.handle_error("failed to send step to simualtion widget: {err}")
+    //     }
 
-        self.update_data();
-    }
+    //     self.update_data();
+    // }
 
     fn check_events(&mut self) {
         self.check_history_diff_event();

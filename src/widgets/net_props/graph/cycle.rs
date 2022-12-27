@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use super::{elements::Elements, path::Path};
+use petgraph::stable_graph::{EdgeIndex, NodeIndex};
+
+use super::path::Path;
 
 #[derive(Clone)]
 pub struct Cycle(Vec<Path>);
@@ -18,7 +20,7 @@ impl Cycle {
         self.0.len()
     }
 
-    pub fn elements(&self) -> Elements {
+    pub fn nodes_and_edges(&self) -> (HashSet<NodeIndex>, HashSet<EdgeIndex>) {
         let mut nodes = HashSet::new();
         let mut edges = HashSet::new();
 
@@ -28,6 +30,6 @@ impl Cycle {
             edges.insert(p.edge());
         });
 
-        Elements::new(nodes, edges)
+        (nodes, edges)
     }
 }

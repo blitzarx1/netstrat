@@ -213,7 +213,9 @@ impl State {
         let mut has_errors = false;
         let mut node_weight_to_index = HashMap::new();
         let mut nodes = HashSet::new();
+        let mut colored_nodes = HashSet::new();
         let mut edges = HashSet::new();
+        let mut colored_edges = HashSet::new();
 
         dot_data.lines().for_each(|l| {
             if !l.contains("->") && !l.contains('{') && !l.contains('}') {
@@ -225,7 +227,7 @@ impl State {
                         node_weight_to_index.insert(digit_weight.to_string(), node_idx);
 
                         if l.contains("color") {
-                            data.calculated.colored.add_node(node_idx);
+                            colored_nodes.insert(node_idx);
                         }
 
                         if weight.contains("ini") {
@@ -257,7 +259,7 @@ impl State {
                         edges.insert(edge_idx);
 
                         if l.contains("color") {
-                            data.calculated.colored.add_edge(edge_idx);
+                            colored_edges.insert(edge_idx);
                         }
 
                         return;
@@ -273,44 +275,39 @@ impl State {
             return None;
         }
 
-        data.history.add_step(
-            "load from file".to_string(),
-            StepDifference {
-                elements: Difference {
-                    plus: Elements::new(nodes, edges),
-                    minus: Default::default(),
-                },
-                colored: Default::default(),
-                signal_holders: Default::default(),
-            },
-        );
+        data.calculated.colored = data.to_elements(colored_nodes, colored_edges);
+
+        data.history
+            .add_step("load from file".to_string(), StepDifference::default());
+
         data.recalculate_metadata();
 
         Some(data)
     }
 
-    pub fn simulation_reset(&mut self) {
-        let step_diff = StepDifference {
-            elements: Default::default(),
-            colored: Default::default(),
-            signal_holders: Difference {
-                plus: Default::default(),
-                minus: self.calculated.signal_holders.clone(),
-            },
-        };
-        self.history
-            .add_step("reset simulation".to_string(), step_diff);
+    // pub fn simulation_reset(&mut self) {
+    //     let step_diff = StepDifference {
+    //         elements: Default::default(),
+    //         colored: Default::default(),
+    //         signal_holders: Difference {
+    //             plus: Default::default(),
+    //             minus: self.calculated.signal_holders.clone(),
+    //         },
+    //     };
+    //     self.history
+    //         .add_step("reset simulation".to_string(), step_diff);
 
-        self.calculated.signal_holders = Default::default();
+    //     self.calculated.signal_holders = Default::default();
 
-        self.recalculate_metadata();
-    }
+    //     self.recalculate_metadata();
+    // }
 
     pub fn color_ini_cones(&mut self) {
         let mut elements = Elements::default();
 
         for el in self.calculated.ini_set.clone() {
-            elements = elements.union(&self.get_cone_elements(el, Outgoing, -1));
+            let (nodes, edges) = self.get_cone_elements(el, Outgoing, -1);
+            elements = elements.union(&self.to_elements(nodes, edges));
         }
 
         self.color_elements(&elements)
@@ -319,7 +316,8 @@ impl State {
     pub fn color_fin_cones(&mut self) {
         let mut elements = Elements::default();
         for el in self.calculated.fin_set.clone() {
-            elements = elements.union(&self.get_cone_elements(el, Incoming, -1));
+            let (nodes, edges) = self.get_cone_elements(el, Incoming, -1);
+            elements = elements.union(&self.to_elements(nodes, edges));
         }
 
         self.color_elements(&elements);
@@ -339,11 +337,9 @@ impl State {
                 }
 
                 let root = root_find_result.unwrap();
-                elements = elements.union(&self.get_cone_elements(
-                    root.0,
-                    settings.dir,
-                    settings.max_steps,
-                ))
+                let (nodes, edges) =
+                    self.get_cone_elements(root.0, settings.dir, settings.max_steps);
+                elements = elements.union(&self.to_elements(nodes, edges))
             });
         });
 
@@ -368,11 +364,9 @@ impl State {
                 }
 
                 let (root_idx, _) = root_find_result.unwrap();
-                elements = elements.union(&self.get_cone_elements(
-                    root_idx,
-                    settings.dir,
-                    settings.max_steps,
-                ))
+                let (nodes, edges) =
+                    self.get_cone_elements(root_idx, settings.dir, settings.max_steps);
+                elements = elements.union(&self.to_elements(nodes, edges))
             });
         });
 
@@ -392,7 +386,10 @@ impl State {
             .enumerate()
             .for_each(|(i, c)| {
                 if cycle_idxs.contains(&i) {
-                    elements = elements.union(&c.elements())
+                    let proto_elements = &c.nodes_and_edges();
+                    elements = elements.union(
+                        &self.to_elements(proto_elements.0.clone(), proto_elements.1.clone()),
+                    )
                 }
             });
 
@@ -404,7 +401,7 @@ impl State {
         // gather cone of all children of inis
         for el in self.calculated.ini_set.clone() {
             ini_union_cone = ini_union_cone
-                .union(&self.get_cone_elements(el, Outgoing, -1).nodes())
+                .union(&self.get_cone_elements(el, Outgoing, -1).0)
                 .cloned()
                 .collect();
         }
@@ -413,7 +410,7 @@ impl State {
         // gather cone of all parents of fins
         for el in self.calculated.fin_set.clone() {
             fin_union_cone = fin_union_cone
-                .union(&self.get_cone_elements(el, Incoming, -1).nodes())
+                .union(&self.get_cone_elements(el, Incoming, -1).0)
                 .cloned()
                 .collect();
         }
@@ -423,14 +420,13 @@ impl State {
             .cloned()
             .collect::<HashSet<NodeIndex>>();
 
+        self.calculated.deleted = self
+            .calculated
+            .deleted
+            .union(&self.to_elements(intersection.clone(), Default::default()));
+
         self.graph
-            .retain_nodes(|_, node| match intersection.contains(&node) {
-                false => {
-                    self.calculated.deleted.add_node(node);
-                    false
-                }
-                true => true,
-            });
+            .retain_nodes(|_, node| intersection.contains(&node));
     }
 
     pub fn delete_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
@@ -444,7 +440,9 @@ impl State {
                     return;
                 }
 
-                elements = elements.union(&c.elements());
+                let proto_elements = &c.nodes_and_edges();
+                elements = elements
+                    .union(&self.to_elements(proto_elements.0.clone(), proto_elements.1.clone()))
             });
 
         self.soft_delete_elements(&elements);
@@ -453,7 +451,8 @@ impl State {
     pub fn delete_initial_cone(&mut self) {
         let mut elements = Elements::default();
         self.calculated.ini_set.iter().for_each(|node_idx| {
-            elements = elements.union(&self.get_cone_elements(*node_idx, Outgoing, -1))
+            let (nodes, edges) = self.get_cone_elements(*node_idx, Outgoing, -1);
+            elements = elements.union(&self.to_elements(nodes, edges))
         });
 
         self.soft_delete_elements(&elements)
@@ -462,7 +461,8 @@ impl State {
     pub fn delete_final_cone(&mut self) {
         let mut elements = Elements::default();
         self.calculated.fin_set.iter().for_each(|node_idx| {
-            elements = elements.union(&self.get_cone_elements(*node_idx, Incoming, -1))
+            let (nodes, edges) = self.get_cone_elements(*node_idx, Incoming, -1);
+            elements = elements.union(&self.to_elements(nodes, edges))
         });
 
         self.soft_delete_elements(&elements)
@@ -524,93 +524,93 @@ impl State {
         self.calculated.adj_mat.clone()
     }
 
-    pub fn signal_forward(&mut self) -> Elements {
-        debug!("propagating signal forward");
-        let elements = self.calculate_signal_forward();
+    // pub fn signal_forward(&mut self) -> Elements {
+    //     debug!("propagating signal forward");
+    //     let elements = self.calculate_signal_forward();
 
-        self.history.add_step(
-            "signal forward".to_string(),
-            StepDifference {
-                elements: Default::default(),
-                colored: Default::default(),
-                signal_holders: self.calculated.signal_holders.compute_difference(&elements),
-            },
-        );
+    //     self.history.add_step(
+    //         "signal forward".to_string(),
+    //         StepDifference {
+    //             elements: Default::default(),
+    //             colored: Default::default(),
+    //             signal_holders: self.calculated.signal_holders.compute_difference(&elements),
+    //         },
+    //     );
 
-        self.calculated.signal_holders = elements.clone();
-        elements
-    }
+    //     self.calculated.signal_holders = elements.clone();
+    //     elements
+    // }
 
-    pub fn signal_backward(&mut self) -> Elements {
-        debug!("propagating signal backward");
-        let elements = self.calculate_signal_backward();
+    // pub fn signal_backward(&mut self) -> Elements {
+    //     debug!("propagating signal backward");
+    //     let elements = self.calculate_signal_backward();
 
-        self.history.add_step(
-            "signal backward".to_string(),
-            StepDifference {
-                elements: Default::default(),
-                colored: Default::default(),
-                signal_holders: self.calculated.signal_holders.compute_difference(&elements),
-            },
-        );
+    //     self.history.add_step(
+    //         "signal backward".to_string(),
+    //         StepDifference {
+    //             elements: Default::default(),
+    //             colored: Default::default(),
+    //             signal_holders: self.calculated.signal_holders.compute_difference(&elements),
+    //         },
+    //     );
 
-        self.calculated.signal_holders = elements.clone();
-        elements
-    }
+    //     self.calculated.signal_holders = elements.clone();
+    //     elements
+    // }
 
-    fn calculate_signal_forward(&self) -> Elements {
-        debug!("propagating signal forward");
+    // fn calculate_signal_forward(&self) -> Elements {
+    //     debug!("propagating signal forward");
 
-        if self.calculated.signal_holders.is_empty() {
-            return Elements::new(self.calculated.ini_set.clone(), Default::default());
-        }
+    //     if self.calculated.signal_holders.is_empty() {
+    //         return Elements::new(self.calculated.ini_set.clone(), Default::default());
+    //     }
 
-        let mut new_nodes = HashSet::new();
-        let mut new_edges = HashSet::new();
-        self.calculated
-            .signal_holders
-            .nodes()
-            .iter()
-            .for_each(|node| {
-                self.graph.edges_directed(*node, Outgoing).for_each(|edge| {
-                    new_edges.insert(EdgeIndex::from(edge.id()));
-                });
-            });
-        self.calculated
-            .signal_holders
-            .edges()
-            .iter()
-            .for_each(|edge| {
-                new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().1);
-            });
-        Elements::new(new_nodes, new_edges)
-    }
+    //     let mut new_nodes = HashSet::new();
+    //     let mut new_edges = HashSet::new();
+    //     self.calculated
+    //         .signal_holders
+    //         .nodes()
+    //         .iter()
+    //         .for_each(|node| {
+    //             self.graph.edges_directed(*node, Outgoing).for_each(|edge| {
+    //                 new_edges.insert(EdgeIndex::from(edge.id()));
+    //             });
+    //         });
+    //     self.calculated
+    //         .signal_holders
+    //         .edges()
+    //         .iter()
+    //         .for_each(|edge| {
+    //             new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().1);
+    //         });
+    //     Elements::new(new_nodes, new_edges)
+    // }
 
-    fn calculate_signal_backward(&self) -> Elements {
-        if self.calculated.signal_holders.is_empty() {
-            return Default::default();
-        }
+    // fn calculate_signal_backward(&self) -> Elements {
+    //     if self.calculated.signal_holders.is_empty() {
+    //         return Default::default();
+    //     }
 
-        let mut new_nodes = HashSet::new();
-        let mut new_edges = HashSet::new();
-        self.calculated
-            .signal_holders
-            .nodes()
-            .iter()
-            .for_each(|node| {
-                self.graph.edges_directed(*node, Incoming).for_each(|edge| {
-                    new_edges.insert(edge.id());
-                });
-            });
-        self.calculated
-            .signal_holders
-            .edges()
-            .iter()
-            .for_each(|edge| {
-                new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().0);
-            });
-        Elements::new(new_nodes, new_edges)
-    }
+    //     let mut new_nodes = HashSet::new();
+    //     let mut new_edges = HashSet::new();
+    //     self.calculated
+    //         .signal_holders
+    //         .nodes()
+    //         .iter()
+    //         .for_each(|node| {
+    //             self.graph.edges_directed(*node, Incoming).for_each(|edge| {
+    //                 new_edges.insert(edge.id());
+    //             });
+    //         });
+    //     self.calculated
+    //         .signal_holders
+    //         .edges()
+    //         .iter()
+    //         .for_each(|edge| {
+    //             new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().0);
+    //         });
+    //     Elements::new(new_nodes, new_edges)
+    // }
 
     fn adj_mat(&self) -> Array2<isize> {
         let n = self.graph.node_bound();
@@ -644,7 +644,7 @@ impl State {
         if has_errors {
             return None;
         }
-        Some(Elements::new(nodes_set, Default::default()))
+        Some(self.to_elements(nodes_set, Default::default()))
     }
 
     fn find_edges(&self, bounds: Vec<[String; 2]>) -> Option<Elements> {
@@ -691,7 +691,29 @@ impl State {
             return None;
         }
 
-        Some(Elements::new(Default::default(), edges_set))
+        Some(self.to_elements(Default::default(), edges_set))
+    }
+
+    fn to_elements(&self, nodes: HashSet<NodeIndex>, edges: HashSet<EdgeIndex>) -> Elements {
+        let mut elements_nodes = HashMap::new();
+        nodes.iter().for_each(|n| {
+            elements_nodes.insert(*n, self.graph.node_weight(*n).unwrap().clone());
+        });
+
+        let mut elements_edges = HashMap::new();
+        edges.iter().for_each(|e| {
+            let (start, end) = self.graph.edge_endpoints(*e).unwrap();
+            elements_edges.insert(
+                *e,
+                format!(
+                    "{}->{}",
+                    self.graph.node_weight(start).unwrap().clone(),
+                    self.graph.node_weight(end).unwrap().clone(),
+                ),
+            );
+        });
+
+        Elements::new(elements_nodes, elements_edges)
     }
 
     fn color_elements(&mut self, elements: &Elements) {
@@ -720,13 +742,21 @@ impl State {
             return;
         }
 
-        elements.nodes().iter().for_each(|node| {
+        let mut deleted_nodes = HashSet::new();
+        let mut deleted_edges = HashSet::new();
+        elements.nodes().iter().for_each(|(node, _)| {
             self.graph.remove_node(*node).unwrap();
-            self.calculated.deleted.add_node(*node);
+            deleted_nodes.insert(*node);
         });
-        elements.edges().iter().for_each(|edge| {
+        elements.edges().iter().for_each(|(edge, _)| {
             self.graph.remove_edge(*edge);
+            deleted_edges.insert(*edge);
         });
+
+        self.calculated.deleted = self
+            .calculated
+            .deleted
+            .union(&self.to_elements(deleted_nodes, deleted_edges));
 
         let minus_diff = Difference {
             plus: Default::default(),
@@ -795,12 +825,12 @@ impl State {
     fn elements_to_matrix_elements(&self, elements: &Elements) -> MatrixElements {
         let mut res: MatrixElements = Default::default();
 
-        elements.edges().iter().for_each(|idx| {
+        elements.edges().iter().for_each(|(idx, _)| {
             let edge = self.graph.edge_endpoints(*idx).unwrap();
             res.elements.insert((edge.0.index(), edge.1.index()));
         });
 
-        elements.nodes().iter().for_each(|e| {
+        elements.nodes().iter().for_each(|(e, _)| {
             res.rows.insert(e.index());
             res.cols.insert(e.index());
         });
@@ -881,16 +911,20 @@ impl State {
                 if !l.contains("->") && !l.contains('{') && !l.contains('}') {
                     // line is node
                     if let Some((node_id, _)) = parse_node(l.to_string()) {
-                        self.calculated.colored.nodes().iter().for_each(|node| {
-                            if node_id == node.index().to_string() {
-                                res = color_line(l.to_string(), Color::Red);
-                            }
-                        });
+                        self.calculated
+                            .colored
+                            .nodes()
+                            .iter()
+                            .for_each(|(node, _)| {
+                                if node_id == node.index().to_string() {
+                                    res = color_line(l.to_string(), Color::Red);
+                                }
+                            });
                         self.calculated
                             .signal_holders
                             .nodes()
                             .iter()
-                            .for_each(|node| {
+                            .for_each(|(node, _)| {
                                 if node_id == node.index().to_string() {
                                     res = color_line(l.to_string(), Color::Blue);
                                 }
@@ -902,22 +936,26 @@ impl State {
 
                 if l.contains("->") {
                     // line is edge
-                    self.calculated.colored.edges().iter().for_each(|edge| {
-                        let (start, end) = self.graph.edge_endpoints(*edge).unwrap();
+                    self.calculated
+                        .colored
+                        .edges()
+                        .iter()
+                        .for_each(|(edge, _)| {
+                            let (start, end) = self.graph.edge_endpoints(*edge).unwrap();
 
-                        if let Some((s, e, _)) = parse_edge(l.to_string()) {
-                            if s == start.index().to_string() && e == end.index().to_string() {
-                                res = color_line(l.to_string(), Color::Red);
+                            if let Some((s, e, _)) = parse_edge(l.to_string()) {
+                                if s == start.index().to_string() && e == end.index().to_string() {
+                                    res = color_line(l.to_string(), Color::Red);
+                                }
+                            } else {
+                                error!("failed to parse edge from line: {l}");
                             }
-                        } else {
-                            error!("failed to parse edge from line: {l}");
-                        }
-                    });
+                        });
                     self.calculated
                         .signal_holders
                         .edges()
                         .iter()
-                        .for_each(|edge| {
+                        .for_each(|(edge, _)| {
                             let (start, end) = self.graph.edge_endpoints(*edge).unwrap();
 
                             if let Some((s, e, _)) = parse_edge(l.to_string()) {
@@ -1008,14 +1046,19 @@ impl State {
         result
     }
 
-    fn get_cone_elements(&self, root: NodeIndex, dir: Direction, max_steps: i32) -> Elements {
+    fn get_cone_elements(
+        &self,
+        root: NodeIndex,
+        dir: Direction,
+        max_steps: i32,
+    ) -> (HashSet<NodeIndex>, HashSet<EdgeIndex>) {
         let mut nodes = HashSet::new();
         let mut edges = HashSet::new();
 
         nodes.insert(root);
 
         if max_steps == 0 {
-            return Elements::new(nodes, edges);
+            return (nodes, edges);
         }
 
         let mut steps_cnt = 0;
@@ -1070,7 +1113,7 @@ impl State {
             });
         }
 
-        Elements::new(nodes, edges)
+        (nodes, edges)
     }
 }
 

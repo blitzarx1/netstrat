@@ -29,6 +29,23 @@ pub struct StepDifference {
     pub signal_holders: Difference,
 }
 
+impl Display for StepDifference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut tooltip_vec = vec![];
+        if !self.elements.minus.is_empty() || !self.elements.plus.is_empty() {
+            tooltip_vec.push(format!("elements\n{}\n", self.elements));
+        }
+        if !self.colored.minus.is_empty() || !self.colored.plus.is_empty() {
+            tooltip_vec.push(format!("color\n{}\n", self.colored));
+        }
+        if !self.signal_holders.minus.is_empty() || !self.signal_holders.plus.is_empty() {
+            tooltip_vec.push(format!("signal\n{}\n", self.signal_holders));
+        }
+
+        f.write_str(tooltip_vec.join("\n").as_str())
+    }
+}
+
 impl StepDifference {
     pub fn squash(&self, other: &StepDifference) -> StepDifference {
         StepDifference {
@@ -58,8 +75,8 @@ impl StepDifference {
                 minus: self.colored.clone().plus,
             },
             signal_holders: Difference {
-                plus: self.colored.clone().minus,
-                minus: self.colored.clone().plus,
+                plus: self.signal_holders.clone().minus,
+                minus: self.signal_holders.clone().plus,
             },
         }
     }

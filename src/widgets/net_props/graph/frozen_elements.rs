@@ -1,45 +1,29 @@
-use std::fmt::Display;
-
 use serde::{Deserialize, Serialize};
 
 use super::elements::Elements;
 
-const SIGN_NODES: &str = "🇳";
-const SIGN_EDGES: &str = "🇪";
-
 #[derive(Debug, Hash, Default, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct FrozenElements {
-    pub nodes: Vec<usize>,
-    pub edges: Vec<usize>,
-}
-
-impl Display for FrozenElements {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "{}: {:?}, {}: {:?}",
-            SIGN_NODES, self.nodes, SIGN_EDGES, self.edges
-        ))
-    }
+    pub nodes: Vec<(usize, String)>,
+    pub edges: Vec<(usize, String)>,
 }
 
 impl FrozenElements {
     pub fn from_elements(elements: &Elements) -> Self {
-        let mut nodes: Vec<usize> = elements
+        let mut nodes: Vec<(usize, String)> = elements
             .nodes()
             .iter()
-            .cloned()
-            .map(|el| el.index())
+            .map(|(k, v)| (k.index(), v.clone()))
             .collect();
 
-        let mut edges: Vec<usize> = elements
+        let mut edges: Vec<(usize, String)> = elements
             .edges()
             .iter()
-            .cloned()
-            .map(|el| el.index())
+            .map(|(k, v)| (k.index(), v.clone()))
             .collect();
 
-        nodes.sort_unstable();
-        edges.sort_unstable();
+        nodes.sort_by_key(|(k, _)| *k);
+        edges.sort_by_key(|(k, _)| *k);
 
         Self { nodes, edges }
     }

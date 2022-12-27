@@ -1,6 +1,8 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt::format};
 
-use egui::{ScrollArea, Ui};
+use eframe::epaint::text::TextWrapping;
+use egui::{text::LayoutJob, CursorIcon, FontId, ScrollArea, TextFormat, Ui, WidgetText};
+use egui_extras::{Size, StripBuilder};
 use petgraph::{
     algo::all_simple_paths,
     stable_graph::{NodeIndex, StableDiGraph},
@@ -187,37 +189,64 @@ impl History {
 
     fn draw_step_button(&self, node: NodeIndex, ui: &mut Ui) -> Option<usize> {
         let mut selected_step = None;
-
         let node_weight = self.tree.node_weight(node).unwrap();
-
-        let mut prev_tooltip_vec = vec![];
-        let mut diff = node_weight.clone().parent_difference;
-        prev_tooltip_vec.push(format!("elements\n{}\n", diff.elements));
-        prev_tooltip_vec.push(format!("color\n{}\n", diff.colored));
-        prev_tooltip_vec.push(format!("signal\n{}\n", diff.signal_holders));
-
-        let mut curr_tooltip_vec = vec![];
-        diff = self.compute_diff(node.index());
-        curr_tooltip_vec.push(format!("elements\n{}\n", diff.elements));
-        curr_tooltip_vec.push(format!("color\n{}\n", diff.colored));
-        curr_tooltip_vec.push(format!("signal\n{}\n", diff.signal_holders));
-
         let step_name = node_weight.name.clone();
         ui.horizontal(|ui| {
-            let mut btn = ui.selectable_label(node.index() == self.current_step, step_name);
-
-            btn = btn.on_hover_text(format!(
-                "previous step diff:\n{}\n----------------\ncurrent step diff:\n{}",
-                prev_tooltip_vec.join("\n"),
-                curr_tooltip_vec.join("\n"),
-            ));
-
-            if btn.clicked() {
+            if ui
+                .selectable_label(node.index() == self.current_step, step_name)
+                .on_hover_cursor(CursorIcon::PointingHand)
+                .on_hover_ui(|ui| {
+                    self.draw_step_tooltip_ui(
+                        ui,
+                        format!("{}", node_weight.clone().parent_difference),
+                        format!("{}", self.compute_diff(node.index())),
+                    )
+                })
+                .clicked()
+            {
                 selected_step = Some(node.index())
             };
         });
 
         selected_step
+    }
+
+    fn draw_step_tooltip_ui(&self, ui: &mut Ui, left: String, right: String) {
+        let job = LayoutJob {
+            wrap: TextWrapping {
+                break_anywhere: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let big_font = TextFormat {
+            font_id: FontId {
+                size: 16.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut job_prev = job.clone();
+        job_prev.append("rel to prev step", 0.0, big_font.clone());
+
+        let mut job_curr = job;
+        job_curr.append("rel to curr step", 0.0, big_font);
+
+        ui.horizontal_wrapped(|ui| {
+            ui.vertical(|ui| {
+                ui.label(WidgetText::from(job_prev));
+                ui.add_space(10.0);
+                ui.label(left);
+
+                ui.separator();
+
+                ui.add_space(10.0);
+                ui.label(WidgetText::from(job_curr));
+                ui.add_space(10.0);
+                ui.label(right);
+            });
+        });
     }
 
     fn draw_history_recursive(
