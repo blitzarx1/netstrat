@@ -1,6 +1,8 @@
 use petgraph::graph::{EdgeIndex, NodeIndex};
 use serde::{Deserialize, Deserializer, Serialize};
-use std::collections::HashSet;
+use std::{collections::HashSet, hash::Hash, ops::Sub};
+
+use crate::widgets::{history::Difference, StepDifference};
 
 use super::frozen_elements::FrozenElements;
 
@@ -54,11 +56,65 @@ impl Elements {
         res
     }
 
-    pub fn union(&mut self, other: &Elements) {
-        self.nodes = self.nodes.union(&other.nodes).cloned().collect();
-        self.edges = self.edges.union(&other.edges).cloned().collect();
+    pub fn apply_difference(&self, diff: Difference) -> Elements {
+        let res = self.union(&diff.plus);
+        res.sub(&diff.minus)
+    }
 
-        self.frozen = FrozenElements::from_elements(self);
+    /// computes difference which holds set of deleted and added elements
+    pub fn difference(&self, other: &Elements) -> Option<Difference> {
+        let mut minus_nodes = HashSet::new();
+        self.nodes.iter().for_each(|n| {
+            if !other.nodes.contains(n) {
+                minus_nodes.insert(*n);
+            };
+        });
+        let mut minus_edges = HashSet::new();
+        self.edges.iter().for_each(|e| {
+            if !other.edges.contains(e) {
+                minus_edges.insert(*e);
+            };
+        });
+
+        let mut plus_nodes = HashSet::new();
+        other.nodes.iter().for_each(|n| {
+            if !self.nodes.contains(n) {
+                plus_nodes.insert(*n);
+            };
+        });
+        let mut plus_edges = HashSet::new();
+        other.edges.iter().for_each(|n| {
+            if !self.edges.contains(n) {
+                plus_edges.insert(*n);
+            };
+        });
+
+        if plus_nodes.is_empty()
+            && plus_edges.is_empty()
+            && minus_nodes.is_empty()
+            && minus_edges.is_empty()
+        {
+            return None;
+        };
+
+        return Some(Difference {
+            plus: Elements::new(plus_nodes, plus_edges),
+            minus: Elements::new(minus_nodes, minus_edges),
+        });
+    }
+
+    pub fn union(&self, other: &Elements) -> Elements {
+        let nodes = self.nodes.union(&other.nodes).cloned().collect();
+        let edges = self.edges.union(&other.edges).cloned().collect();
+
+        Elements::new(nodes, edges)
+    }
+
+    pub fn sub(&self, other: &Elements) -> Elements {
+        let nodes = self.nodes.sub(&other.nodes);
+        let edges = self.edges.sub(&other.edges);
+
+        Elements::new(nodes, edges)
     }
 
     pub fn add_node(&mut self, n: NodeIndex) -> bool {

@@ -1,11 +1,12 @@
 use std::fmt::Display;
 
-use crate::widgets::net_props::State;
+use super::step_difference::StepDifference;
 
 #[derive(Clone)]
 pub struct Step {
     pub name: String,
-    pub state: State,
+    /// parent_difference has none value only for root node
+    pub parent_difference: Option<StepDifference>,
 }
 
 impl Display for Step {

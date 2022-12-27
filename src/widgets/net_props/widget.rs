@@ -16,12 +16,12 @@ use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
-use crate::netstrat::{Bus, Drawer, Message};
-use crate::widgets::history::{Clicks, History, Step};
-use crate::widgets::matrix::{Elements, Matrix};
+use crate::netstrat::{channels, Bus, Drawer, Message};
+use crate::widgets::history::{History, Step};
+use crate::widgets::matrix::Matrix;
 use crate::widgets::simulation_props::messages::{MessageOperationResult, OperationType};
 use crate::widgets::OpenDropFile;
-use crate::widgets::{image_drawer, SIMULATION_WIDGET_NAME};
+use crate::widgets::{image_drawer, StepDifference};
 use crate::widgets::{simulation_props, AppWidget};
 use crate::windows::{AppWindow, Simulator};
 
@@ -30,16 +30,15 @@ use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
 use super::graph::State;
 use super::interactions::Interactions;
 use super::nodes_and_edges::NodesAndEdgeSettings;
-use super::settings::{EdgeWeight, NetSettings};
+use super::settings::{EdgeWeight, Settings};
 use super::FrozenElements;
 
 pub struct NetProps {
     bus: Bus,
-    windows: Vec<Box<dyn AppWindow>>,
+    // windows: Vec<Box<dyn AppWindow>>,
     graph_state: State,
     adj_matrix: Matrix,
-    net_settings: NetSettings,
-    history: History,
+    net_settings: Settings,
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
     matrix_power_input: String,
@@ -55,28 +54,20 @@ pub struct NetProps {
 
 impl NetProps {
     pub fn new(drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>) -> Self {
-        let data = NetProps::reset_data();
-
-        let history = History::new_builder(Step {
-            name: "create".to_string(),
-            state: data.clone(),
-        })
-        .build();
-
-        let adj_matrix = Matrix::new(data.adj_matrix());
         let bus = Bus::new();
+        let data = State::new_builder(bus.clone()).build();
+        let adj_matrix = Matrix::new(data.adj_matrix());
 
         let mut s = Self {
             drawer_pub,
-            history,
             adj_matrix,
             graph_state: data,
             matrix_power: 1,
             reach_matrix_power: 1,
-            bus: bus.clone(),
+            bus,
             net_drawer: Arc::new(Mutex::new(Box::new(image_drawer::ImageDrawer::default()))),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
-            windows: vec![Box::new(Simulator::new(false, bus))],
+            // windows: vec![Box::new(Simulator::new(false, bus))],
             open_drop_file: Default::default(),
             net_settings: Default::default(),
             cone_settings: Default::default(),
@@ -91,42 +82,32 @@ impl NetProps {
         s
     }
 
-    fn reset_data() -> State {
-        State::new(NetSettings::default())
+    fn reset_data(&self) -> State {
+        State::new_builder(self.bus.clone()).build()
     }
 
     fn reset(&mut self) {
-        self.graph_state = NetProps::reset_data();
-
-        self.history = History::new_builder(Step {
-            name: "reset".to_string(),
-            state: self.graph_state.clone(),
-        })
-        .build();
+        self.graph_state = self.reset_data();
 
         self.update_data();
         self.reset_settings();
     }
 
     fn reset_settings(&mut self) {
-        self.net_settings = NetSettings::default();
+        self.net_settings = Settings::default();
         self.cone_settings = ConeSettingsInputs::default();
         self.nodes_and_edges_settings = NodesAndEdgeSettings::default();
     }
 
     fn create(&mut self) {
-        self.graph_state = State::new(self.net_settings.clone());
-
-        self.history = History::new_builder(Step {
-            name: "create".to_string(),
-            state: self.graph_state.clone(),
-        })
-        .build();
+        self.graph_state = State::new_builder(self.bus.clone())
+            .with_settings(self.net_settings.clone())
+            .build();
 
         self.update_data();
 
         if let Err(err) = self.bus.write(
-            SIMULATION_WIDGET_NAME.to_string(),
+            channels::SIMULATION_CHANNEL.to_string(),
             Message::new(
                 serde_json::to_string(&MessageOperationResult::new(Default::default())).unwrap(),
             ),
@@ -135,7 +116,7 @@ impl NetProps {
         }
     }
 
-    fn update_graph_settings(&mut self, graph_settings: NetSettings) {
+    fn update_graph_settings(&mut self, graph_settings: Settings) {
         if self.net_settings == graph_settings {
             return;
         }
@@ -182,11 +163,6 @@ impl NetProps {
             }
 
             self.graph_state = data.unwrap();
-            self.history = History::new_builder(Step {
-                name: "load from file".to_string(),
-                state: self.graph_state.clone(),
-            })
-            .build();
             self.update_data();
             self.reset_settings();
         }
@@ -270,41 +246,6 @@ impl NetProps {
             self.apply_reach_power();
         }
 
-        if let Some(history_click) = self.history.last_click() {
-            match history_click {
-                Clicks::Up => {
-                    info!("navigating history up");
-                    match self.history.go_up() {
-                        Some(loaded_step) => {
-                            self.graph_state = loaded_step.state;
-                            self.update_data()
-                        }
-                        None => self.handle_error("failed to load history"),
-                    }
-                }
-                Clicks::Down => {
-                    info!("navigating history down");
-                    match self.history.go_down() {
-                        Some(loaded_step) => {
-                            self.graph_state = loaded_step.state;
-                            self.update_data()
-                        }
-                        None => self.handle_error("failed to load history"),
-                    }
-                }
-                Clicks::Right => {
-                    info!("navigating to history sibling");
-                    match self.history.go_sibling() {
-                        Some(loaded_step) => {
-                            self.graph_state = loaded_step.state;
-                            self.update_data()
-                        }
-                        None => self.handle_error("failed to load history"),
-                    }
-                }
-            }
-        }
-
         if clicks.delete_nodes_and_edges {
             info!("deleting nodes and edges");
             let deleted = self.graph_state.delete_nodes_and_edges(
@@ -317,17 +258,6 @@ impl NetProps {
                 return;
             }
 
-            if self
-                .history
-                .add_and_set_current_step(Step {
-                    name: "delete node or edge".to_string(),
-                    state: self.graph_state.clone(),
-                })
-                .is_none()
-            {
-                self.handle_error("failed to delete node or edge");
-                return;
-            }
             self.update_data();
         }
 
@@ -343,17 +273,6 @@ impl NetProps {
                 return;
             }
 
-            if self
-                .history
-                .add_and_set_current_step(Step {
-                    name: "color node or edge".to_string(),
-                    state: self.graph_state.clone(),
-                })
-                .is_none()
-            {
-                self.handle_error("failed to color node or edge");
-                return;
-            }
             self.update_data();
         }
 
@@ -409,11 +328,6 @@ impl NetProps {
     fn delete_cycles(&mut self) {
         self.graph_state.delete_cycles(&self.selected_cycles);
         self.selected_cycles = Default::default();
-
-        self.history.add_and_set_current_step(Step {
-            name: "delete cycle".to_string(),
-            state: self.graph_state.clone(),
-        });
 
         self.update_data();
     }
@@ -515,11 +429,6 @@ impl NetProps {
             return;
         }
 
-        self.history.add_and_set_current_step(Step {
-            name: "color cone".to_string(),
-            state: self.graph_state.clone(),
-        });
-
         self.update_data();
     }
 
@@ -547,21 +456,11 @@ impl NetProps {
         }
 
         self.cone_settings = Default::default();
-
-        self.history.add_and_set_current_step(Step {
-            name: "delete cone".to_string(),
-            state: self.graph_state.clone(),
-        });
         self.update_data();
     }
 
     fn color_cycles(&mut self) {
         self.graph_state.color_cycles(&self.selected_cycles);
-
-        self.history.add_and_set_current_step(Step {
-            name: "color cycle".to_string(),
-            state: self.graph_state.clone(),
-        });
         self.update_data();
     }
 
@@ -819,19 +718,33 @@ impl NetProps {
         });
     }
 
-    fn draw_windows(&mut self, ui: &mut Ui) {
-        self.windows.iter_mut().for_each(|w| {
-            w.toggle_btn(ui);
-            w.show(ui);
-        });
+    // fn draw_windows(&mut self, ui: &mut Ui) {
+    //     self.windows.iter_mut().for_each(|w| {
+    //         w.toggle_btn(ui);
+    //         w.show(ui);
+    //     });
+    // }
+
+    fn check_history_diff_event(&mut self) {
+        let history_diff_wrapped = self.bus.read(channels::HISTORY_DIFFERENCE.to_string());
+        if history_diff_wrapped.is_err() {
+            return;
+        }
+        let msg_history_diff = serde_json::from_str::<StepDifference>(
+            history_diff_wrapped.unwrap().payload().as_str(),
+        )
+        .unwrap();
+
+        self.graph_state.update(msg_history_diff);
+
+        self.update_data();
     }
 
-    fn check_events(&mut self) {
-        let operation_wrapped = self.bus.read(SIMULATION_WIDGET_NAME.to_string());
+    fn check_simulation_event(&mut self) {
+        let operation_wrapped = self.bus.read(channels::SIMULATION_CHANNEL.to_string());
         if operation_wrapped.is_err() {
             return;
         }
-
         let msg_operation = serde_json::from_str::<simulation_props::messages::MessageOperation>(
             operation_wrapped.unwrap().payload().as_str(),
         )
@@ -844,15 +757,15 @@ impl NetProps {
             OperationType::Reset => self.graph_state.simulation_reset(),
         };
 
-        if signal_holders.is_none() {
-            signal_holders = Some(Default::default());
+        if signal_holders.is_empty() {
+            signal_holders = Default::default();
         }
 
         if let Err(err) = self.bus.write(
-            SIMULATION_WIDGET_NAME.to_string(),
+            channels::SIMULATION_CHANNEL.to_string(),
             Message::new(
                 serde_json::to_string(&MessageOperationResult::new(FrozenElements::from_elements(
-                    &signal_holders.unwrap(),
+                    &signal_holders,
                 )))
                 .unwrap(),
             ),
@@ -862,11 +775,16 @@ impl NetProps {
 
         self.update_data();
     }
+
+    fn check_events(&mut self) {
+        self.check_history_diff_event();
+        self.check_simulation_event();
+    }
 }
 
 impl AppWidget for NetProps {
     fn show(&mut self, ui: &mut Ui) {
-        self.draw_windows(ui);
+        // self.draw_windows(ui);
 
         ui.separator();
 
@@ -874,7 +792,6 @@ impl AppWidget for NetProps {
             self.selected_cycles.clone(),
             self.net_settings.clone(),
             self.cone_settings.clone(),
-            self.history.get_current_step().unwrap(),
             self.nodes_and_edges_settings.clone(),
             self.matrix_power_input.clone(),
             self.reach_matrix_power_input.clone(),
@@ -884,7 +801,7 @@ impl AppWidget for NetProps {
         self.draw_nodes_and_edges_section(ui, &mut interactions);
         self.draw_cones_section(ui, &mut interactions);
         self.draw_cycles_section(ui, &mut interactions);
-        self.history.show(ui);
+        self.graph_state.history.show(ui);
         self.draw_section_matrices(ui, &mut interactions);
         self.draw_dot_preview_section(ui, &mut interactions);
 

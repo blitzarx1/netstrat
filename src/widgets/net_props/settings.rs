@@ -1,5 +1,3 @@
-use chrono::format::Fixed;
-use graphviz_rust::dot_structures::Edge;
 use petgraph::Direction;
 use serde::{Deserialize, Serialize};
 use Direction::Outgoing;
@@ -19,7 +17,7 @@ impl Default for EdgeWeight {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct NetSettings {
+pub struct Settings {
     pub ini_cnt: usize,
     pub fin_cnt: usize,
     pub total_cnt: usize,
@@ -30,7 +28,7 @@ pub struct NetSettings {
     pub edge_weight: f64,
 }
 
-impl Default for NetSettings {
+impl Default for Settings {
     fn default() -> Self {
         Self {
             ini_cnt: 5,

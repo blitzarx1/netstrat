@@ -8,5 +8,5 @@ mod nodes_input;
 mod settings;
 mod widget;
 
-pub use self::graph::{FrozenElements, State};
+pub use self::graph::{Elements, FrozenElements, State};
 pub use self::widget::NetProps;

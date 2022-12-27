@@ -4,7 +4,7 @@ use egui::ScrollArea;
 use tracing::error;
 
 use crate::{
-    netstrat::{Bus, Message},
+    netstrat::{Bus, Message, channels},
     widgets::{
         history::{History, Step},
         net_props::FrozenElements,
@@ -17,7 +17,6 @@ use super::{
     Controls,
 };
 
-pub const SIMULATION_WIDGET_NAME: &str = "simulation";
 const INFO_MSG_PLACEHOLDER: &str = "Press ▶ to start simulation";
 
 pub struct SimulationProps {
@@ -68,13 +67,13 @@ impl SimulationProps {
             serde_json::to_string(&MessageOperation::new(payload_operation.unwrap())).unwrap(),
         );
 
-        if let Err(err) = self.bus.write(SIMULATION_WIDGET_NAME.to_string(), msg) {
+        if let Err(err) = self.bus.write(channels::SIMULATION_CHANNEL.to_string(), msg) {
             error!("failed to publish message: {err}");
         }
     }
 
     fn handle_incoming_events(&mut self) {
-        if let Ok(msg) = self.bus.read(SIMULATION_WIDGET_NAME.to_string()) {
+        if let Ok(msg) = self.bus.read(channels::SIMULATION_CHANNEL.to_string()) {
             let operation_result =
                 serde_json::from_str::<MessageOperationResult>(&msg.payload()).unwrap();
 
@@ -98,32 +97,28 @@ impl SimulationProps {
             let msg = format!("Step: {step}");
             self.info_msg = msg.clone();
 
-            let step = Step {
-                name: msg.clone(),
-                state: Default::default(),
-            };
-            if self.history.is_none() {
-                self.history = Some(History::new_builder(step).build());
-                self.steps
-                    .insert(operation_result.signal_holders().clone(), msg);
-            } else {
-                match self.steps.get(operation_result.signal_holders()) {
-                    Some(cycled_step_name) => {
-                        self.history
-                            .as_mut()
-                            .unwrap()
-                            .cycle_and_set_step(cycled_step_name.clone());
-                    }
-                    None => {
-                        self.history
-                            .as_mut()
-                            .unwrap()
-                            .add_and_set_current_step(step);
-                        self.steps
-                            .insert(operation_result.signal_holders().clone(), msg);
-                    }
-                }
-            }
+            // if self.history.is_none() {
+            //     self.history = Some(History::new(msg.clone()));
+            //     self.steps
+            //         .insert(operation_result.signal_holders().clone(), msg);
+            // } else {
+            //     match self.steps.get(operation_result.signal_holders()) {
+            //         Some(cycled_step_name) => {
+            //             self.history
+            //                 .as_mut()
+            //                 .unwrap()
+            //                 .cycle_and_set_step(cycled_step_name.clone());
+            //         }
+            //         None => {
+            //             self.history
+            //                 .as_mut()
+            //                 .unwrap()
+            //                 .add_and_set_current_step(step);
+            //             self.steps
+            //                 .insert(operation_result.signal_holders().clone(), msg);
+            //         }
+            //     }
+            // }
         }
     }
 }

@@ -16,5 +16,5 @@ pub struct Calculated {
     pub dot: String,
     pub colored: Elements,
     pub deleted: Elements,
-    pub signal_holders: Option<Elements>,
+    pub signal_holders: Elements,
 }

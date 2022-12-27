@@ -10,6 +10,7 @@ mod widget;
 
 pub use self::net_props::NetProps;
 pub use self::open_drop_file::OpenDropFile;
-pub use self::simulation_props::{Controls, SimulationProps, SIMULATION_WIDGET_NAME};
+pub use self::simulation_props::{Controls, SimulationProps};
+pub use self::history::StepDifference;
 pub use self::theme::Theme;
 pub use self::widget::AppWidget;
