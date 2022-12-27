@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use super::elements::Elements;
 
+const SIGN_NODES: &str = "🇳";
+const SIGN_EDGES: &str = "🇪";
+
 #[derive(Debug, Hash, Default, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct FrozenElements {
     pub nodes: Vec<usize>,
@@ -13,8 +16,8 @@ pub struct FrozenElements {
 impl Display for FrozenElements {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "🇳: {:?}, 🇪: {:?}",
-            self.nodes, self.edges
+            "{}: {:?}, {}: {:?}",
+            SIGN_NODES, self.nodes, SIGN_EDGES, self.edges
         ))
     }
 }

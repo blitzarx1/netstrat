@@ -1,14 +1,10 @@
-use std::{collections::HashSet, string};
+use std::collections::HashSet;
 
-use chrono::{DateTime, Utc};
-use crossbeam::channel::{unbounded, Sender};
 use egui::{ScrollArea, Ui};
-use graphviz_rust::dot_structures::{Id, NodeId};
 use petgraph::{
     algo::all_simple_paths,
-    dot::Dot,
     stable_graph::{NodeIndex, StableDiGraph},
-    visit::{EdgeRef, IntoNodeReferences},
+    visit::EdgeRef,
     Direction::{Incoming, Outgoing},
 };
 use tracing::error;
@@ -49,7 +45,7 @@ impl History {
     pub fn add_step(&mut self, step_name: String, difference: StepDifference) {
         let new_node_idx = self.tree.add_node(Step {
             name: step_name,
-            parent_difference: Some(difference),
+            parent_difference: difference,
         });
 
         match self.is_leaf(self.current_step) {
@@ -120,46 +116,123 @@ impl History {
     //     .to_string()
     // }
 
+    fn update(&mut self, new_current_step: Option<usize>) {
+        if let Some(step) = new_current_step {
+            self.send_diff(self.compute_diff(step));
+            self.current_step = step;
+        }
+    }
+
+    fn compute_diff(&self, step: usize) -> StepDifference {
+        let to = NodeIndex::from(step as u32);
+        let rollback_point = lca(
+            &self.tree,
+            self.root,
+            NodeIndex::from(self.current_step as u32),
+            to,
+        )
+        .unwrap();
+
+        // walk back to rollback point collecting diff steps
+        let mut backward_steps = vec![];
+        let mut curr_step = NodeIndex::from(self.current_step as u32);
+        while curr_step != rollback_point {
+            self.tree
+                .neighbors_directed(curr_step, Incoming)
+                .for_each(|n| {
+                    backward_steps.push(
+                        self.tree
+                            .node_weight(curr_step)
+                            .unwrap()
+                            .parent_difference
+                            .clone(),
+                    );
+
+                    curr_step = n
+                })
+        }
+
+        // squash backward steps
+        let backward_diff = backward_steps
+            .iter()
+            .fold(StepDifference::default(), |accum, diff| {
+                accum.squash(&diff.reverse())
+            });
+
+        // walk forward to selected step collecting diff steps
+        let mut forward_steps = vec![];
+        if let Some(path) =
+            all_simple_paths::<Vec<_>, _>(&self.tree, rollback_point, to, 0, None).next()
+        {
+            path.iter().for_each(|n| {
+                forward_steps.push(self.tree.node_weight(*n).unwrap().parent_difference.clone());
+            });
+        }
+
+        // squash forward steps
+        forward_steps
+            .iter_mut()
+            .fold(backward_diff, |accum, diff| accum.squash(&diff))
+    }
+
+    fn send_diff(&mut self, diff: StepDifference) {
+        let payload = serde_json::to_string(&diff).unwrap();
+        if let Err(err) = self.bus.write(
+            channels::HISTORY_DIFFERENCE.to_string(),
+            Message::new(payload),
+        ) {
+            error!("failed to publish message: {err}");
+        }
+    }
+
+    fn draw_step_button(&self, node: NodeIndex, ui: &mut Ui) -> Option<usize> {
+        let mut selected_step = None;
+
+        let node_weight = self.tree.node_weight(node).unwrap();
+
+        let mut prev_tooltip_vec = vec![];
+        let mut diff = node_weight.clone().parent_difference;
+        prev_tooltip_vec.push(format!("elements\n{}\n", diff.elements));
+        prev_tooltip_vec.push(format!("color\n{}\n", diff.colored));
+        prev_tooltip_vec.push(format!("signal\n{}\n", diff.signal_holders));
+
+        let mut curr_tooltip_vec = vec![];
+        diff = self.compute_diff(node.index());
+        curr_tooltip_vec.push(format!("elements\n{}\n", diff.elements));
+        curr_tooltip_vec.push(format!("color\n{}\n", diff.colored));
+        curr_tooltip_vec.push(format!("signal\n{}\n", diff.signal_holders));
+
+        let step_name = node_weight.name.clone();
+        ui.horizontal(|ui| {
+            let mut btn = ui.selectable_label(node.index() == self.current_step, step_name);
+
+            btn = btn.on_hover_text(format!(
+                "previous step diff:\n{}\n----------------\ncurrent step diff:\n{}",
+                prev_tooltip_vec.join("\n"),
+                curr_tooltip_vec.join("\n"),
+            ));
+
+            if btn.clicked() {
+                selected_step = Some(node.index())
+            };
+        });
+
+        selected_step
+    }
+
     fn draw_history_recursive(
         &self,
         node: NodeIndex,
         prev_generation: usize,
         ui: &mut Ui,
     ) -> Option<usize> {
-        let node_weight = self.tree.node_weight(node).unwrap();
-        let step_name = node_weight.name.clone();
         let generation = self.get_generation(node.index());
         let children_edges = self.tree.edges_directed(node, Outgoing).collect::<Vec<_>>();
-        let mut selected_step = None;
         let mut children_selected_steps = vec![];
-        let step_button = |ui: &mut Ui| {
-            ui.horizontal(|ui| {
-                let mut btn = ui.selectable_label(node.index() == self.current_step, step_name);
-                if let Some(diff) = node_weight.clone().parent_difference {
-                    let mut tooltip_vec = vec![];
-                    if let Some(elements_diff) = diff.elements {
-                        tooltip_vec.push(format!("elements {}", elements_diff))
-                    };
-                    if let Some(colored_diff) = diff.colored {
-                        tooltip_vec.push(format!("color {}", colored_diff))
-                    };
-                    if let Some(signal_diff) = diff.signal_holders {
-                        tooltip_vec.push(format!("signal {}", signal_diff))
-                    };
-
-                    if !tooltip_vec.is_empty() {
-                        btn = btn.on_hover_text(tooltip_vec.join("\n"));
-                    }
-                };
-
-                if btn.clicked() {
-                    selected_step = Some(node.index())
-                };
-            });
-        };
+        let mut selected_step = None;
 
         if generation == prev_generation {
-            step_button(ui);
+            selected_step = self.draw_step_button(node, ui);
             children_edges.iter().for_each(|ce| {
                 children_selected_steps.push(self.draw_history_recursive(
                     ce.target(),
@@ -169,7 +242,7 @@ impl History {
             });
         } else {
             ui.collapsing(format!("split {}", generation), |ui| {
-                step_button(ui);
+                selected_step = self.draw_step_button(node, ui);
                 children_edges.iter().for_each(|ce| {
                     children_selected_steps.push(self.draw_history_recursive(
                         ce.target(),
@@ -191,79 +264,6 @@ impl History {
         }
 
         selected_step
-    }
-
-    fn update(&mut self, new_current_step: Option<usize>) {
-        if let Some(step) = new_current_step {
-            self.send_diff(self.compute_diff(step));
-            self.current_step = step;
-        }
-    }
-
-    fn compute_diff(&self, step: usize) -> StepDifference {
-        let to = NodeIndex::from(step as u32);
-        let rollback_point = lca(
-            &self.tree,
-            self.root,
-            NodeIndex::from(self.current_step as u32),
-            to,
-        )
-        .unwrap();
-
-        // walk back to rollback point collecting diffs
-        let mut backward_steps = vec![];
-        let mut curr_step = NodeIndex::from(self.current_step as u32);
-        while curr_step != rollback_point {
-            self.tree
-                .neighbors_directed(curr_step, Incoming)
-                .for_each(|n| {
-                    if let Some(diff) = self
-                        .tree
-                        .node_weight(curr_step)
-                        .unwrap()
-                        .parent_difference
-                        .clone()
-                    {
-                        backward_steps.push(diff);
-                    };
-
-                    curr_step = n
-                })
-        }
-
-        // squash backward steps
-        let backward_diff = backward_steps
-            .iter()
-            .fold(StepDifference::default(), |accum, diff| {
-                accum.squash(&diff.reverse())
-            });
-
-        // walk forward to selected step sending difference insructions
-        let mut forward_steps = vec![];
-        if let Some(path) =
-            all_simple_paths::<Vec<_>, _>(&self.tree, rollback_point, to, 0, None).next()
-        {
-            path.iter().for_each(|n| {
-                if let Some(diff) = self.tree.node_weight(*n).unwrap().parent_difference.clone() {
-                    forward_steps.push(diff);
-                };
-            });
-        }
-
-        // squash forward steps
-        forward_steps
-            .iter_mut()
-            .fold(backward_diff, |accum, diff| accum.squash(&diff))
-    }
-
-    fn send_diff(&mut self, diff: StepDifference) {
-        let payload = serde_json::to_string(&diff).unwrap();
-        if let Err(err) = self.bus.write(
-            channels::HISTORY_DIFFERENCE.to_string(),
-            Message::new(payload),
-        ) {
-            error!("failed to publish message: {err}");
-        }
     }
 }
 

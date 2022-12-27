@@ -6,7 +6,7 @@ use super::step_difference::StepDifference;
 pub struct Step {
     pub name: String,
     /// parent_difference has none value only for root node
-    pub parent_difference: Option<StepDifference>,
+    pub parent_difference: StepDifference,
 }
 
 impl Display for Step {

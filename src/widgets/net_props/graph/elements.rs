@@ -68,7 +68,7 @@ impl Elements {
     }
 
     /// computes difference which holds set of deleted and added elements
-    pub fn difference(&self, other: &Elements) -> Option<Difference> {
+    pub fn compute_difference(&self, other: &Elements) -> Difference {
         let mut minus_nodes = HashSet::new();
         self.nodes.iter().for_each(|n| {
             if !other.nodes.contains(n) {
@@ -100,13 +100,13 @@ impl Elements {
             && minus_nodes.is_empty()
             && minus_edges.is_empty()
         {
-            return None;
+            return Default::default();
         };
 
-        return Some(Difference {
+        Difference {
             plus: Elements::new(plus_nodes, plus_edges),
             minus: Elements::new(minus_nodes, minus_edges),
-        });
+        }
     }
 
     pub fn union(&self, other: &Elements) -> Elements {

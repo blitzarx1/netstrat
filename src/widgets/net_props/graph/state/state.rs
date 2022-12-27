@@ -9,7 +9,6 @@ use crate::widgets::net_props::graph::elements::Elements;
 use crate::widgets::net_props::graph::path::Path;
 use crate::widgets::net_props::settings::{ConeSettings, EdgeWeight, Settings};
 use crate::widgets::StepDifference;
-use crossbeam::channel::unbounded;
 use lazy_static::lazy_static;
 use ndarray::Array;
 use ndarray::Array2;
@@ -197,12 +196,11 @@ impl State {
     }
 
     pub fn update(&mut self, diff: StepDifference) {
-        if let Some(diff) = diff.colored {
-            self.calculated.colored = self.calculated.colored.apply_difference(diff);
-        };
-        if let Some(diff) = diff.signal_holders {
-            self.calculated.signal_holders = self.calculated.signal_holders.apply_difference(diff);
-        };
+        self.calculated.colored = self.calculated.colored.apply_difference(diff.colored);
+        self.calculated.signal_holders = self
+            .calculated
+            .signal_holders
+            .apply_difference(diff.signal_holders);
         // TODO:
         // if let Some(diff) = diff.elements {
         //     self.calculated.colored = self.calculated.colored.apply_difference(diff);
@@ -278,12 +276,12 @@ impl State {
         data.history.add_step(
             "load from file".to_string(),
             StepDifference {
-                elements: Some(Difference {
+                elements: Difference {
                     plus: Elements::new(nodes, edges),
                     minus: Default::default(),
-                }),
-                colored: None,
-                signal_holders: None,
+                },
+                colored: Default::default(),
+                signal_holders: Default::default(),
             },
         );
         data.recalculate_metadata();
@@ -293,12 +291,12 @@ impl State {
 
     pub fn simulation_reset(&mut self) {
         let step_diff = StepDifference {
-            elements: None,
-            colored: None,
-            signal_holders: Some(Difference {
+            elements: Default::default(),
+            colored: Default::default(),
+            signal_holders: Difference {
                 plus: Default::default(),
                 minus: self.calculated.signal_holders.clone(),
-            }),
+            },
         };
         self.history
             .add_step("reset simulation".to_string(), step_diff);
@@ -533,9 +531,9 @@ impl State {
         self.history.add_step(
             "signal forward".to_string(),
             StepDifference {
-                elements: None,
-                colored: None,
-                signal_holders: self.calculated.signal_holders.difference(&elements),
+                elements: Default::default(),
+                colored: Default::default(),
+                signal_holders: self.calculated.signal_holders.compute_difference(&elements),
             },
         );
 
@@ -550,9 +548,9 @@ impl State {
         self.history.add_step(
             "signal backward".to_string(),
             StepDifference {
-                elements: None,
-                colored: None,
-                signal_holders: self.calculated.signal_holders.difference(&elements),
+                elements: Default::default(),
+                colored: Default::default(),
+                signal_holders: self.calculated.signal_holders.compute_difference(&elements),
             },
         );
 
@@ -585,7 +583,7 @@ impl State {
             .for_each(|edge| {
                 new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().1);
             });
-        return Elements::new(new_nodes, new_edges);
+        Elements::new(new_nodes, new_edges)
     }
 
     fn calculate_signal_backward(&self) -> Elements {
@@ -611,7 +609,7 @@ impl State {
             .for_each(|edge| {
                 new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().0);
             });
-        return Elements::new(new_nodes, new_edges);
+        Elements::new(new_nodes, new_edges)
     }
 
     fn adj_mat(&self) -> Array2<isize> {
@@ -703,9 +701,9 @@ impl State {
         }
 
         let step_diff = StepDifference {
-            elements: None,
-            colored: self.calculated.colored.difference(elements),
-            signal_holders: None,
+            elements: Default::default(),
+            colored: self.calculated.colored.compute_difference(elements),
+            signal_holders: Default::default(),
         };
         self.history
             .add_step("color elements".to_string(), step_diff);
@@ -730,10 +728,10 @@ impl State {
             self.graph.remove_edge(*edge);
         });
 
-        let minus_diff = Some(Difference {
+        let minus_diff = Difference {
             plus: Default::default(),
             minus: elements.clone(),
-        });
+        };
 
         let step_diff = StepDifference {
             elements: minus_diff.clone(),
@@ -742,7 +740,7 @@ impl State {
         };
 
         self.history
-            .add_step("add elements".to_string(), step_diff);
+            .add_step("update elements".to_string(), step_diff);
 
         self.calculated.colored = self.calculated.colored.sub(elements);
         self.calculated.signal_holders = self.calculated.signal_holders.sub(elements);

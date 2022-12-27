@@ -783,8 +783,7 @@ impl NetProps {
 impl AppWidget for NetProps {
     fn show(&mut self, ui: &mut Ui) {
         // self.draw_windows(ui);
-
-        ui.separator();
+        // ui.separator();
 
         let mut interactions = Interactions::new(
             self.selected_cycles.clone(),
