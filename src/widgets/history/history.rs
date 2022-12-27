@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, string};
 
 use chrono::{DateTime, Utc};
 use crossbeam::channel::{unbounded, Sender};
@@ -136,9 +136,20 @@ impl History {
             ui.horizontal(|ui| {
                 let mut btn = ui.selectable_label(node.index() == self.current_step, step_name);
                 if let Some(diff) = node_weight.clone().parent_difference {
-                    if let Some(colored_diff) = diff.colored {
-                        btn = btn.on_hover_text(format!("{}", colored_diff));
+                    let mut tooltip_vec = vec![];
+                    if let Some(elements_diff) = diff.elements {
+                        tooltip_vec.push(format!("elements {}", elements_diff))
                     };
+                    if let Some(colored_diff) = diff.colored {
+                        tooltip_vec.push(format!("color {}", colored_diff))
+                    };
+                    if let Some(signal_diff) = diff.signal_holders {
+                        tooltip_vec.push(format!("signal {}", signal_diff))
+                    };
+
+                    if !tooltip_vec.is_empty() {
+                        btn = btn.on_hover_text(tooltip_vec.join("\n"));
+                    }
                 };
 
                 if btn.clicked() {

@@ -17,13 +17,11 @@ use tracing::{debug, error, info};
 use urlencoding::encode;
 
 use crate::netstrat::{channels, Bus, Drawer, Message};
-use crate::widgets::history::{History, Step};
 use crate::widgets::matrix::Matrix;
 use crate::widgets::simulation_props::messages::{MessageOperationResult, OperationType};
 use crate::widgets::OpenDropFile;
 use crate::widgets::{image_drawer, StepDifference};
 use crate::widgets::{simulation_props, AppWidget};
-use crate::windows::{AppWindow, Simulator};
 
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};

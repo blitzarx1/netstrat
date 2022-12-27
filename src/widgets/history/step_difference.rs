@@ -12,7 +12,7 @@ pub struct Difference {
 
 impl Display for Difference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("+: {}\n-: {}", self.plus, self.minus))
+        f.write_fmt(format_args!("➕: {} ➖: {}", self.plus, self.minus))
     }
 }
 

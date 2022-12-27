@@ -203,7 +203,7 @@ impl State {
         if let Some(diff) = diff.signal_holders {
             self.calculated.signal_holders = self.calculated.signal_holders.apply_difference(diff);
         };
-        // TODO: 
+        // TODO:
         // if let Some(diff) = diff.elements {
         //     self.calculated.colored = self.calculated.colored.apply_difference(diff);
         // };
@@ -382,7 +382,7 @@ impl State {
             return None;
         }
 
-        self.delete_elements(&elements);
+        self.soft_delete_elements(&elements);
         Some(())
     }
 
@@ -449,7 +449,7 @@ impl State {
                 elements = elements.union(&c.elements());
             });
 
-        self.delete_elements(&elements);
+        self.soft_delete_elements(&elements);
     }
 
     pub fn delete_initial_cone(&mut self) {
@@ -458,7 +458,7 @@ impl State {
             elements = elements.union(&self.get_cone_elements(*node_idx, Outgoing, -1))
         });
 
-        self.delete_elements(&elements)
+        self.soft_delete_elements(&elements)
     }
 
     pub fn delete_final_cone(&mut self) {
@@ -467,7 +467,7 @@ impl State {
             elements = elements.union(&self.get_cone_elements(*node_idx, Incoming, -1))
         });
 
-        self.delete_elements(&elements)
+        self.soft_delete_elements(&elements)
     }
 
     pub fn color_nodes_and_edges(
@@ -510,7 +510,7 @@ impl State {
 
         let elements = Elements::new(nodes_set, edges_set);
 
-        self.delete_elements(&elements);
+        self.soft_delete_elements(&elements);
         Some(())
     }
 
@@ -716,7 +716,7 @@ impl State {
         self.recalculate_metadata()
     }
 
-    fn delete_elements(&mut self, elements: &Elements) {
+    fn soft_delete_elements(&mut self, elements: &Elements) {
         debug!("deleting elements");
         if elements.is_empty() {
             return;
@@ -742,10 +742,10 @@ impl State {
         };
 
         self.history
-            .add_step("delete elements".to_string(), step_diff);
+            .add_step("add elements".to_string(), step_diff);
 
-        // TODO: subtract deleted instead of reset
-        self.calculated.colored = Default::default();
+        self.calculated.colored = self.calculated.colored.sub(elements);
+        self.calculated.signal_holders = self.calculated.signal_holders.sub(elements);
 
         info!("elements deleted");
         self.recalculate_metadata();

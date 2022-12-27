@@ -13,7 +13,7 @@ pub struct FrozenElements {
 impl Display for FrozenElements {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "nodes: {:?}, edges: {:?}",
+            "🇳: {:?}, 🇪: {:?}",
             self.nodes, self.edges
         ))
     }
