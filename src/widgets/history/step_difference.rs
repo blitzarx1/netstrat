@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 use crate::widgets::net_props::Elements;
@@ -6,6 +8,12 @@ use crate::widgets::net_props::Elements;
 pub struct Difference {
     pub plus: Elements,
     pub minus: Elements,
+}
+
+impl Display for Difference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("+: {}\n-: {}", self.plus, self.minus))
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Default)]

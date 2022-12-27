@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 use super::elements::Elements;
@@ -6,6 +8,15 @@ use super::elements::Elements;
 pub struct FrozenElements {
     pub nodes: Vec<usize>,
     pub edges: Vec<usize>,
+}
+
+impl Display for FrozenElements {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "nodes: {:?}, edges: {:?}",
+            self.nodes, self.edges
+        ))
+    }
 }
 
 impl FrozenElements {

@@ -778,7 +778,7 @@ impl NetProps {
 
     fn check_events(&mut self) {
         self.check_history_diff_event();
-        self.check_simulation_event();
+        // self.check_simulation_event();
     }
 }
 

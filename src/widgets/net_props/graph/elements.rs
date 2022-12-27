@@ -1,6 +1,6 @@
 use petgraph::graph::{EdgeIndex, NodeIndex};
 use serde::{Deserialize, Deserializer, Serialize};
-use std::{collections::HashSet, hash::Hash, ops::Sub};
+use std::{collections::HashSet, fmt::Display, hash::Hash, ops::Sub};
 
 use crate::widgets::{history::Difference, StepDifference};
 
@@ -11,6 +11,12 @@ pub struct Elements {
     nodes: HashSet<NodeIndex>,
     edges: HashSet<EdgeIndex>,
     frozen: FrozenElements,
+}
+
+impl Display for Elements {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", self.frozen()))
+    }
 }
 
 impl Serialize for Elements {

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
 use crossbeam::channel::{unbounded, Sender};
-use egui::Ui;
+use egui::{ScrollArea, Ui};
 use graphviz_rust::dot_structures::{Id, NodeId};
 use petgraph::{
     algo::all_simple_paths,
@@ -126,20 +126,29 @@ impl History {
         prev_generation: usize,
         ui: &mut Ui,
     ) -> Option<usize> {
-        let step_name = self.tree.node_weight(node).unwrap().name.clone();
+        let node_weight = self.tree.node_weight(node).unwrap();
+        let step_name = node_weight.name.clone();
         let generation = self.get_generation(node.index());
         let children_edges = self.tree.edges_directed(node, Outgoing).collect::<Vec<_>>();
         let mut selected_step = None;
         let mut children_selected_steps = vec![];
+        let step_button = |ui: &mut Ui| {
+            ui.horizontal(|ui| {
+                let mut btn = ui.selectable_label(node.index() == self.current_step, step_name);
+                if let Some(diff) = node_weight.clone().parent_difference {
+                    if let Some(colored_diff) = diff.colored {
+                        btn = btn.on_hover_text(format!("{}", colored_diff));
+                    };
+                };
+
+                if btn.clicked() {
+                    selected_step = Some(node.index())
+                };
+            });
+        };
 
         if generation == prev_generation {
-            if ui
-                .selectable_label(node.index() == self.current_step, step_name)
-                .clicked()
-            {
-                selected_step = Some(node.index())
-            };
-
+            step_button(ui);
             children_edges.iter().for_each(|ce| {
                 children_selected_steps.push(self.draw_history_recursive(
                     ce.target(),
@@ -148,15 +157,14 @@ impl History {
                 ));
             });
         } else {
-            ui.push_id(generation, |ui| {
-                ui.collapsing(step_name, |ui| {
-                    children_edges.iter().for_each(|ce| {
-                        children_selected_steps.push(self.draw_history_recursive(
-                            ce.target(),
-                            generation,
-                            ui,
-                        ))
-                    });
+            ui.collapsing(format!("split {}", generation), |ui| {
+                step_button(ui);
+                children_edges.iter().for_each(|ce| {
+                    children_selected_steps.push(self.draw_history_recursive(
+                        ce.target(),
+                        generation,
+                        ui,
+                    ))
                 });
             });
         };
@@ -253,8 +261,15 @@ impl AppWidget for History {
         let mut selected_step = None;
 
         ui.collapsing("History", |ui| {
-            selected_step =
-                self.draw_history_recursive(self.root, self.get_generation(self.root.index()), ui);
+            ScrollArea::both()
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    selected_step = self.draw_history_recursive(
+                        self.root,
+                        self.get_generation(self.root.index()),
+                        ui,
+                    );
+                });
         });
 
         self.update(selected_step)
