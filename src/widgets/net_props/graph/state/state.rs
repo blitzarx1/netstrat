@@ -742,21 +742,14 @@ impl State {
             return;
         }
 
-        let mut deleted_nodes = HashSet::new();
-        let mut deleted_edges = HashSet::new();
         elements.nodes().iter().for_each(|(node, _)| {
             self.graph.remove_node(*node).unwrap();
-            deleted_nodes.insert(*node);
         });
         elements.edges().iter().for_each(|(edge, _)| {
             self.graph.remove_edge(*edge);
-            deleted_edges.insert(*edge);
         });
 
-        self.calculated.deleted = self
-            .calculated
-            .deleted
-            .union(&self.to_elements(deleted_nodes, deleted_edges));
+        self.calculated.deleted = elements.clone();
 
         let minus_diff = Difference {
             plus: Default::default(),
