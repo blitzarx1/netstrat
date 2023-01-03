@@ -174,7 +174,7 @@ impl History {
         // squash forward steps
         forward_steps
             .iter_mut()
-            .fold(backward_diff, |accum, diff| accum.squash(&diff))
+            .fold(backward_diff, |accum, diff| accum.squash(diff))
     }
 
     fn send_diff(&mut self, diff: StepDifference) {

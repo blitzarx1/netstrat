@@ -201,10 +201,8 @@ impl State {
             .calculated
             .signal_holders
             .apply_difference(diff.signal_holders);
-        // TODO:
-        // if let Some(diff) = diff.elements {
-        //     self.calculated.colored = self.calculated.colored.apply_difference(diff);
-        // };
+        self.apply_elements_diff(diff.elements);
+
         self.recalculate_metadata();
     }
 
@@ -612,6 +610,10 @@ impl State {
     //     Elements::new(new_nodes, new_edges)
     // }
 
+    fn apply_elements_diff(&mut self, diff: Difference) {
+        todo!()
+    }
+
     fn adj_mat(&self) -> Array2<isize> {
         let n = self.graph.node_bound();
         let mut mat = Array::zeros((n, n));
@@ -751,15 +753,20 @@ impl State {
 
         self.calculated.deleted = elements.clone();
 
-        let minus_diff = Difference {
+        let empty_elements = Elements::default();
+
+        let elements_diff = Difference {
             plus: Default::default(),
             minus: elements.clone(),
         };
 
         let step_diff = StepDifference {
-            elements: minus_diff.clone(),
-            colored: minus_diff.clone(),
-            signal_holders: minus_diff,
+            elements: elements_diff,
+            colored: self.calculated.colored.compute_difference(&empty_elements),
+            signal_holders: self
+                .calculated
+                .signal_holders
+                .compute_difference(&empty_elements),
         };
 
         self.history
@@ -779,7 +786,6 @@ impl State {
 
         self.calculated.cycles = self.calc_cycles();
         self.calculated.dot = self.calc_dot();
-        self.calculated.adj_mat = self.calc_adj_mat();
 
         info!("graph metadata recalculated");
     }
@@ -801,14 +807,14 @@ impl State {
         longest_path
     }
 
-    fn calc_adj_mat(&self) -> MatrixState {
-        MatrixState {
-            m: self.adj_mat(),
-            colored: self.elements_to_matrix_elements(&self.calculated.colored),
-            deleted: self.elements_to_matrix_elements(&self.calculated.deleted),
-            longest_path: self.calculated.longest_path,
-        }
-    }
+    // fn calc_adj_mat(&self) -> MatrixState {
+    //     MatrixState {
+    //         m: self.adj_mat(),
+    //         colored: self.elements_to_matrix_elements(&self.calculated.colored),
+    //         deleted: self.elements_to_matrix_elements(&self.calculated.deleted),
+    //         longest_path: self.calculated.longest_path,
+    //     }
+    // }
 
     fn calc_dot(&self) -> String {
         let dot = Dot::new(&self.graph).to_string();

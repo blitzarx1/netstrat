@@ -653,51 +653,51 @@ impl NetProps {
         });
     }
 
-    fn draw_section_matrices(&mut self, ui: &mut Ui, inter: &mut Interactions) {
-        ui.collapsing("Matrices", |ui| {
-            ScrollArea::both()
-                .auto_shrink([false, true])
-                .show(ui, |ui| {
-                    ui.collapsing("Adj", |ui| {
-                        self.adj_matrix.show(ui);
-                        ui.collapsing("Power", |ui| {
-                            ui.horizontal_top(|ui| {
-                                ui.add(
-                                    TextEdit::singleline(&mut inter.matrix_power_input)
-                                        .desired_width(50.0),
-                                );
-                                if ui.button("Apply").clicked() {
-                                    inter.clicks.apply_power = true
-                                }
-                            });
-                            ui.add_space(5.0);
-                            self.adj_matrix.powered(self.matrix_power).show(ui);
-                        });
-                    });
-                    ui.collapsing("Reach", |ui| {
-                        self.adj_matrix.reach(-1).show(ui);
-                        ui.collapsing("Steps", |ui| {
-                            ui.horizontal_top(|ui| {
-                                ui.add(
-                                    TextEdit::singleline(&mut inter.reach_matrix_power_input)
-                                        .desired_width(50.0),
-                                );
-                                if ui.button("Apply").clicked() {
-                                    inter.clicks.apply_reach_power = true
-                                }
-                            });
-                            ui.add_space(5.0);
-                            self.adj_matrix
-                                .reach(self.reach_matrix_power as isize)
-                                .show(ui);
-                        });
-                    });
-                    ui.collapsing("Cone Distance", |ui| {
-                        self.adj_matrix.cone_distance().show(ui);
-                    });
-                });
-        });
-    }
+    // fn draw_section_matrices(&mut self, ui: &mut Ui, inter: &mut Interactions) {
+    //     ui.collapsing("Matrices", |ui| {
+    //         ScrollArea::both()
+    //             .auto_shrink([false, true])
+    //             .show(ui, |ui| {
+    //                 ui.collapsing("Adj", |ui| {
+    //                     self.adj_matrix.show(ui);
+    //                     ui.collapsing("Power", |ui| {
+    //                         ui.horizontal_top(|ui| {
+    //                             ui.add(
+    //                                 TextEdit::singleline(&mut inter.matrix_power_input)
+    //                                     .desired_width(50.0),
+    //                             );
+    //                             if ui.button("Apply").clicked() {
+    //                                 inter.clicks.apply_power = true
+    //                             }
+    //                         });
+    //                         ui.add_space(5.0);
+    //                         self.adj_matrix.powered(self.matrix_power).show(ui);
+    //                     });
+    //                 });
+    //                 ui.collapsing("Reach", |ui| {
+    //                     self.adj_matrix.reach(-1).show(ui);
+    //                     ui.collapsing("Steps", |ui| {
+    //                         ui.horizontal_top(|ui| {
+    //                             ui.add(
+    //                                 TextEdit::singleline(&mut inter.reach_matrix_power_input)
+    //                                     .desired_width(50.0),
+    //                             );
+    //                             if ui.button("Apply").clicked() {
+    //                                 inter.clicks.apply_reach_power = true
+    //                             }
+    //                         });
+    //                         ui.add_space(5.0);
+    //                         self.adj_matrix
+    //                             .reach(self.reach_matrix_power as isize)
+    //                             .show(ui);
+    //                     });
+    //                 });
+    //                 ui.collapsing("Cone Distance", |ui| {
+    //                     self.adj_matrix.cone_distance().show(ui);
+    //                 });
+    //             });
+    //     });
+    // }
 
     fn draw_dot_preview_section(&mut self, ui: &mut Ui, inter: &mut Interactions) {
         let mut dot_mock_interaction = self.graph_state.dot();
@@ -799,7 +799,7 @@ impl AppWidget for NetProps {
         self.draw_cones_section(ui, &mut interactions);
         self.draw_cycles_section(ui, &mut interactions);
         self.graph_state.history.show(ui);
-        self.draw_section_matrices(ui, &mut interactions);
+        // self.draw_section_matrices(ui, &mut interactions);
         self.draw_dot_preview_section(ui, &mut interactions);
 
         if self.net_drawer.lock().unwrap().has_unread_image() {
