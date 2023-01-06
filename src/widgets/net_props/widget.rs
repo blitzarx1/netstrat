@@ -25,7 +25,7 @@ use crate::widgets::{simulation_props, AppWidget};
 
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
-use super::graph::State;
+use super::graph::{Builder, State};
 use super::interactions::Interactions;
 use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, Settings};
@@ -35,7 +35,7 @@ pub struct NetProps {
     bus: Bus,
     // windows: Vec<Box<dyn AppWindow>>,
     graph_state: State,
-    adj_matrix: Matrix,
+    // adj_matrix: Matrix,
     net_settings: Settings,
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
@@ -53,12 +53,12 @@ pub struct NetProps {
 impl NetProps {
     pub fn new(drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>) -> Self {
         let bus = Bus::new();
-        let data = State::new_builder(bus.clone()).build();
-        let adj_matrix = Matrix::new(data.adj_matrix());
+        let data = Builder::new(bus.clone()).build();
+        // let adj_matrix = Matrix::new(data.adj_matrix());
 
         let mut s = Self {
             drawer_pub,
-            adj_matrix,
+            // adj_matrix,
             graph_state: data,
             matrix_power: 1,
             reach_matrix_power: 1,
@@ -81,7 +81,7 @@ impl NetProps {
     }
 
     fn reset_data(&self) -> State {
-        State::new_builder(self.bus.clone()).build()
+        Builder::new(self.bus.clone()).build()
     }
 
     fn reset(&mut self) {
@@ -98,7 +98,7 @@ impl NetProps {
     }
 
     fn create(&mut self) {
-        self.graph_state = State::new_builder(self.bus.clone())
+        self.graph_state = Builder::new(self.bus.clone())
             .with_settings(self.net_settings.clone())
             .build();
 
@@ -131,7 +131,7 @@ impl NetProps {
         self.handle_matrix_power(inter.matrix_power_input);
         self.handle_reach_matrix_power(inter.reach_matrix_power_input);
         self.handle_clicks(inter.clicks);
-        self.handle_opened_file();
+        // self.handle_opened_file();
     }
 
     fn update_nodes_and_edges_settings(&mut self, nodes_and_edges_settings: NodesAndEdgeSettings) {
@@ -140,31 +140,31 @@ impl NetProps {
         }
     }
 
-    fn handle_opened_file(&mut self) {
-        if let Some(path) = self.open_drop_file.path() {
-            debug!("opening file: {path}");
-            let p = Path::new(path.as_str());
-            let extension = p.extension();
+    // fn handle_opened_file(&mut self) {
+    //     if let Some(path) = self.open_drop_file.path() {
+    //         debug!("opening file: {path}");
+    //         let p = Path::new(path.as_str());
+    //         let extension = p.extension();
 
-            if extension.is_none() || !extension.unwrap().eq_ignore_ascii_case("dot") {
-                self.toasts
-                    .error("Invalid file extension. Only '.dot' files are allowed.")
-                    .set_duration(Some(Duration::from_secs(5)));
-                return;
-            }
+    //         if extension.is_none() || !extension.unwrap().eq_ignore_ascii_case("dot") {
+    //             self.toasts
+    //                 .error("Invalid file extension. Only '.dot' files are allowed.")
+    //                 .set_duration(Some(Duration::from_secs(5)));
+    //             return;
+    //         }
 
-            let dot_data = read_to_string(p).unwrap();
-            let data = State::from_dot(dot_data);
-            if data.is_none() {
-                self.toasts.error("Failed to parse imported file");
-                return;
-            }
+    //         let dot_data = read_to_string(p).unwrap();
+    //         let data = State::from_dot(dot_data);
+    //         if data.is_none() {
+    //             self.toasts.error("Failed to parse imported file");
+    //             return;
+    //         }
 
-            self.graph_state = data.unwrap();
-            self.update_data();
-            self.reset_settings();
-        }
-    }
+    //         self.graph_state = data.unwrap();
+    //         self.update_data();
+    //         self.reset_settings();
+    //     }
+    // }
 
     fn handle_selected_cycles(&mut self, selected_cycles: HashSet<usize>) {
         if self.selected_cycles == selected_cycles {
@@ -193,7 +193,7 @@ impl NetProps {
     fn update_data(&mut self) {
         debug!("updating graph state");
 
-        self.adj_matrix.set_state(self.graph_state.adj_matrix());
+        // self.adj_matrix.set_state(self.graph_state.adj_matrix());
         self.update_frame();
         self.trigger_changed_toast();
     }
@@ -733,7 +733,7 @@ impl NetProps {
         )
         .unwrap();
 
-        self.graph_state.update(msg_history_diff);
+        self.graph_state.apply_difference(msg_history_diff);
 
         self.update_data();
     }
@@ -794,11 +794,11 @@ impl AppWidget for NetProps {
             self.reach_matrix_power_input.clone(),
         );
         self.draw_create_section(ui, &mut interactions);
-        self.draw_import_export_section(ui, &mut interactions);
+        // self.draw_import_export_section(ui, &mut interactions);
         self.draw_nodes_and_edges_section(ui, &mut interactions);
         self.draw_cones_section(ui, &mut interactions);
         self.draw_cycles_section(ui, &mut interactions);
-        self.graph_state.history.show(ui);
+        self.graph_state.history().show(ui);
         // self.draw_section_matrices(ui, &mut interactions);
         self.draw_dot_preview_section(ui, &mut interactions);
 

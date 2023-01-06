@@ -77,8 +77,8 @@ impl SimulationProps {
             let operation_result =
                 serde_json::from_str::<MessageOperationResult>(&msg.payload()).unwrap();
 
-            if operation_result.signal_holders().edges.is_empty()
-                && operation_result.signal_holders().nodes.is_empty()
+            if operation_result.signal_holders().edges().is_empty()
+                && operation_result.signal_holders().nodes().is_empty()
             {
                 self.info_msg = INFO_MSG_PLACEHOLDER.to_string();
                 self.step = Default::default();

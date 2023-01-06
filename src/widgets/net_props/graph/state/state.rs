@@ -1,11 +1,16 @@
+use super::calculated;
 use super::calculated::Calculated;
+use super::Builder;
 use crate::netstrat::Bus;
+use crate::widgets::history;
 use crate::widgets::history::Difference;
 use crate::widgets::history::History;
 use crate::widgets::matrix::Elements as MatrixElements;
 use crate::widgets::matrix::State as MatrixState;
 use crate::widgets::net_props::graph::cycle::Cycle;
+use crate::widgets::net_props::graph::elements::Edge;
 use crate::widgets::net_props::graph::elements::Elements;
+use crate::widgets::net_props::graph::elements::Node;
 use crate::widgets::net_props::graph::path::Path;
 use crate::widgets::net_props::settings::{ConeSettings, EdgeWeight, Settings};
 use crate::widgets::StepDifference;
@@ -17,11 +22,13 @@ use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
 use petgraph::prelude::{EdgeRef, StableDiGraph};
 use petgraph::stable_graph::EdgeIndex;
+use petgraph::visit::Visitable;
 use petgraph::visit::{depth_first_search, IntoEdgeReferences, IntoNodeReferences, NodeIndexable};
 use petgraph::{Direction, Incoming, Outgoing};
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use regex::Regex;
+use uuid::Uuid;
 use std::collections::{HashMap, HashSet};
 use std::vec;
 use tracing::{debug, error, info, trace};
@@ -35,167 +42,27 @@ enum Color {
     Blue,
 }
 
-#[derive(Default, Clone)]
-pub struct Builder {
-    settings: Settings,
-    bus: Bus,
-}
-
-impl Builder {
-    pub fn with_settings(&mut self, settings: Settings) -> Builder {
-        self.settings = settings;
-        self.clone()
-    }
-
-    pub fn build(&self) -> State {
-        debug!("building graph state with settings: {:?}", self.settings);
-
-        let mut graph = StableDiGraph::with_capacity(
-            self.settings.total_cnt,
-            self.settings.total_cnt * self.settings.total_cnt,
-        );
-        let mut all_nodes = HashSet::with_capacity(self.settings.total_cnt);
-        for i in 0..self.settings.total_cnt {
-            let node_idx = graph.add_node(format!("{i}"));
-            all_nodes.insert(node_idx);
-        }
-
-        let mut rng = rand::thread_rng();
-        let mut ini_set = HashSet::with_capacity(self.settings.ini_cnt);
-        let mut ini_to_add = self.settings.ini_cnt;
-
-        // pick inis
-        while ini_to_add > 0 {
-            let idx = graph.node_indices().choose(&mut rng).unwrap();
-
-            if ini_set.contains(&idx) {
-                continue;
-            }
-
-            let weight = graph.node_weight_mut(idx).unwrap();
-            let new_weight = format!("ini_{}", *weight);
-            *weight = new_weight.clone();
-
-            ini_set.insert(idx);
-            ini_to_add -= 1;
-        }
-
-        let mut last_ends = ini_set.iter().cloned().collect::<Vec<NodeIndex>>();
-        let mut starts = HashSet::new();
-        let mut ends = vec![];
-        let max_degree_pool = Uniform::from(0..self.settings.max_out_degree);
-        let max_degree_pool_ini = Uniform::from(1..self.settings.max_out_degree);
-        let edge_weight_pool = Uniform::from(0.0..1.0);
-        let mut edges_map = HashSet::<[usize; 2]>::new();
-
-        // add edges
-        loop {
-            let mut next_last_ends = vec![];
-            let mut started = 0;
-            last_ends.iter().for_each(|last_end| {
-                if starts.contains(last_end) {
-                    // add output edges only for nodes without output edges
-                    return;
-                }
-
-                starts.insert(*last_end);
-                started += 1;
-
-                let curr_degree = match ini_set.contains(last_end) {
-                    true => max_degree_pool_ini.sample(&mut rng),
-                    false => max_degree_pool.sample(&mut rng),
-                };
-                for _i in 0..curr_degree {
-                    let end = all_nodes.iter().choose(&mut rng).unwrap();
-
-                    if self.settings.no_twin_edges
-                        && edges_map.contains(&[last_end.index(), end.index()])
-                    {
-                        continue;
-                    }
-
-                    let mut weight = self.settings.edge_weight;
-                    if self.settings.edge_weight_type == EdgeWeight::Random {
-                        weight = edge_weight_pool.sample(&mut rng);
-                    }
-
-                    graph.add_edge(*last_end, *end, weight);
-
-                    edges_map.insert([last_end.index(), end.index()]);
-
-                    next_last_ends.push(*end);
-                    ends.push(*end);
-                }
-            });
-
-            last_ends = next_last_ends;
-
-            if started == 0 {
-                break;
-            }
-        }
-
-        let mut fin_set = HashSet::with_capacity(self.settings.fin_cnt);
-        // define fins
-        for _i in 0..self.settings.fin_cnt {
-            let idx = ends.iter().choose(&mut rng).unwrap();
-
-            if fin_set.contains(idx) {
-                continue;
-            }
-
-            let weight = graph.node_weight_mut(*idx).unwrap();
-            let new_weight = format!("fin_{}", *weight);
-            *weight = new_weight.clone();
-
-            fin_set.insert(*idx);
-        }
-
-        let calculated = Calculated {
-            ini_set,
-            fin_set,
-            ..Default::default()
-        };
-
-        let history = History::new("create".to_string(), self.bus.clone());
-
-        let mut state = State {
-            graph,
-            history,
-            calculated,
-            bus: self.bus.clone(),
-            edge_weight: self.settings.edge_weight,
-            edge_weight_type: self.settings.edge_weight_type.clone(),
-        };
-
-        if self.settings.diamond_filter {
-            state.diamond_filter()
-        }
-
-        state.recalculate_metadata();
-        state
-    }
-}
-
 #[derive(Clone, Default)]
 pub struct State {
-    graph: StableDiGraph<String, f64>,
-    pub history: History,
-    bus: Bus,
-    edge_weight: f64,
-    edge_weight_type: EdgeWeight,
+    graph: StableDiGraph<Node, Edge>,
+    history: History,
     calculated: Calculated,
 }
 
 impl State {
-    pub fn new_builder(bus: Bus) -> Builder {
-        Builder {
-            settings: Default::default(),
-            bus,
+    pub fn new(
+        graph: StableDiGraph<Node, Edge>,
+        history: History,
+        calculated: Calculated,
+    ) -> State {
+        State {
+            graph,
+            history,
+            calculated,
         }
     }
 
-    pub fn update(&mut self, diff: StepDifference) {
+    pub fn apply_difference(&mut self, diff: StepDifference) {
         self.calculated.colored = self.calculated.colored.apply_difference(diff.colored);
         self.calculated.signal_holders = self
             .calculated
@@ -205,7 +72,7 @@ impl State {
 
         self.recalculate_metadata();
     }
-
+    /*
     pub fn from_dot(dot_data: String) -> Option<Self> {
         let mut data = State::default();
         let mut has_errors = false;
@@ -217,7 +84,7 @@ impl State {
 
         dot_data.lines().for_each(|l| {
             if !l.contains("->") && !l.contains('{') && !l.contains('}') {
-                if let Some((_, props)) = parse_node(l.to_string()) {
+                if let Some((_, props)) = parse_node_from_dot(l.to_string()) {
                     if let Some(weight) = parse_label(props) {
                         let node_idx = data.graph.add_node(weight.clone());
                         nodes.insert(node_idx);
@@ -246,7 +113,7 @@ impl State {
 
         dot_data.lines().for_each(|l| {
             if l.contains("->") {
-                if let Some((s, e, p)) = parse_edge(l.to_string()) {
+                if let Some((s, e, p)) = parse_edge_from_dot(l.to_string()) {
                     if let Some(label) = parse_label(p) {
                         let weight = label.parse::<f64>().unwrap();
 
@@ -283,22 +150,23 @@ impl State {
         Some(data)
     }
 
-    // pub fn simulation_reset(&mut self) {
-    //     let step_diff = StepDifference {
-    //         elements: Default::default(),
-    //         colored: Default::default(),
-    //         signal_holders: Difference {
-    //             plus: Default::default(),
-    //             minus: self.calculated.signal_holders.clone(),
-    //         },
-    //     };
-    //     self.history
-    //         .add_step("reset simulation".to_string(), step_diff);
+    pub fn simulation_reset(&mut self) {
+        let step_diff = StepDifference {
+            elements: Default::default(),
+            colored: Default::default(),
+            signal_holders: Difference {
+                plus: Default::default(),
+                minus: self.calculated.signal_holders.clone(),
+            },
+        };
+        self.history
+            .add_step("reset simulation".to_string(), step_diff);
 
-    //     self.calculated.signal_holders = Default::default();
+        self.calculated.signal_holders = Default::default();
 
-    //     self.recalculate_metadata();
-    // }
+        self.recalculate_metadata();
+    }
+    */
 
     pub fn color_ini_cones(&mut self) {
         let mut elements = Elements::default();
@@ -326,10 +194,10 @@ impl State {
         let mut has_errors = false;
 
         cones_settings.iter().for_each(|settings| {
-            settings.roots_weights.iter().for_each(|weight| {
-                let root_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
+            settings.roots_names.iter().for_each(|name| {
+                let root_find_result = self.graph.node_references().find(|node| *node.1 == *name);
                 if root_find_result.is_none() {
-                    error!("node with weight {} not found", *weight);
+                    error!("node with name {} not found", *name);
                     has_errors = true;
                     return;
                 }
@@ -353,7 +221,7 @@ impl State {
         let mut elements = Elements::default();
         let mut has_errors = false;
         cones_settings.iter().for_each(|settings| {
-            settings.roots_weights.iter().for_each(|weight| {
+            settings.roots_names.iter().for_each(|weight| {
                 let root_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
                 if root_find_result.is_none() {
                     error!("node with weight {} not found", *weight);
@@ -518,100 +386,149 @@ impl State {
         self.calculated.dot.clone()
     }
 
-    pub fn adj_matrix(&self) -> MatrixState {
+    /*     pub fn adj_matrix(&self) -> MatrixState {
         self.calculated.adj_mat.clone()
+    } */
+
+    pub fn recalculate_metadata(&mut self) {
+        self.calculated.ini_set = self.collect_ini_set();
+        self.calculated.fin_set = self.collect_fin_set();
+        // self.calculated.longest_path = self.calc_longest_path();
+
+        self.calculated.cycles = self.calc_cycles();
+        self.calculated.dot = self.calc_dot();
+
+        info!("graph metadata recalculated");
     }
 
-    // pub fn signal_forward(&mut self) -> Elements {
-    //     debug!("propagating signal forward");
-    //     let elements = self.calculate_signal_forward();
+    pub fn history(&mut self) -> &mut History {
+        &mut self.history
+    }
 
-    //     self.history.add_step(
-    //         "signal forward".to_string(),
-    //         StepDifference {
-    //             elements: Default::default(),
-    //             colored: Default::default(),
-    //             signal_holders: self.calculated.signal_holders.compute_difference(&elements),
-    //         },
-    //     );
+    /*
+        pub fn signal_forward(&mut self) -> Elements {
+        debug!("propagating signal forward");
+        let elements = self.calculate_signal_forward();
 
-    //     self.calculated.signal_holders = elements.clone();
-    //     elements
-    // }
+        self.history.add_step(
+            "signal forward".to_string(),
+            StepDifference {
+                elements: Default::default(),
+                colored: Default::default(),
+                signal_holders: self.calculated.signal_holders.compute_difference(&elements),
+            },
+        );
 
-    // pub fn signal_backward(&mut self) -> Elements {
-    //     debug!("propagating signal backward");
-    //     let elements = self.calculate_signal_backward();
+        self.calculated.signal_holders = elements.clone();
+        elements
+    }
 
-    //     self.history.add_step(
-    //         "signal backward".to_string(),
-    //         StepDifference {
-    //             elements: Default::default(),
-    //             colored: Default::default(),
-    //             signal_holders: self.calculated.signal_holders.compute_difference(&elements),
-    //         },
-    //     );
+    pub fn signal_backward(&mut self) -> Elements {
+        debug!("propagating signal backward");
+        let elements = self.calculate_signal_backward();
 
-    //     self.calculated.signal_holders = elements.clone();
-    //     elements
-    // }
+        self.history.add_step(
+            "signal backward".to_string(),
+            StepDifference {
+                elements: Default::default(),
+                colored: Default::default(),
+                signal_holders: self.calculated.signal_holders.compute_difference(&elements),
+            },
+        );
 
-    // fn calculate_signal_forward(&self) -> Elements {
-    //     debug!("propagating signal forward");
+        self.calculated.signal_holders = elements.clone();
+        elements
+    }
 
-    //     if self.calculated.signal_holders.is_empty() {
-    //         return Elements::new(self.calculated.ini_set.clone(), Default::default());
-    //     }
+    fn calculate_signal_forward(&self) -> Elements {
+        debug!("propagating signal forward");
 
-    //     let mut new_nodes = HashSet::new();
-    //     let mut new_edges = HashSet::new();
-    //     self.calculated
-    //         .signal_holders
-    //         .nodes()
-    //         .iter()
-    //         .for_each(|node| {
-    //             self.graph.edges_directed(*node, Outgoing).for_each(|edge| {
-    //                 new_edges.insert(EdgeIndex::from(edge.id()));
-    //             });
-    //         });
-    //     self.calculated
-    //         .signal_holders
-    //         .edges()
-    //         .iter()
-    //         .for_each(|edge| {
-    //             new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().1);
-    //         });
-    //     Elements::new(new_nodes, new_edges)
-    // }
+        if self.calculated.signal_holders.is_empty() {
+            return Elements::new(self.calculated.ini_set.clone(), Default::default());
+        }
 
-    // fn calculate_signal_backward(&self) -> Elements {
-    //     if self.calculated.signal_holders.is_empty() {
-    //         return Default::default();
-    //     }
+        let mut new_nodes = HashSet::new();
+        let mut new_edges = HashSet::new();
+        self.calculated
+            .signal_holders
+            .nodes()
+            .iter()
+            .for_each(|node| {
+                self.graph.edges_directed(*node, Outgoing).for_each(|edge| {
+                    new_edges.insert(EdgeIndex::from(edge.id()));
+                });
+            });
+        self.calculated
+            .signal_holders
+            .edges()
+            .iter()
+            .for_each(|edge| {
+                new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().1);
+            });
+        Elements::new(new_nodes, new_edges)
+    }
 
-    //     let mut new_nodes = HashSet::new();
-    //     let mut new_edges = HashSet::new();
-    //     self.calculated
-    //         .signal_holders
-    //         .nodes()
-    //         .iter()
-    //         .for_each(|node| {
-    //             self.graph.edges_directed(*node, Incoming).for_each(|edge| {
-    //                 new_edges.insert(edge.id());
-    //             });
-    //         });
-    //     self.calculated
-    //         .signal_holders
-    //         .edges()
-    //         .iter()
-    //         .for_each(|edge| {
-    //             new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().0);
-    //         });
-    //     Elements::new(new_nodes, new_edges)
-    // }
+    fn calculate_signal_backward(&self) -> Elements {
+        if self.calculated.signal_holders.is_empty() {
+            return Default::default();
+        }
+
+        let mut new_nodes = HashSet::new();
+        let mut new_edges = HashSet::new();
+        self.calculated
+            .signal_holders
+            .nodes()
+            .iter()
+            .for_each(|node| {
+                self.graph.edges_directed(*node, Incoming).for_each(|edge| {
+                    new_edges.insert(edge.id());
+                });
+            });
+        self.calculated
+            .signal_holders
+            .edges()
+            .iter()
+            .for_each(|edge| {
+                new_nodes.insert(self.graph.edge_endpoints(*edge).unwrap().0);
+            });
+        Elements::new(new_nodes, new_edges)
+    }
+     */
 
     fn apply_elements_diff(&mut self, diff: Difference) {
-        todo!()
+        if diff.is_empty() {
+            return;
+        }
+
+        self.soft_delete_elements(&diff.minus);
+        self.restore_elements(&diff.plus)
+    }
+
+    fn node_idx_by_name(&self)
+
+    // restores elements mapping old idxs to new ones
+    fn restore_elements(&mut self, elements: &Elements) {
+        let mut nodes_idx_changed = HashMap::with_capacity(elements.nodes().len());
+        elements.nodes().iter().for_each(|(old_idx, repr)| {
+            let new_idx = self.graph.add_node(repr.clone());
+            nodes_idx_changed.insert(*old_idx, new_idx);
+        });
+
+        let mut edges_idx_changed = HashMap::with_capacity(elements.edges().len());
+        elements.edges().iter().for_each(|(old_idx, repr)| {
+            let (start_str, end_str, _) = parse_edge_from_dot(repr.clone()).unwrap();
+            let start: u32 = start_str.parse().unwrap();
+            let end: u32 = end_str.parse().unwrap();
+
+            // FIXME: store and parse weight of the edge
+            let dummy_weight = 1.0;
+            let new_idx = self.graph.add_edge(
+                *nodes_idx_changed.get(&NodeIndex::from(start)).unwrap(),
+                *nodes_idx_changed.get(&NodeIndex::from(end)).unwrap(),
+                dummy_weight,
+            );
+            edges_idx_changed.insert(*old_idx, new_idx);
+        });
     }
 
     fn adj_mat(&self) -> Array2<isize> {
@@ -741,17 +658,18 @@ impl State {
     fn soft_delete_elements(&mut self, elements: &Elements) {
         debug!("deleting elements");
         if elements.is_empty() {
+            debug!("nothing to delete");
             return;
         }
 
-        elements.nodes().iter().for_each(|(node, _)| {
-            self.graph.remove_node(*node).unwrap();
-        });
         elements.edges().iter().for_each(|(edge, _)| {
             self.graph.remove_edge(*edge);
         });
+        elements.nodes().iter().for_each(|(node, _)| {
+            self.graph.remove_node(*node).unwrap();
+        });
 
-        self.calculated.deleted = elements.clone();
+        self.calculated.deleted = self.calculated.deleted.union(elements);
 
         let empty_elements = Elements::default();
 
@@ -779,17 +697,6 @@ impl State {
         self.recalculate_metadata();
     }
 
-    fn recalculate_metadata(&mut self) {
-        self.calculated.ini_set = self.collect_ini_set();
-        self.calculated.fin_set = self.collect_fin_set();
-        self.calculated.longest_path = self.calc_longest_path();
-
-        self.calculated.cycles = self.calc_cycles();
-        self.calculated.dot = self.calc_dot();
-
-        info!("graph metadata recalculated");
-    }
-
     fn calc_longest_path(&self) -> usize {
         let mut longest_path = 0;
         self.calculated.ini_set.iter().for_each(|ini| {
@@ -807,14 +714,14 @@ impl State {
         longest_path
     }
 
-    // fn calc_adj_mat(&self) -> MatrixState {
-    //     MatrixState {
-    //         m: self.adj_mat(),
-    //         colored: self.elements_to_matrix_elements(&self.calculated.colored),
-    //         deleted: self.elements_to_matrix_elements(&self.calculated.deleted),
-    //         longest_path: self.calculated.longest_path,
-    //     }
-    // }
+    /*     fn calc_adj_mat(&self) -> MatrixState {
+        MatrixState {
+            m: self.adj_mat(),
+            colored: self.elements_to_matrix_elements(&self.calculated.colored),
+            deleted: self.elements_to_matrix_elements(&self.calculated.deleted),
+            longest_path: self.calculated.longest_path,
+        }
+    } */
 
     fn calc_dot(&self) -> String {
         let dot = Dot::new(&self.graph).to_string();
@@ -909,7 +816,7 @@ impl State {
                 let mut res = l.to_string();
                 if !l.contains("->") && !l.contains('{') && !l.contains('}') {
                     // line is node
-                    if let Some((node_id, _)) = parse_node(l.to_string()) {
+                    if let Some((node_id, _)) = parse_node_from_dot(l.to_string()) {
                         self.calculated
                             .colored
                             .nodes()
@@ -942,7 +849,7 @@ impl State {
                         .for_each(|(edge, _)| {
                             let (start, end) = self.graph.edge_endpoints(*edge).unwrap();
 
-                            if let Some((s, e, _)) = parse_edge(l.to_string()) {
+                            if let Some((s, e, _)) = parse_edge_from_dot(l.to_string()) {
                                 if s == start.index().to_string() && e == end.index().to_string() {
                                     res = color_line(l.to_string(), Color::Red);
                                 }
@@ -957,7 +864,7 @@ impl State {
                         .for_each(|(edge, _)| {
                             let (start, end) = self.graph.edge_endpoints(*edge).unwrap();
 
-                            if let Some((s, e, _)) = parse_edge(l.to_string()) {
+                            if let Some((s, e, _)) = parse_edge_from_dot(l.to_string()) {
                                 if s == start.index().to_string() && e == end.index().to_string() {
                                     res = color_line(l.to_string(), Color::Blue);
                                 }
@@ -996,7 +903,7 @@ impl State {
                     self.graph.edge_indices().for_each(|edge| {
                         let (start, end) = self.graph.edge_endpoints(edge).unwrap();
 
-                        if let Some((s, e, _)) = parse_edge(l.to_string()) {
+                        if let Some((s, e, _)) = parse_edge_from_dot(l.to_string()) {
                             if s == start.index().to_string() && e == end.index().to_string() {
                                 let weight = *self.graph.edge_weight(edge).unwrap();
                                 let mut normed = (weight / max_weight) * MAX_DOT_WEIGHT;
@@ -1047,10 +954,10 @@ impl State {
 
     fn get_cone_elements(
         &self,
-        root: NodeIndex,
+        root_idx: NodeIndex,
         dir: Direction,
         max_steps: i32,
-    ) -> (HashSet<NodeIndex>, HashSet<EdgeIndex>) {
+    ) -> Elements {
         let mut nodes = HashSet::new();
         let mut edges = HashSet::new();
 
@@ -1130,24 +1037,28 @@ fn weight_line(line: String, weight: f64) -> String {
     format!("{first_part}, penwidth={weight} ]")
 }
 
-fn parse_edge(line: String) -> Option<(String, String, String)> {
+fn parse_edge_from_dot(line: String) -> Option<(String, String, String)> {
     lazy_static! {
-        static ref EDGE_RE: Regex = Regex::new(r"(\d{1,}) -> (\d{1,}).*\[(.*)\]").unwrap();
+        static ref EDGE_RE: Regex =
+            Regex::new(r"(\d{1,})\s?->\s?(\d{1,})\s?\[?(\slabel\s=\s(.*))?\s?\]?").unwrap();
     }
 
     let found = EDGE_RE.captures(line.as_str())?;
     let start = found.get(1)?.as_str();
     let end = found.get(2)?.as_str();
-    let props = found.get(3)?.as_str();
+    let weight = match found.get(4) {
+        Some(res) => res.as_str(),
+        None => "",
+    };
 
-    trace!("parsed edge: {start} -> {end}, with props: {props}");
+    trace!("parsed edge: {start} -> {end}, with weight: {weight}");
 
-    Some((start.to_string(), end.to_string(), props.to_string()))
+    Some((start.to_string(), end.to_string(), weight.to_string()))
 }
 
-fn parse_node(line: String) -> Option<(String, String)> {
+fn parse_node_from_dot(line: String) -> Option<(String, String)> {
     lazy_static! {
-        static ref NODE_RE: Regex = Regex::new(r"(\d{1,}) \[(.*)\]").unwrap();
+        static ref NODE_RE: Regex = Regex::new(r"(\d{1,})\s?\[?(.*)\]?").unwrap();
     }
 
     let found = NODE_RE.captures(line.as_str())?;

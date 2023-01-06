@@ -22,6 +22,12 @@ impl Display for Difference {
     }
 }
 
+impl Difference {
+    pub fn is_empty(&self) -> bool {
+        self.minus.is_empty() && self.plus.is_empty()
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct StepDifference {
     pub elements: Difference,

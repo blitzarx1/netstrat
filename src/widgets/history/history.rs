@@ -1,8 +1,6 @@
-use std::{collections::HashSet, fmt::format};
+use std::collections::HashSet;
 
-use eframe::epaint::text::TextWrapping;
-use egui::{text::LayoutJob, CursorIcon, FontId, ScrollArea, TextFormat, Ui, WidgetText};
-use egui_extras::{Size, StripBuilder};
+use egui::{CollapsingHeader, CursorIcon, ScrollArea, Ui};
 use petgraph::{
     algo::all_simple_paths,
     stable_graph::{NodeIndex, StableDiGraph},
@@ -212,40 +210,17 @@ impl History {
     }
 
     fn draw_step_tooltip_ui(&self, ui: &mut Ui, left: String, right: String) {
-        let job = LayoutJob {
-            wrap: TextWrapping {
-                break_anywhere: false,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let big_font = TextFormat {
-            font_id: FontId {
-                size: 16.0,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-
-        let mut job_prev = job.clone();
-        job_prev.append("rel to prev step", 0.0, big_font.clone());
-
-        let mut job_curr = job;
-        job_curr.append("rel to curr step", 0.0, big_font);
-
-        ui.horizontal_wrapped(|ui| {
-            ui.vertical(|ui| {
-                ui.label(WidgetText::from(job_prev));
-                ui.add_space(10.0);
-                ui.label(left);
-
-                ui.separator();
-
-                ui.add_space(10.0);
-                ui.label(WidgetText::from(job_curr));
-                ui.add_space(10.0);
-                ui.label(right);
-            });
+        ui.vertical_centered(|ui| {
+            CollapsingHeader::new("Rel to prev step")
+                .default_open(true)
+                .show(ui, |ui| {
+                    ui.label(left);
+                });
+            CollapsingHeader::new("Rel to curr step")
+                .default_open(true)
+                .show(ui, |ui| {
+                    ui.label(right);
+                });
         });
     }
 

@@ -45,7 +45,7 @@ impl Default for Settings {
 
 #[derive(PartialEq, Clone)]
 pub struct ConeSettings {
-    pub roots_weights: Vec<String>,
+    pub roots_names: Vec<String>,
     pub dir: Direction,
     pub max_steps: i32,
 }
@@ -53,7 +53,7 @@ pub struct ConeSettings {
 impl Default for ConeSettings {
     fn default() -> Self {
         Self {
-            roots_weights: Default::default(),
+            roots_names: Default::default(),
             dir: Outgoing,
             max_steps: -1,
         }
