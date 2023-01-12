@@ -28,19 +28,14 @@ use petgraph::{Direction, Incoming, Outgoing};
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use regex::Regex;
-use uuid::Uuid;
 use std::collections::{HashMap, HashSet};
 use std::vec;
 use tracing::{debug, error, info, trace};
+use uuid::Uuid;
 
 type ConeSettingsList = Vec<ConeSettings>;
 
 const MAX_DOT_WEIGHT: f64 = 5.0;
-
-enum Color {
-    Red,
-    Blue,
-}
 
 #[derive(Clone, Default)]
 pub struct State {
@@ -62,16 +57,16 @@ impl State {
         }
     }
 
-    pub fn apply_difference(&mut self, diff: StepDifference) {
-        self.calculated.colored = self.calculated.colored.apply_difference(diff.colored);
-        self.calculated.signal_holders = self
-            .calculated
-            .signal_holders
-            .apply_difference(diff.signal_holders);
-        self.apply_elements_diff(diff.elements);
+    // pub fn apply_difference(&mut self, diff: StepDifference) {
+    //     // self.calculated.colored = self.calculated.colored.apply_difference(diff.colored);
+    //     // self.calculated.signal = self
+    //         // .calculated
+    //         // .signal
+    //         // .apply_difference(diff.signal_holders);
+    //     self.apply_elements_diff(diff.elements);
 
-        self.recalculate_metadata();
-    }
+    //     self.recalculate_metadata();
+    // }
     /*
     pub fn from_dot(dot_data: String) -> Option<Self> {
         let mut data = State::default();
@@ -168,219 +163,219 @@ impl State {
     }
     */
 
-    pub fn color_ini_cones(&mut self) {
-        let mut elements = Elements::default();
+    // pub fn color_ini_cones(&mut self) {
+    //     let mut elements = Elements::default();
 
-        for el in self.calculated.ini_set.clone() {
-            let (nodes, edges) = self.get_cone_elements(el, Outgoing, -1);
-            elements = elements.union(&self.to_elements(nodes, edges));
-        }
+    //     for el in self.calculated.ini.nodes().clone() {
+    //         let cone_elements = self.get_cone_elements(, Outgoing, -1);
+    //         elements = elements.union(&cone_elements);
+    //     }
 
-        self.color_elements(&elements)
-    }
+    //     self.color_elements(&elements)
+    // }
 
-    pub fn color_fin_cones(&mut self) {
-        let mut elements = Elements::default();
-        for el in self.calculated.fin_set.clone() {
-            let (nodes, edges) = self.get_cone_elements(el, Incoming, -1);
-            elements = elements.union(&self.to_elements(nodes, edges));
-        }
+    // pub fn color_fin_cones(&mut self) {
+    //     let mut elements = Elements::default();
+    //     for el in self.calculated.fin_set.clone() {
+    //         let (nodes, edges) = self.get_cone_elements(el, Incoming, -1);
+    //         elements = elements.union(&self.to_elements(nodes, edges));
+    //     }
 
-        self.color_elements(&elements);
-    }
+    //     self.color_elements(&elements);
+    // }
 
-    pub fn color_cones(&mut self, cones_settings: ConeSettingsList) -> Option<()> {
-        let mut elements = Elements::default();
-        let mut has_errors = false;
+    // pub fn color_cones(&mut self, cones_settings: ConeSettingsList) -> Option<()> {
+    //     let mut elements = Elements::default();
+    //     let mut has_errors = false;
 
-        cones_settings.iter().for_each(|settings| {
-            settings.roots_names.iter().for_each(|name| {
-                let root_find_result = self.graph.node_references().find(|node| *node.1 == *name);
-                if root_find_result.is_none() {
-                    error!("node with name {} not found", *name);
-                    has_errors = true;
-                    return;
-                }
+    //     cones_settings.iter().for_each(|settings| {
+    //         settings.roots_names.iter().for_each(|name| {
+    //             let root_find_result = self.graph.node_references().find(|node| *node.1 == *name);
+    //             if root_find_result.is_none() {
+    //                 error!("node with name {} not found", *name);
+    //                 has_errors = true;
+    //                 return;
+    //             }
 
-                let root = root_find_result.unwrap();
-                let (nodes, edges) =
-                    self.get_cone_elements(root.0, settings.dir, settings.max_steps);
-                elements = elements.union(&self.to_elements(nodes, edges))
-            });
-        });
+    //             let root = root_find_result.unwrap();
+    //             let (nodes, edges) =
+    //                 self.get_cone_elements(root.0, settings.dir, settings.max_steps);
+    //             elements = elements.union(&self.to_elements(nodes, edges))
+    //         });
+    //     });
 
-        if has_errors {
-            return None;
-        }
+    //     if has_errors {
+    //         return None;
+    //     }
 
-        self.color_elements(&elements);
-        Some(())
-    }
+    //     self.color_elements(&elements);
+    //     Some(())
+    // }
 
-    pub fn delete_cones(&mut self, cones_settings: ConeSettingsList) -> Option<()> {
-        let mut elements = Elements::default();
-        let mut has_errors = false;
-        cones_settings.iter().for_each(|settings| {
-            settings.roots_names.iter().for_each(|weight| {
-                let root_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
-                if root_find_result.is_none() {
-                    error!("node with weight {} not found", *weight);
-                    has_errors = true;
-                    return;
-                }
+    // pub fn delete_cones(&mut self, cones_settings: ConeSettingsList) -> Option<()> {
+    //     let mut elements = Elements::default();
+    //     let mut has_errors = false;
+    //     cones_settings.iter().for_each(|settings| {
+    //         settings.roots_names.iter().for_each(|weight| {
+    //             let root_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
+    //             if root_find_result.is_none() {
+    //                 error!("node with weight {} not found", *weight);
+    //                 has_errors = true;
+    //                 return;
+    //             }
 
-                let (root_idx, _) = root_find_result.unwrap();
-                let (nodes, edges) =
-                    self.get_cone_elements(root_idx, settings.dir, settings.max_steps);
-                elements = elements.union(&self.to_elements(nodes, edges))
-            });
-        });
+    //             let (root_idx, _) = root_find_result.unwrap();
+    //             let (nodes, edges) =
+    //                 self.get_cone_elements(root_idx, settings.dir, settings.max_steps);
+    //             elements = elements.union(&self.to_elements(nodes, edges))
+    //         });
+    //     });
 
-        if has_errors {
-            return None;
-        }
+    //     if has_errors {
+    //         return None;
+    //     }
 
-        self.soft_delete_elements(&elements);
-        Some(())
-    }
+    //     self.soft_delete_elements(&elements);
+    //     Some(())
+    // }
 
-    pub fn color_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
-        let mut elements = Elements::default();
-        self.calculated
-            .cycles
-            .iter()
-            .enumerate()
-            .for_each(|(i, c)| {
-                if cycle_idxs.contains(&i) {
-                    let proto_elements = &c.nodes_and_edges();
-                    elements = elements.union(
-                        &self.to_elements(proto_elements.0.clone(), proto_elements.1.clone()),
-                    )
-                }
-            });
+    // pub fn color_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
+    //     let mut elements = Elements::default();
+    //     self.calculated
+    //         .cycles
+    //         .iter()
+    //         .enumerate()
+    //         .for_each(|(i, c)| {
+    //             if cycle_idxs.contains(&i) {
+    //                 let proto_elements = &c.nodes_and_edges();
+    //                 elements = elements.union(
+    //                     &self.to_elements(proto_elements.0.clone(), proto_elements.1.clone()),
+    //                 )
+    //             }
+    //         });
 
-        self.color_elements(&elements);
-    }
+    //     self.color_elements(&elements);
+    // }
 
-    pub fn diamond_filter(&mut self) {
-        let mut ini_union_cone = HashSet::new();
-        // gather cone of all children of inis
-        for el in self.calculated.ini_set.clone() {
-            ini_union_cone = ini_union_cone
-                .union(&self.get_cone_elements(el, Outgoing, -1).0)
-                .cloned()
-                .collect();
-        }
+    // pub fn diamond_filter(&mut self) {
+    //     let mut ini_union_cone = HashSet::new();
+    //     // gather cone of all children of inis
+    //     for el in self.calculated.ini.clone() {
+    //         ini_union_cone = ini_union_cone
+    //             .union(&self.get_cone_elements(el, Outgoing, -1).0)
+    //             .cloned()
+    //             .collect();
+    //     }
 
-        let mut fin_union_cone = HashSet::new();
-        // gather cone of all parents of fins
-        for el in self.calculated.fin_set.clone() {
-            fin_union_cone = fin_union_cone
-                .union(&self.get_cone_elements(el, Incoming, -1).0)
-                .cloned()
-                .collect();
-        }
+    //     let mut fin_union_cone = HashSet::new();
+    //     // gather cone of all parents of fins
+    //     for el in self.calculated.fin.clone() {
+    //         fin_union_cone = fin_union_cone
+    //             .union(&self.get_cone_elements(el, Incoming, -1).0)
+    //             .cloned()
+    //             .collect();
+    //     }
 
-        let intersection = ini_union_cone
-            .intersection(&fin_union_cone)
-            .cloned()
-            .collect::<HashSet<NodeIndex>>();
+    //     let intersection = ini_union_cone
+    //         .intersection(&fin_union_cone)
+    //         .cloned()
+    //         .collect::<HashSet<NodeIndex>>();
 
-        self.calculated.deleted = self
-            .calculated
-            .deleted
-            .union(&self.to_elements(intersection.clone(), Default::default()));
+    //     self.calculated.deleted = self
+    //         .calculated
+    //         .deleted
+    //         .union(&self.to_elements(intersection.clone(), Default::default()));
 
-        self.graph
-            .retain_nodes(|_, node| intersection.contains(&node));
-    }
+    //     self.graph
+    //         .retain_nodes(|_, node| intersection.contains(&node));
+    // }
 
-    pub fn delete_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
-        let mut elements = Elements::default();
-        self.calculated
-            .cycles
-            .iter()
-            .enumerate()
-            .for_each(|(i, c)| {
-                if !cycle_idxs.contains(&i) {
-                    return;
-                }
+    // pub fn delete_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
+    //     let mut elements = Elements::default();
+    //     self.calculated
+    //         .cycles
+    //         .iter()
+    //         .enumerate()
+    //         .for_each(|(i, c)| {
+    //             if !cycle_idxs.contains(&i) {
+    //                 return;
+    //             }
 
-                let proto_elements = &c.nodes_and_edges();
-                elements = elements
-                    .union(&self.to_elements(proto_elements.0.clone(), proto_elements.1.clone()))
-            });
+    //             let proto_elements = &c.nodes_and_edges();
+    //             elements = elements
+    //                 .union(&self.to_elements(proto_elements.0.clone(), proto_elements.1.clone()))
+    //         });
 
-        self.soft_delete_elements(&elements);
-    }
+    //     self.soft_delete_elements(&elements);
+    // }
 
-    pub fn delete_initial_cone(&mut self) {
-        let mut elements = Elements::default();
-        self.calculated.ini_set.iter().for_each(|node_idx| {
-            let (nodes, edges) = self.get_cone_elements(*node_idx, Outgoing, -1);
-            elements = elements.union(&self.to_elements(nodes, edges))
-        });
+    // pub fn delete_initial_cone(&mut self) {
+    //     let mut elements = Elements::default();
+    //     self.calculated.ini_set.iter().for_each(|node_idx| {
+    //         let (nodes, edges) = self.get_cone_elements(*node_idx, Outgoing, -1);
+    //         elements = elements.union(&self.to_elements(nodes, edges))
+    //     });
 
-        self.soft_delete_elements(&elements)
-    }
+    //     self.soft_delete_elements(&elements)
+    // }
 
-    pub fn delete_final_cone(&mut self) {
-        let mut elements = Elements::default();
-        self.calculated.fin_set.iter().for_each(|node_idx| {
-            let (nodes, edges) = self.get_cone_elements(*node_idx, Incoming, -1);
-            elements = elements.union(&self.to_elements(nodes, edges))
-        });
+    // pub fn delete_final_cone(&mut self) {
+    //     let mut elements = Elements::default();
+    //     self.calculated.fin_set.iter().for_each(|node_idx| {
+    //         let (nodes, edges) = self.get_cone_elements(*node_idx, Incoming, -1);
+    //         elements = elements.union(&self.to_elements(nodes, edges))
+    //     });
 
-        self.soft_delete_elements(&elements)
-    }
+    //     self.soft_delete_elements(&elements)
+    // }
 
-    pub fn color_nodes_and_edges(
-        &mut self,
-        nodes: Vec<String>,
-        edges: Vec<[String; 2]>,
-    ) -> Option<()> {
-        let mut nodes_set = Default::default();
-        if !nodes.is_empty() {
-            let nodes_res = self.find_nodes(nodes);
-            nodes_set = nodes_res?.nodes()
-        }
+    // pub fn color_nodes_and_edges(
+    //     &mut self,
+    //     nodes: Vec<String>,
+    //     edges: Vec<[String; 2]>,
+    // ) -> Option<()> {
+    //     let mut nodes_set = Default::default();
+    //     if !nodes.is_empty() {
+    //         let nodes_res = self.find_nodes(nodes);
+    //         nodes_set = nodes_res?.nodes()
+    //     }
 
-        let mut edges_set = Default::default();
-        if !edges.is_empty() {
-            let edges_res = self.find_edges(edges);
-            edges_set = edges_res?.edges();
-        }
+    //     let mut edges_set = Default::default();
+    //     if !edges.is_empty() {
+    //         let edges_res = self.find_edges(edges);
+    //         edges_set = edges_res?.edges();
+    //     }
 
-        self.color_elements(&Elements::new(nodes_set, edges_set));
-        Some(())
-    }
+    //     self.color_elements(&Elements::new(nodes_set, edges_set));
+    //     Some(())
+    // }
 
-    pub fn delete_nodes_and_edges(
-        &mut self,
-        nodes: Vec<String>,
-        edges: Vec<[String; 2]>,
-    ) -> Option<()> {
-        let mut nodes_set = Default::default();
-        if !nodes.is_empty() {
-            let nodes_res = self.find_nodes(nodes);
-            nodes_set = nodes_res?.nodes()
-        }
+    // pub fn delete_nodes_and_edges(
+    //     &mut self,
+    //     nodes: Vec<String>,
+    //     edges: Vec<[String; 2]>,
+    // ) -> Option<()> {
+    //     let mut nodes_set = Default::default();
+    //     if !nodes.is_empty() {
+    //         let nodes_res = self.find_nodes(nodes);
+    //         nodes_set = nodes_res?.nodes()
+    //     }
 
-        let mut edges_set = Default::default();
-        if !edges.is_empty() {
-            let edges_res = self.find_edges(edges);
-            edges_set = edges_res?.edges();
-        }
+    //     let mut edges_set = Default::default();
+    //     if !edges.is_empty() {
+    //         let edges_res = self.find_edges(edges);
+    //         edges_set = edges_res?.edges();
+    //     }
 
-        let elements = Elements::new(nodes_set, edges_set);
+    //     let elements = Elements::new(nodes_set, edges_set);
 
-        self.soft_delete_elements(&elements);
-        Some(())
-    }
+    //     self.soft_delete_elements(&elements);
+    //     Some(())
+    // }
 
-    pub fn cycles(self) -> Vec<Cycle> {
-        self.calculated.cycles
-    }
+    // pub fn cycles(self) -> Vec<Cycle> {
+    //     self.calculated.cycles
+    // }
 
     pub fn dot(&self) -> String {
         self.calculated.dot.clone()
@@ -391,11 +386,11 @@ impl State {
     } */
 
     pub fn recalculate_metadata(&mut self) {
-        self.calculated.ini_set = self.collect_ini_set();
-        self.calculated.fin_set = self.collect_fin_set();
+        // self.calculated.ini = self.collect_ini();
+        // self.calculated.fin = self.collect_fin();
         // self.calculated.longest_path = self.calc_longest_path();
 
-        self.calculated.cycles = self.calc_cycles();
+        // self.calculated.cycles = self.calc_cycles();
         self.calculated.dot = self.calc_dot();
 
         info!("graph metadata recalculated");
@@ -495,145 +490,143 @@ impl State {
     }
      */
 
-    fn apply_elements_diff(&mut self, diff: Difference) {
-        if diff.is_empty() {
-            return;
-        }
+    // fn apply_elements_diff(&mut self, diff: Difference) {
+    //     if diff.is_empty() {
+    //         return;
+    //     }
 
-        self.soft_delete_elements(&diff.minus);
-        self.restore_elements(&diff.plus)
-    }
+    //     self.soft_delete_elements(&diff.minus);
+    //     self.restore_elements(&diff.plus)
+    // }
 
-    fn node_idx_by_name(&self)
+    // // restores elements mapping old idxs to new ones
+    // fn restore_elements(&mut self, elements: &Elements) {
+    //     let mut nodes_idx_changed = HashMap::with_capacity(elements.nodes().len());
+    //     elements.nodes().iter().for_each(|(old_idx, repr)| {
+    //         let new_idx = self.graph.add_node(repr.clone());
+    //         nodes_idx_changed.insert(*old_idx, new_idx);
+    //     });
 
-    // restores elements mapping old idxs to new ones
-    fn restore_elements(&mut self, elements: &Elements) {
-        let mut nodes_idx_changed = HashMap::with_capacity(elements.nodes().len());
-        elements.nodes().iter().for_each(|(old_idx, repr)| {
-            let new_idx = self.graph.add_node(repr.clone());
-            nodes_idx_changed.insert(*old_idx, new_idx);
-        });
+    //     let mut edges_idx_changed = HashMap::with_capacity(elements.edges().len());
+    //     elements.edges().iter().for_each(|(old_idx, repr)| {
+    //         let (start_str, end_str, _) = parse_edge_from_dot(repr.clone()).unwrap();
+    //         let start: u32 = start_str.parse().unwrap();
+    //         let end: u32 = end_str.parse().unwrap();
 
-        let mut edges_idx_changed = HashMap::with_capacity(elements.edges().len());
-        elements.edges().iter().for_each(|(old_idx, repr)| {
-            let (start_str, end_str, _) = parse_edge_from_dot(repr.clone()).unwrap();
-            let start: u32 = start_str.parse().unwrap();
-            let end: u32 = end_str.parse().unwrap();
+    //         // FIXME: store and parse weight of the edge
+    //         let dummy_weight = 1.0;
+    //         let new_idx = self.graph.add_edge(
+    //             *nodes_idx_changed.get(&NodeIndex::from(start)).unwrap(),
+    //             *nodes_idx_changed.get(&NodeIndex::from(end)).unwrap(),
+    //             dummy_weight,
+    //         );
+    //         edges_idx_changed.insert(*old_idx, new_idx);
+    //     });
+    // }
 
-            // FIXME: store and parse weight of the edge
-            let dummy_weight = 1.0;
-            let new_idx = self.graph.add_edge(
-                *nodes_idx_changed.get(&NodeIndex::from(start)).unwrap(),
-                *nodes_idx_changed.get(&NodeIndex::from(end)).unwrap(),
-                dummy_weight,
-            );
-            edges_idx_changed.insert(*old_idx, new_idx);
-        });
-    }
+    // fn adj_mat(&self) -> Array2<isize> {
+    //     let n = self.graph.node_bound();
+    //     let mut mat = Array::zeros((n, n));
 
-    fn adj_mat(&self) -> Array2<isize> {
-        let n = self.graph.node_bound();
-        let mut mat = Array::zeros((n, n));
+    //     self.graph.edge_references().for_each(|e| {
+    //         let row = e.source().index();
+    //         let col = e.target().index();
 
-        self.graph.edge_references().for_each(|e| {
-            let row = e.source().index();
-            let col = e.target().index();
+    //         mat[[row, col]] += 1
+    //     });
 
-            mat[[row, col]] += 1
-        });
+    //     mat
+    // }
 
-        mat
-    }
+    // fn find_nodes(&self, weights: Vec<String>) -> Option<Elements> {
+    //     let mut nodes_set = HashSet::with_capacity(weights.len());
+    //     let mut has_errors = false;
+    //     weights.iter().for_each(|weight| {
+    //         let node_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
+    //         if node_find_result.is_none() {
+    //             error!("node with weight {} not found", *weight);
+    //             has_errors = true;
+    //             return;
+    //         }
 
-    fn find_nodes(&self, weights: Vec<String>) -> Option<Elements> {
-        let mut nodes_set = HashSet::with_capacity(weights.len());
-        let mut has_errors = false;
-        weights.iter().for_each(|weight| {
-            let node_find_result = self.graph.node_references().find(|node| *node.1 == *weight);
-            if node_find_result.is_none() {
-                error!("node with weight {} not found", *weight);
-                has_errors = true;
-                return;
-            }
+    //         let (node_idx, _) = node_find_result.unwrap();
+    //         nodes_set.insert(node_idx);
+    //     });
 
-            let (node_idx, _) = node_find_result.unwrap();
-            nodes_set.insert(node_idx);
-        });
+    //     if has_errors {
+    //         return None;
+    //     }
+    //     Some(self.to_elements(nodes_set, Default::default()))
+    // }
 
-        if has_errors {
-            return None;
-        }
-        Some(self.to_elements(nodes_set, Default::default()))
-    }
+    // fn find_edges(&self, bounds: Vec<[String; 2]>) -> Option<Elements> {
+    //     let mut edges_set = HashSet::with_capacity(bounds.len());
+    //     let mut has_errors = false;
 
-    fn find_edges(&self, bounds: Vec<[String; 2]>) -> Option<Elements> {
-        let mut edges_set = HashSet::with_capacity(bounds.len());
-        let mut has_errors = false;
+    //     bounds.iter().for_each(|edge| {
+    //         let start_weight = edge.first().unwrap();
+    //         let start_result = self
+    //             .graph
+    //             .node_references()
+    //             .find(|node| *node.1 == *start_weight);
+    //         if start_result.is_none() {
+    //             error!("node with weight {} not found", start_weight);
+    //             has_errors = true;
+    //             return;
+    //         }
+    //         let (start, _) = start_result.unwrap();
 
-        bounds.iter().for_each(|edge| {
-            let start_weight = edge.first().unwrap();
-            let start_result = self
-                .graph
-                .node_references()
-                .find(|node| *node.1 == *start_weight);
-            if start_result.is_none() {
-                error!("node with weight {} not found", start_weight);
-                has_errors = true;
-                return;
-            }
-            let (start, _) = start_result.unwrap();
+    //         let end_weight = edge.last().unwrap();
+    //         let end_result = self
+    //             .graph
+    //             .node_references()
+    //             .find(|node| *node.1 == *end_weight);
+    //         if end_result.is_none() {
+    //             error!("node with weight {} not found", end_weight);
+    //             has_errors = true;
+    //             return;
+    //         }
+    //         let (end, _) = end_result.unwrap();
 
-            let end_weight = edge.last().unwrap();
-            let end_result = self
-                .graph
-                .node_references()
-                .find(|node| *node.1 == *end_weight);
-            if end_result.is_none() {
-                error!("node with weight {} not found", end_weight);
-                has_errors = true;
-                return;
-            }
-            let (end, _) = end_result.unwrap();
+    //         let edge_find_result = self.graph.find_edge(start, end);
+    //         if edge_find_result.is_none() {
+    //             error!("edge {edge:?} not found");
+    //             has_errors = true;
+    //             return;
+    //         }
 
-            let edge_find_result = self.graph.find_edge(start, end);
-            if edge_find_result.is_none() {
-                error!("edge {edge:?} not found");
-                has_errors = true;
-                return;
-            }
+    //         let edge_idx = edge_find_result.unwrap();
+    //         edges_set.insert(edge_idx);
+    //     });
 
-            let edge_idx = edge_find_result.unwrap();
-            edges_set.insert(edge_idx);
-        });
+    //     if has_errors {
+    //         return None;
+    //     }
 
-        if has_errors {
-            return None;
-        }
+    //     Some(self.to_elements(Default::default(), edges_set))
+    // }
 
-        Some(self.to_elements(Default::default(), edges_set))
-    }
+    // fn to_elements(&self, nodes: HashSet<NodeIndex>, edges: HashSet<EdgeIndex>) -> Elements {
+    //     let mut elements_nodes = HashMap::new();
+    //     nodes.iter().for_each(|n| {
+    //         elements_nodes.insert(*n, self.graph.node_weight(*n).unwrap().clone());
+    //     });
 
-    fn to_elements(&self, nodes: HashSet<NodeIndex>, edges: HashSet<EdgeIndex>) -> Elements {
-        let mut elements_nodes = HashMap::new();
-        nodes.iter().for_each(|n| {
-            elements_nodes.insert(*n, self.graph.node_weight(*n).unwrap().clone());
-        });
+    //     let mut elements_edges = HashMap::new();
+    //     edges.iter().for_each(|e| {
+    //         let (start, end) = self.graph.edge_endpoints(*e).unwrap();
+    //         elements_edges.insert(
+    //             *e,
+    //             format!(
+    //                 "{}->{}",
+    //                 self.graph.node_weight(start).unwrap().clone(),
+    //                 self.graph.node_weight(end).unwrap().clone(),
+    //             ),
+    //         );
+    //     });
 
-        let mut elements_edges = HashMap::new();
-        edges.iter().for_each(|e| {
-            let (start, end) = self.graph.edge_endpoints(*e).unwrap();
-            elements_edges.insert(
-                *e,
-                format!(
-                    "{}->{}",
-                    self.graph.node_weight(start).unwrap().clone(),
-                    self.graph.node_weight(end).unwrap().clone(),
-                ),
-            );
-        });
-
-        Elements::new(elements_nodes, elements_edges)
-    }
+    //     Elements::new(elements_nodes, elements_edges)
+    // }
 
     fn color_elements(&mut self, elements: &Elements) {
         debug!("coloring elements");
@@ -655,64 +648,64 @@ impl State {
         self.recalculate_metadata()
     }
 
-    fn soft_delete_elements(&mut self, elements: &Elements) {
-        debug!("deleting elements");
-        if elements.is_empty() {
-            debug!("nothing to delete");
-            return;
-        }
+    // fn soft_delete_elements(&mut self, elements: &Elements) {
+    //     debug!("deleting elements");
+    //     if elements.is_empty() {
+    //         debug!("nothing to delete");
+    //         return;
+    //     }
 
-        elements.edges().iter().for_each(|(edge, _)| {
-            self.graph.remove_edge(*edge);
-        });
-        elements.nodes().iter().for_each(|(node, _)| {
-            self.graph.remove_node(*node).unwrap();
-        });
+    //     elements.edges().iter().for_each(|(edge, _)| {
+    //         self.graph.remove_edge(*edge);
+    //     });
+    //     elements.nodes().iter().for_each(|(node, _)| {
+    //         self.graph.remove_node(*node).unwrap();
+    //     });
 
-        self.calculated.deleted = self.calculated.deleted.union(elements);
+    //     self.calculated.deleted = self.calculated.deleted.union(elements);
 
-        let empty_elements = Elements::default();
+    //     let empty_elements = Elements::default();
 
-        let elements_diff = Difference {
-            plus: Default::default(),
-            minus: elements.clone(),
-        };
+    //     let elements_diff = Difference {
+    //         plus: Default::default(),
+    //         minus: elements.clone(),
+    //     };
 
-        let step_diff = StepDifference {
-            elements: elements_diff,
-            colored: self.calculated.colored.compute_difference(&empty_elements),
-            signal_holders: self
-                .calculated
-                .signal_holders
-                .compute_difference(&empty_elements),
-        };
+    //     let step_diff = StepDifference {
+    //         elements: elements_diff,
+    //         colored: self.calculated.colored.compute_difference(&empty_elements),
+    //         signal_holders: self
+    //             .calculated
+    //             .signal_holders
+    //             .compute_difference(&empty_elements),
+    //     };
 
-        self.history
-            .add_step("update elements".to_string(), step_diff);
+    //     self.history
+    //         .add_step("update elements".to_string(), step_diff);
 
-        self.calculated.colored = self.calculated.colored.sub(elements);
-        self.calculated.signal_holders = self.calculated.signal_holders.sub(elements);
+    //     self.calculated.colored = self.calculated.colored.sub(elements);
+    //     self.calculated.signal_holders = self.calculated.signal_holders.sub(elements);
 
-        info!("elements deleted");
-        self.recalculate_metadata();
-    }
+    //     info!("elements deleted");
+    //     self.recalculate_metadata();
+    // }
 
-    fn calc_longest_path(&self) -> usize {
-        let mut longest_path = 0;
-        self.calculated.ini_set.iter().for_each(|ini| {
-            self.calculated.fin_set.iter().for_each(|fin| {
-                let curr_max_path_length =
-                    all_simple_paths::<Vec<_>, _>(&self.graph, *ini, *fin, 0, None)
-                        .max_by(|left, right| left.len().cmp(&right.len()))
-                        .unwrap_or_default()
-                        .len();
-                if curr_max_path_length > longest_path {
-                    longest_path = curr_max_path_length
-                }
-            })
-        });
-        longest_path
-    }
+    // fn calc_longest_path(&self) -> usize {
+    //     let mut longest_path = 0;
+    //     self.calculated.ini_set.iter().for_each(|ini| {
+    //         self.calculated.fin_set.iter().for_each(|fin| {
+    //             let curr_max_path_length =
+    //                 all_simple_paths::<Vec<_>, _>(&self.graph, *ini, *fin, 0, None)
+    //                     .max_by(|left, right| left.len().cmp(&right.len()))
+    //                     .unwrap_or_default()
+    //                     .len();
+    //             if curr_max_path_length > longest_path {
+    //                 longest_path = curr_max_path_length
+    //             }
+    //         })
+    //     });
+    //     longest_path
+    // }
 
     /*     fn calc_adj_mat(&self) -> MatrixState {
         MatrixState {
@@ -723,312 +716,280 @@ impl State {
         }
     } */
 
+    fn get_node_index(&self, n: &Node) -> &NodeIndex {
+        self.calculated.idx_by_node_id.get(n.id()).unwrap()
+    }
+
+    fn get_edge_index(&self, e: &Edge) -> &EdgeIndex {
+        self.calculated.idx_by_edge_id.get(e.id()).unwrap()
+    }
+
+    fn get_edge(&self, idx: EdgeIndex) -> &Edge {
+        self.calculated.edge_by_idx.get(&idx).unwrap()
+    }
+
+    fn get_node(&self, idx: NodeIndex) -> &Node {
+        self.calculated.node_by_idx.get(&idx).unwrap()
+    }
+
     fn calc_dot(&self) -> String {
-        let dot = Dot::new(&self.graph).to_string();
-        self.color_dot(dot)
+        self.color_dot()
     }
 
-    fn elements_to_matrix_elements(&self, elements: &Elements) -> MatrixElements {
-        let mut res: MatrixElements = Default::default();
+    // fn elements_to_matrix_elements(&self, elements: &Elements) -> MatrixElements {
+    //     let mut res: MatrixElements = Default::default();
 
-        elements.edges().iter().for_each(|(idx, _)| {
-            let edge = self.graph.edge_endpoints(*idx).unwrap();
-            res.elements.insert((edge.0.index(), edge.1.index()));
-        });
+    //     elements.edges().iter().for_each(|(idx, _)| {
+    //         let edge = self.graph.edge_endpoints(*idx).unwrap();
+    //         res.elements.insert((edge.0.index(), edge.1.index()));
+    //     });
 
-        elements.nodes().iter().for_each(|(e, _)| {
-            res.rows.insert(e.index());
-            res.cols.insert(e.index());
-        });
+    //     elements.nodes().iter().for_each(|(e, _)| {
+    //         res.rows.insert(e.index());
+    //         res.cols.insert(e.index());
+    //     });
 
-        res
-    }
+    //     res
+    // }
 
-    fn calc_cycles(&self) -> Vec<Cycle> {
-        debug!("getting cycles");
-        let mut cycles: Vec<Cycle> = vec![];
-        let mut path = vec![];
-        depth_first_search(
+    // fn calc_cycles(&self) -> Vec<Cycle> {
+    //     debug!("getting cycles");
+    //     let mut cycles: Vec<Cycle> = vec![];
+    //     let mut path = vec![];
+    //     depth_first_search(
+    //         &self.graph,
+    //         self.calculated.ini_set.iter().cloned(),
+    //         |event| match event {
+    //             petgraph::visit::DfsEvent::TreeEdge(s, e) => {
+    //                 debug!("visited edge {} -> {}", s.index(), e.index());
+    //                 path.push([s.index(), e.index()]);
+    //                 debug!("continuing path: {path:?}");
+    //             }
+    //             petgraph::visit::DfsEvent::BackEdge(s, e) => {
+    //                 debug!("visited edge {} -> {}; cycle found!", s.index(), e.index());
+    //                 path.push([s.index(), e.index()]);
+
+    //                 let mut first_cycle_el: [usize; 2] = [0, 0];
+    //                 let mut path_cycle = path.rsplit(|el| {
+    //                     if *el.first().unwrap() == e.index() {
+    //                         (first_cycle_el[0], first_cycle_el[1]) =
+    //                             (*el.first().unwrap(), *el.last().unwrap());
+
+    //                         return true;
+    //                     }
+
+    //                     false
+    //                 });
+
+    //                 let mut cycle_proto = path_cycle.next().unwrap().to_vec();
+    //                 cycle_proto.insert(0, first_cycle_el);
+    //                 debug!("discovered cycle: {cycle_proto:?}");
+
+    //                 let mut cycle = Cycle::new();
+    //                 cycle_proto.iter().for_each(|el| {
+    //                     let (first, last) = (
+    //                         NodeIndex::new(*el.first().unwrap()),
+    //                         NodeIndex::new(*el.last().unwrap()),
+    //                     );
+
+    //                     cycle.add_path(Path::new(
+    //                         first,
+    //                         last,
+    //                         self.graph.find_edge(first, last).unwrap(),
+    //                     ));
+    //                 });
+
+    //                 cycles.push(cycle);
+
+    //                 path = remove_last_el(path.clone());
+    //                 debug!("shortened path: {path:?}");
+    //             }
+    //             petgraph::visit::DfsEvent::Finish(n, _) => {
+    //                 debug!("finished path on node: {}", n.index());
+    //                 path = remove_last_el(path.clone());
+    //                 debug!("shortened path: {path:?}");
+    //             }
+    //             _ => (),
+    //         },
+    //     );
+
+    //     info!("found {} cycles", cycles.len());
+
+    //     cycles
+    // }
+
+    // pub fn dot(&self) -> String {
+    //     // TODO: use the same method to color graph dot.
+    //     Dot::with_attr_getters(&self.tree, &[], &|g, r| String::new(), &|g, r| {
+    //         if r.0.index() == self.current_step {
+    //             return "color=red".to_string();
+    //         }
+
+    //         String::new()
+    //     })
+    //     .to_string()
+    // }
+
+    fn color_dot(&self) -> String {
+        Dot::with_attr_getters(
             &self.graph,
-            self.calculated.ini_set.iter().cloned(),
-            |event| match event {
-                petgraph::visit::DfsEvent::TreeEdge(s, e) => {
-                    debug!("visited edge {} -> {}", s.index(), e.index());
-                    path.push([s.index(), e.index()]);
-                    debug!("continuing path: {path:?}");
+            &[],
+            &|g, r| {
+                if !self.calculated.colored.edges().contains(r.weight()) {
+                    return String::new();
                 }
-                petgraph::visit::DfsEvent::BackEdge(s, e) => {
-                    debug!("visited edge {} -> {}; cycle found!", s.index(), e.index());
-                    path.push([s.index(), e.index()]);
 
-                    let mut first_cycle_el: [usize; 2] = [0, 0];
-                    let mut path_cycle = path.rsplit(|el| {
-                        if *el.first().unwrap() == e.index() {
-                            (first_cycle_el[0], first_cycle_el[1]) =
-                                (*el.first().unwrap(), *el.last().unwrap());
-
-                            return true;
-                        }
-
-                        false
-                    });
-
-                    let mut cycle_proto = path_cycle.next().unwrap().to_vec();
-                    cycle_proto.insert(0, first_cycle_el);
-                    debug!("discovered cycle: {cycle_proto:?}");
-
-                    let mut cycle = Cycle::new();
-                    cycle_proto.iter().for_each(|el| {
-                        let (first, last) = (
-                            NodeIndex::new(*el.first().unwrap()),
-                            NodeIndex::new(*el.last().unwrap()),
-                        );
-
-                        cycle.add_path(Path::new(
-                            first,
-                            last,
-                            self.graph.find_edge(first, last).unwrap(),
-                        ));
-                    });
-
-                    cycles.push(cycle);
-
-                    path = remove_last_el(path.clone());
-                    debug!("shortened path: {path:?}");
-                }
-                petgraph::visit::DfsEvent::Finish(n, _) => {
-                    debug!("finished path on node: {}", n.index());
-                    path = remove_last_el(path.clone());
-                    debug!("shortened path: {path:?}");
-                }
-                _ => (),
+                return "color=red".to_string();
             },
-        );
-
-        info!("found {} cycles", cycles.len());
-
-        cycles
-    }
-
-    fn color_dot(&self, dot: String) -> String {
-        dot.lines()
-            .map(|l| -> String {
-                let mut res = l.to_string();
-                if !l.contains("->") && !l.contains('{') && !l.contains('}') {
-                    // line is node
-                    if let Some((node_id, _)) = parse_node_from_dot(l.to_string()) {
-                        self.calculated
-                            .colored
-                            .nodes()
-                            .iter()
-                            .for_each(|(node, _)| {
-                                if node_id == node.index().to_string() {
-                                    res = color_line(l.to_string(), Color::Red);
-                                }
-                            });
-                        self.calculated
-                            .signal_holders
-                            .nodes()
-                            .iter()
-                            .for_each(|(node, _)| {
-                                if node_id == node.index().to_string() {
-                                    res = color_line(l.to_string(), Color::Blue);
-                                }
-                            });
-                    } else {
-                        error!("failed to parse node from line: {l}");
-                    }
+            &|g, r| {
+                if !self.calculated.colored.nodes().contains(r.1) {
+                    return String::new();
                 }
 
-                if l.contains("->") {
-                    // line is edge
-                    self.calculated
-                        .colored
-                        .edges()
-                        .iter()
-                        .for_each(|(edge, _)| {
-                            let (start, end) = self.graph.edge_endpoints(*edge).unwrap();
-
-                            if let Some((s, e, _)) = parse_edge_from_dot(l.to_string()) {
-                                if s == start.index().to_string() && e == end.index().to_string() {
-                                    res = color_line(l.to_string(), Color::Red);
-                                }
-                            } else {
-                                error!("failed to parse edge from line: {l}");
-                            }
-                        });
-                    self.calculated
-                        .signal_holders
-                        .edges()
-                        .iter()
-                        .for_each(|(edge, _)| {
-                            let (start, end) = self.graph.edge_endpoints(*edge).unwrap();
-
-                            if let Some((s, e, _)) = parse_edge_from_dot(l.to_string()) {
-                                if s == start.index().to_string() && e == end.index().to_string() {
-                                    res = color_line(l.to_string(), Color::Blue);
-                                }
-                            } else {
-                                error!("failed to parse edge from line: {l}");
-                            }
-                        });
-                }
-
-                format!("{res}\n")
-            })
-            .collect()
+                return "color=red".to_string();
+            },
+        )
+        .to_string()
     }
 
-    /// is not used now
-    fn weight_dot(&self, dot: String) -> String {
-        let max_weight_index = self
-            .graph
-            .edge_indices()
-            .max_by(|left, right| {
-                self.graph
-                    .edge_weight(*left)
-                    .unwrap()
-                    .partial_cmp(self.graph.edge_weight(*right).unwrap())
-                    .unwrap()
-            })
-            .unwrap();
+    // fn weight_dot(&self, dot: String) -> String {
+    //     let max_weight_index = self
+    //         .graph
+    //         .edge_indices()
+    //         .max_by(|left, right| {
+    //             self.graph
+    //                 .edge_weight(*left)
+    //                 .unwrap()
+    //                 .partial_cmp(self.graph.edge_weight(*right).unwrap())
+    //                 .unwrap()
+    //         })
+    //         .unwrap();
 
-        let max_weight = *self.graph.edge_weight(max_weight_index).unwrap();
+    //     let max_weight = *self.graph.edge_weight(max_weight_index).unwrap();
 
-        dot.lines()
-            .map(|l| -> String {
-                let mut res = l.to_string();
-                if l.contains("->") {
-                    // line is edge
-                    self.graph.edge_indices().for_each(|edge| {
-                        let (start, end) = self.graph.edge_endpoints(edge).unwrap();
+    //     dot.lines()
+    //         .map(|l| -> String {
+    //             let mut res = l.to_string();
+    //             if l.contains("->") {
+    //                 // line is edge
+    //                 self.graph.edge_indices().for_each(|edge| {
+    //                     let (start, end) = self.graph.edge_endpoints(edge).unwrap();
 
-                        if let Some((s, e, _)) = parse_edge_from_dot(l.to_string()) {
-                            if s == start.index().to_string() && e == end.index().to_string() {
-                                let weight = *self.graph.edge_weight(edge).unwrap();
-                                let mut normed = (weight / max_weight) * MAX_DOT_WEIGHT;
-                                if normed < 0.5 {
-                                    normed = 0.5
-                                }
+    //                     if let Some((s, e, _)) = parse_edge_from_dot(l.to_string()) {
+    //                         if s == start.index().to_string() && e == end.index().to_string() {
+    //                             let weight = *self.graph.edge_weight(edge).unwrap();
+    //                             let mut normed = (weight / max_weight) * MAX_DOT_WEIGHT;
+    //                             if normed < 0.5 {
+    //                                 normed = 0.5
+    //                             }
 
-                                res = weight_line(l.to_string(), normed);
-                            }
-                        } else {
-                            error!("failed to parse edge from line: {l}")
-                        }
-                    });
-                }
+    //                             res = weight_line(l.to_string(), normed);
+    //                         }
+    //                     } else {
+    //                         error!("failed to parse edge from line: {l}")
+    //                     }
+    //                 });
+    //             }
 
-                format!("{res}\n")
-            })
-            .collect()
-    }
+    //             format!("{res}\n")
+    //         })
+    //         .collect()
+    // }
 
-    fn collect_ini_set(&self) -> HashSet<NodeIndex> {
-        let mut result = HashSet::new();
+    // fn collect_ini(&self) -> Elements {
+    //     self.graph.node_indices().for_each(|idx| {
+    //         if !self.graph.node_weight(idx).unwrap().contains("ini") {
+    //             return;
+    //         }
 
-        self.graph.node_indices().for_each(|idx| {
-            if !self.graph.node_weight(idx).unwrap().contains("ini") {
-                return;
-            }
+    //         result.insert(idx);
+    //     });
 
-            result.insert(idx);
-        });
+    //     result
+    // }
 
-        result
-    }
+    // fn collect_fin(&self) -> Elements {
+    //     let mut result = HashSet::new();
 
-    fn collect_fin_set(&self) -> HashSet<NodeIndex> {
-        let mut result = HashSet::new();
+    //     self.graph.node_indices().for_each(|idx| {
+    //         if !self.graph.node_weight(idx).unwrap().contains("fin") {
+    //             return;
+    //         }
 
-        self.graph.node_indices().for_each(|idx| {
-            if !self.graph.node_weight(idx).unwrap().contains("fin") {
-                return;
-            }
+    //         result.insert(idx);
+    //     });
 
-            result.insert(idx);
-        });
+    //     result
+    // }
 
-        result
-    }
+    // fn get_cone_elements(
+    //     &self,
+    //     root: &Node,
+    //     dir: Direction,
+    //     max_steps: i32,
+    // ) -> Elements {
+    //     let root_idx = self.get_node_index(root);
 
-    fn get_cone_elements(
-        &self,
-        root_idx: NodeIndex,
-        dir: Direction,
-        max_steps: i32,
-    ) -> Elements {
-        let mut nodes = HashSet::new();
-        let mut edges = HashSet::new();
+    //     let mut nodes = HashSet::new();
+    //     let mut edges = HashSet::new();
 
-        nodes.insert(root);
+    //     nodes.insert(root.clone());
 
-        if max_steps == 0 {
-            return (nodes, edges);
-        }
+    //     if max_steps == 0 {
+    //         return Elements::new(nodes, edges);
+    //     }
 
-        let mut steps_cnt = 0;
+    //     let mut steps = 0;
+    //     let mut roots = vec![root_idx];
+    //     loop {
+    //         let connected = self
+    //         .graph
+    //         .edges_directed(root_idx, dir)
+    //         .map(|e| {
+    //             edges.insert(self.get_edge(e.id()));
+    //             match dir {
+    //                 Outgoing => e.target(),
+    //                 Incoming => e.source(),
+    //             }
+    //         })
+    //         .collect::<Vec<_>>();
 
-        let mut connected = self
-            .graph
-            .edges_directed(root, dir)
-            .map(|edge| {
-                edges.insert(edge.id());
+    //         connected.drain(..).for_each(|sibling_idx| {
+    //             let sibling_node = self.get_node(sibling_idx);
+    //             if nodes.contains(&sibling_node) {
+    //                 return;
+    //             }
+    //             nodes.insert(sibling_node);
 
-                match dir {
-                    Outgoing => edge.target(),
-                    Incoming => edge.source(),
-                }
-            })
-            .collect::<Vec<NodeIndex>>();
-        while !connected.is_empty() {
-            steps_cnt += 1;
-            let mut next_connected = vec![];
-            let mut next_edges = vec![];
+    //             let mut new_connected = self
+    //                 .graph
+    //                 .edges_directed(sibling, dir)
+    //                 .map(|edge| {
+    //                     next_edges.push(edge.id());
 
-            connected.drain(..).for_each(|sibling| {
-                if nodes.contains(&sibling) {
-                    return;
-                }
-                nodes.insert(sibling);
+    //                     match dir {
+    //                         Outgoing => edge.target(),
+    //                         Incoming => edge.source(),
+    //                     }
+    //                 })
+    //                 .collect::<Vec<_>>();
 
-                let mut new_connected = self
-                    .graph
-                    .edges_directed(sibling, dir)
-                    .map(|edge| {
-                        next_edges.push(edge.id());
+    //             next_connected.append(&mut new_connected);
+    //         });
 
-                        match dir {
-                            Outgoing => edge.target(),
-                            Incoming => edge.source(),
-                        }
-                    })
-                    .collect::<Vec<NodeIndex>>();
+    //         if connected.is_empty() {
+    //             break
+    //         }
 
-                next_connected.append(&mut new_connected);
-            });
+    //         if max_steps != -1 && steps >= max_steps {
+    //             break;
+    //         }
 
-            connected = next_connected;
+    //         steps += 1;
+    //     }
 
-            if max_steps != -1 && steps_cnt >= max_steps {
-                break;
-            }
-
-            next_edges.iter().for_each(|edge| {
-                edges.insert(*edge);
-            });
-        }
-
-        (nodes, edges)
-    }
-}
-
-fn color_line(line: String, color: Color) -> String {
-    let first_part = line.replace(']', "");
-    match color {
-        Color::Red => format!("{first_part}, color=red ]"),
-        Color::Blue => format!("{first_part}, color=blue ]"),
-    }
+    //     Elements::new(nodes, edges)
+    // }
 }
 
 /// is not used now

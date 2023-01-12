@@ -1,6 +1,12 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use petgraph::{adj::EdgeIndex, graph::NodeIndex};
+use petgraph::{
+    dot::Dot,
+    graph::EdgeIndex,
+    graph::NodeIndex,
+    stable_graph::StableDiGraph,
+    visit::{IntoEdgeReferences, IntoEdges, IntoNodeReferences},
+};
 use uuid::Uuid;
 
 use crate::widgets::net_props::graph::{
@@ -10,18 +16,71 @@ use crate::widgets::net_props::graph::{
 
 #[derive(Default, Clone)]
 pub struct Calculated {
-    pub nodes_by_name: HashMap<String, Node>,
-    pub edges_by_name: HashMap<String, Edge>,
-    pub nodes_by_id: HashMap<Uuid, Node>,
-    pub edges_by_id: HashMap<Uuid, Edge>,
-    pub idx_to_node_id: HashMap<NodeIndex, Uuid>,
-    pub idx_to_edge_id: HashMap<EdgeIndex, Uuid>,
+    pub node_by_name: HashMap<String, Node>,
+    pub edge_by_name: HashMap<String, Edge>,
+    pub node_by_idx: HashMap<NodeIndex, Node>,
+    pub edge_by_idx: HashMap<EdgeIndex, Edge>,
+    pub idx_by_node_id: HashMap<Uuid, NodeIndex>,
+    pub idx_by_edge_id: HashMap<Uuid, EdgeIndex>,
     pub ini: Elements,
     pub fin: Elements,
-    pub colored: Elements,
-    pub signal: Elements,
     pub dot: String,
+    pub colored: Elements,
+    // pub signal: Elements,
     // pub cycles: Vec<Cycle>,
     // pub adj_mat: MatrixState,
     // pub longest_path: usize,
+}
+
+impl Calculated {
+    pub fn new(
+        g: &StableDiGraph<Node, Edge>,
+        fin: Elements,
+        ini: Elements,
+        colored: Elements,
+    ) -> Calculated {
+        let node_by_name = g
+            .node_weights()
+            .cloned()
+            .map(|w| (w.name().clone(), w))
+            .collect::<HashMap<_, _>>();
+        let edge_by_name = g
+            .edge_weights()
+            .cloned()
+            .map(|w| (w.name().clone(), w))
+            .collect::<HashMap<_, _>>();
+
+        let mut idx_by_node_id = HashMap::with_capacity(g.node_count());
+        let mut node_by_idx = HashMap::with_capacity(g.node_count());
+        g.node_references().for_each(|(idx, n)| {
+            idx_by_node_id.insert(*n.id(), idx);
+            node_by_idx.insert(idx, n.clone());
+        });
+
+        let mut idx_by_edge_id = HashMap::with_capacity(g.edge_count());
+        let mut edge_by_idx = HashMap::with_capacity(g.edge_count());
+        g.edge_indices().for_each(|idx| {
+            let e = g.edge_weight(idx).unwrap();
+            idx_by_edge_id.insert(*e.id(), idx);
+            edge_by_idx.insert(idx, e.clone());
+        });
+
+        let dot = Dot::new(g).to_string();
+
+        Calculated {
+            fin,
+            ini,
+            colored,
+
+            node_by_name,
+            node_by_idx,
+            idx_by_node_id,
+
+            edge_by_name,
+            edge_by_idx,
+            idx_by_edge_id,
+
+            dot,
+        }
+    }
 }

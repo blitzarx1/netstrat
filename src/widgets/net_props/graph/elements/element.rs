@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -8,20 +10,26 @@ pub struct Node {
     deleted: bool,
 }
 
+impl Display for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.name)
+    }
+}
+
 impl Node {
     pub fn new(name: String) -> Node {
-        Node {
-            id: Uuid::new_v4(),
-            name,
-            deleted: false,
-        }
+        Node::build(Uuid::new_v4(), name)
+    }
+
+    pub fn new_with_id(id: Uuid, name: String) -> Node {
+        Node::build(id, name)
     }
 
     pub fn name(&self) -> &String {
         &self.name
     }
 
-    pub fn set_name(&self, new_name: String) {
+    pub fn set_name(&mut self, new_name: String) {
         self.name = new_name;
     }
 
@@ -29,8 +37,16 @@ impl Node {
         self.deleted
     }
 
-    pub fn id(&self) -> Uuid {
-        self.id
+    pub fn id(&self) -> &Uuid {
+        &self.id
+    }
+
+    fn build(id: Uuid, name: String) -> Node {
+        Node {
+            id,
+            name,
+            deleted: false,
+        }
     }
 }
 
@@ -44,24 +60,19 @@ pub struct Edge {
     deleted: bool,
 }
 
+impl Display for Edge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.name)
+    }
+}
+
 impl Edge {
     pub fn new(start: &Node, end: &Node, weight: f64) -> Edge {
-        let million = 1_000_000_f64;
-        let weight_x_10_6 = (weight * million) as i32;
+        Edge::build(Uuid::new_v4(), start, end, weight)
+    }
 
-        // otherwise hack with multiplying by million does not work
-        assert!(weight < million);
-
-        let name = [start.name().clone(), end.name().clone()].join(" -> ");
-
-        Edge {
-            weight_x_10_6,
-            name,
-            id: Uuid::new_v4(),
-            start: start.id(),
-            end: end.id(),
-            deleted: false,
-        }
+    pub fn new_with_id(id: Uuid, start: &Node, end: &Node, weight: f64) -> Edge {
+        Edge::build(id, start, end, weight)
     }
 
     pub fn weight(&self) -> f64 {
@@ -71,6 +82,28 @@ impl Edge {
     pub fn name(&self) -> &String {
         &self.name
     }
+
+    pub fn id(&self) -> &Uuid {
+        &self.id
+    }
+
+    fn build(id: Uuid, start: &Node, end: &Node, weight: f64) -> Edge {
+        let million = 1_000_000_f64;
+        let weight_x_10_6 = (weight * million) as i32;
+
+        // otherwise hack with multiplying by million does not work
+        assert!(weight < million);
+
+        let name = [start.name().clone(), end.name().clone()].join(" -> ");
+        Edge {
+            weight_x_10_6,
+            name,
+            id,
+            start: *start.id(),
+            end: *end.id(),
+            deleted: false,
+        }
+    }
 }
 
 mod test {
@@ -79,8 +112,6 @@ mod test {
     #[test]
     fn test_edge_weight() {
         let w = 1.234567;
-        let start = Uuid::new_v4();
-        let end = Uuid::new_v4();
         let n1 = &Node::new("n1".to_string());
         let n2 = &Node::new("n2".to_string());
 

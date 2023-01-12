@@ -11,7 +11,7 @@ use crate::{
         net_props::{
             graph::{
                 elements::{Edge, Node},
-                state::calculated::Calculated,
+                state::calculated::{self, Calculated},
             },
             settings::{EdgeWeight, Settings},
             Elements,
@@ -51,16 +51,19 @@ impl Builder {
             self.settings.total_cnt * self.settings.total_cnt,
         );
 
-        let node_to_idx = (0..self.settings.total_cnt)
-            .map(|i| {
-                let n = Node::new(format!("{i}"));
-                (n, graph.add_node(n))
-            })
-            .collect::<HashMap<_, _>>();
+        let mut node_by_id = HashMap::with_capacity(self.settings.total_cnt);
+        let mut idx_by_id = HashMap::with_capacity(self.settings.total_cnt);
+        (0..self.settings.total_cnt).for_each(|i| {
+            let n = Node::new(format!("{i}"));
+            let idx = graph.add_node(n.clone());
+
+            node_by_id.insert(*n.id(), n.clone());
+            idx_by_id.insert(*n.id(), idx);
+        });
 
         let mut rng = rand::thread_rng();
 
-        let ini_elements = self.pick_inis(rng, graph);
+        let ini_elements = self.pick_inis(&mut rng, &mut graph);
 
         let mut last_leafs = ini_elements.nodes().iter().cloned().collect::<Vec<_>>();
         let mut starts = HashSet::new();
@@ -80,9 +83,9 @@ impl Builder {
                     return;
                 }
 
-                let leaf_idx = node_to_idx.get(&leaf).unwrap();
+                let leaf_idx = idx_by_id.get(leaf.id()).unwrap();
 
-                starts.insert(*leaf);
+                starts.insert(leaf.clone());
                 started += 1;
 
                 let curr_degree = match ini_elements.nodes().contains(leaf) {
@@ -92,7 +95,7 @@ impl Builder {
 
                 // create edges
                 for _i in 0..curr_degree {
-                    let (end, end_idx) = node_to_idx.iter().choose(&mut rng).unwrap();
+                    let (end_id, end_idx) = idx_by_id.iter().choose(&mut rng).unwrap();
 
                     if self.settings.no_twin_edges
                         && edges_map.contains(&[leaf_idx.index(), end_idx.index()])
@@ -105,14 +108,15 @@ impl Builder {
                         weight = edge_weight_pool.sample(&mut rng);
                     }
 
+                    let end = node_by_id.get(end_id).unwrap();
                     let edge = Edge::new(&leaf, end, weight);
 
                     graph.add_edge(*leaf_idx, *end_idx, edge);
 
                     edges_map.insert([leaf_idx.index(), end_idx.index()]);
 
-                    next_last_ends.push(*end);
-                    ends.push(*end);
+                    next_last_ends.push(end.clone());
+                    ends.push(end.clone());
                 }
             });
 
@@ -126,61 +130,41 @@ impl Builder {
         // define fins
         let mut fin_elements_nodes = HashSet::with_capacity(self.settings.fin_cnt);
         for _i in 0..self.settings.fin_cnt {
-            let end = ends.iter().choose(&mut rng).unwrap(); 
-
+            let end = ends.iter_mut().choose(&mut rng).unwrap();
             if fin_elements_nodes.contains(end) {
                 continue;
             }
 
-            let node_idx = node_to_idx.get(end).unwrap();
+            let node_idx = idx_by_id.get(end.id()).unwrap();
             let graph_node = graph.node_weight_mut(*node_idx).unwrap();
-
-            let new_name = format!("fin_{}", graph_node.name());
-
+            let new_name = format!("{}_{}", PREFIX_FIN, graph_node.name());
             graph_node.set_name(new_name);
-            end.set_name(new_name);
 
-            fin_elements_nodes.insert(*graph_node);
+            *end = graph_node.clone();
+
+            fin_elements_nodes.insert(graph_node.clone());
         }
 
-        let nodes_by_name = graph
-            .node_weights()
-            .cloned()
-            .map(|w| (*w.name(), w))
-            .collect::<HashMap<_, _>>();
-        let edges_by_name = graph
-            .edge_weights()
-            .cloned()
-            .map(|w| (*w.name(), w))
-            .collect::<HashMap<_, _>>();
+        let calculated = Calculated::new(
+            &graph,
+            Elements::new(fin_elements_nodes, Default::default()),
+            ini_elements,
+            Default::default(),
+        );
 
-        let calculated = Calculated {
-            fin: Elements::new(fin_elements_nodes, Default::default()),
-            ini: ini_elements,
-            nodes_by_name,
-            edges_by_name,
-            ..Default::default()
-        };
-
-        let history = History::new("create".to_string(), self.bus.clone());
-
-        let mut state = State::new(graph, history, calculated);
-
-        if self.settings.diamond_filter {
-            state.diamond_filter()
-        }
-
-        state.recalculate_metadata();
-
-        state
+        State::new(
+            graph,
+            History::new("create".to_string(), self.bus.clone()),
+            calculated,
+        )
     }
 
-    fn pick_inis(&self, rng: ThreadRng, g: StableDiGraph<Node, Edge>) -> Elements {
+    fn pick_inis(&self, rng: &mut ThreadRng, g: &mut StableDiGraph<Node, Edge>) -> Elements {
         let mut ini_elements_nodes = HashSet::with_capacity(self.settings.ini_cnt);
         let mut ini_to_add = self.settings.ini_cnt;
 
         while ini_to_add > 0 {
-            let idx = g.node_indices().choose(&mut rng).unwrap();
+            let idx = g.node_indices().choose(rng).unwrap();
             let n = g.node_weight_mut(idx).unwrap();
 
             if ini_elements_nodes.contains(n) {
@@ -190,7 +174,7 @@ impl Builder {
             let new_name = format!("{}_{}", PREFIX_INI, n.name());
             n.set_name(new_name);
 
-            ini_elements_nodes.insert(*n);
+            ini_elements_nodes.insert(n.clone());
             ini_to_add -= 1;
 
             debug!("picked ini node: {:?}", *n);

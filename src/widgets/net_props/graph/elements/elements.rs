@@ -1,5 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
-use std::{fmt::Debug, fmt::Display, ops::Sub, collections::HashSet};
+use std::{collections::HashSet, fmt::Debug, fmt::Display, ops::Sub};
 
 use crate::widgets::history::Difference;
 
@@ -60,8 +60,8 @@ impl<'de> Deserialize<'de> for Elements {
     {
         let frozen = FrozenElements::deserialize(deserializer)?;
 
-        let mut nodes = frozen.nodes().iter().cloned().collect::<HashSet<_>>();
-        let mut edges = frozen.edges().iter().cloned().collect::<HashSet<_>>();
+        let nodes = frozen.nodes().iter().cloned().collect::<HashSet<_>>();
+        let edges = frozen.edges().iter().cloned().collect::<HashSet<_>>();
 
         Ok(Elements::new(nodes, edges))
     }
@@ -87,7 +87,7 @@ impl Elements {
         nodes.sort_by(|l, r| l.cmp(r));
         edges.sort_by(|l, r| l.cmp(r));
 
-        FrozenElements { nodes, edges }
+        FrozenElements::new(nodes, edges)
     }
 
     pub fn apply_difference(&self, diff: Difference) -> Elements {
@@ -117,6 +117,7 @@ impl Elements {
             .filter(|n| !self.nodes.contains(n))
             .cloned()
             .collect::<HashSet<_>>();
+
         let plus_edges = self
             .edges()
             .iter()
@@ -163,21 +164,43 @@ impl Elements {
 
 #[cfg(test)]
 mod test {
+    use uuid::Uuid;
+
     use super::*;
 
-    // FIXME: fix test (change SERIALIZED_DATA)
-    const SERIALIZED_DATA: &str =
-        r#"{"nodes":[[1,"ini_1"],[2,"2"],[3,"fin_3"]],"edges":[[4,"ini_1->2"],[5,"2->fin_3"]]}"#;
+    const SERIALIZED_DATA: &str = r#"{"nodes":[{"id":"788aa271-f148-48b5-bf79-486071424ccc","name":"fin_3","deleted":false},{"id":"8ff510fa-c034-40b5-8b82-867c8012bc47","name":"ini_1","deleted":false},{"id":"a647c909-d020-4cdc-998d-292e2869152e","name":"2","deleted":false}],"edges":[{"id":"54b2f477-4fad-4cf7-9c10-b7211be19872","weight_x_10_6":1000000,"start":"a647c909-d020-4cdc-998d-292e2869152e","end":"788aa271-f148-48b5-bf79-486071424ccc","name":"2 -> fin_3","deleted":false},{"id":"ce02dd19-0297-460a-877d-40b62c745b0c","weight_x_10_6":1000000,"start":"8ff510fa-c034-40b5-8b82-867c8012bc47","end":"a647c909-d020-4cdc-998d-292e2869152e","name":"ini_1 -> 2","deleted":false}]}"#;
 
     fn elements() -> Elements {
-        let n1 = Node::new("ini_1".to_string());
-        let n2 = Node::new("2".to_string());
-        let n3 = Node::new("fin_3".to_string());
-        let nodes = [n1, n2, n3].iter().cloned().collect::<HashSet<_>>();
+        let n1 = Node::new_with_id(
+            Uuid::parse_str("788aa271-f148-48b5-bf79-486071424ccc").unwrap(),
+            "fin_3".to_string(),
+        );
+        let n2 = Node::new_with_id(
+            Uuid::parse_str("8ff510fa-c034-40b5-8b82-867c8012bc47").unwrap(),
+            "ini_1".to_string(),
+        );
+        let n3 = Node::new_with_id(
+            Uuid::parse_str("a647c909-d020-4cdc-998d-292e2869152e").unwrap(),
+            "2".to_string(),
+        );
+        let nodes = [n1.clone(), n2.clone(), n3.clone()]
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
 
-        let e1 = Edge::new(&n1, &n2, 1.0);
-        let e2 = Edge::new(&n2, &n3, 1.0);
-        let mut edges = [e1, e2].iter().cloned().collect::<HashSet<_>>();
+        let e1 = Edge::new_with_id(
+            Uuid::parse_str("54b2f477-4fad-4cf7-9c10-b7211be19872").unwrap(),
+            &n3,
+            &n1,
+            1.0,
+        );
+        let e2 = Edge::new_with_id(
+            Uuid::parse_str("ce02dd19-0297-460a-877d-40b62c745b0c").unwrap(),
+            &n2,
+            &n3,
+            1.0,
+        );
+        let edges = [e1, e2].iter().cloned().collect::<HashSet<_>>();
 
         Elements::new(nodes, edges)
     }

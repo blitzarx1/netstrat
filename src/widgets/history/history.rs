@@ -104,18 +104,6 @@ impl History {
             == 0
     }
 
-    // pub fn dot(&self) -> String {
-    //     // TODO: use the same method to color graph dot.
-    //     Dot::with_attr_getters(&self.tree, &[], &|g, r| String::new(), &|g, r| {
-    //         if r.0.index() == self.current_step {
-    //             return "color=red".to_string();
-    //         }
-
-    //         String::new()
-    //     })
-    //     .to_string()
-    // }
-
     fn update(&mut self, new_current_step: Option<usize>) {
         if let Some(step) = new_current_step {
             self.send_diff(self.compute_diff(step));
