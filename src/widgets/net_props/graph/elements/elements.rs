@@ -145,6 +145,21 @@ impl Elements {
         Elements::new(nodes, edges)
     }
 
+    pub fn intersection(&self, other: &Elements) -> Elements {
+        let nodes = self
+            .nodes
+            .intersection(&other.nodes)
+            .cloned()
+            .collect::<HashSet<_>>();
+        let edges = self
+            .edges
+            .intersection(&other.edges)
+            .cloned()
+            .collect::<HashSet<_>>();
+
+        Elements::new(nodes, edges)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty() && self.edges.is_empty()
     }

@@ -30,6 +30,7 @@ use rand::prelude::IteratorRandom;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::vec;
+use tracing::instrument::WithSubscriber;
 use tracing::{debug, error, info, trace};
 use uuid::Uuid;
 
@@ -257,38 +258,40 @@ impl State {
     //     self.color_elements(&elements);
     // }
 
-    // pub fn diamond_filter(&mut self) {
-    //     let mut ini_union_cone = HashSet::new();
-    //     // gather cone of all children of inis
-    //     for el in self.calculated.ini.clone() {
-    //         ini_union_cone = ini_union_cone
-    //             .union(&self.get_cone_elements(el, Outgoing, -1).0)
-    //             .cloned()
-    //             .collect();
-    //     }
+    pub fn diamond_filter(&mut self) {
+        // gather cone of all children of inis
+        let ini_cones_union = self
+            .calculated
+            .ini_nodes
+            .iter()
+            .fold(Elements::default(), |accum, n| {
+                accum.union(&self.get_cone_elements(n, Outgoing, -1))
+            });
 
-    //     let mut fin_union_cone = HashSet::new();
-    //     // gather cone of all parents of fins
-    //     for el in self.calculated.fin.clone() {
-    //         fin_union_cone = fin_union_cone
-    //             .union(&self.get_cone_elements(el, Incoming, -1).0)
-    //             .cloned()
-    //             .collect();
-    //     }
+        // gather cone of all parents of fins
+        let fin_cones_union = self
+            .calculated
+            .fin_nodes
+            .iter()
+            .fold(Elements::default(), |accum, n| {
+                accum.union(&self.get_cone_elements(n, Incoming, -1))
+            });
 
-    //     let intersection = ini_union_cone
-    //         .intersection(&fin_union_cone)
-    //         .cloned()
-    //         .collect::<HashSet<NodeIndex>>();
-
-    //     self.calculated.deleted = self
-    //         .calculated
-    //         .deleted
-    //         .union(&self.to_elements(intersection.clone(), Default::default()));
-
-    //     self.graph
-    //         .retain_nodes(|_, node| intersection.contains(&node));
-    // }
+        let to_keep = ini_cones_union.intersection(&fin_cones_union);
+        let to_delete_nodes = self
+            .graph
+            .node_weights()
+            .filter(|n| !to_keep.nodes().contains(n))
+            .cloned()
+            .collect::<HashSet<_>>();
+        let to_delete_edges = self
+            .graph
+            .edge_weights()
+            .filter(|e| !to_keep.edges().contains(e))
+            .cloned()
+            .collect::<HashSet<_>>();
+        self.delete_elements(&Elements::new(to_delete_nodes, to_delete_edges));
+    }
 
     // pub fn delete_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
     //     let mut elements = Elements::default();
@@ -716,12 +719,12 @@ impl State {
         }
     } */
 
-    fn get_node_index(&self, n: &Node) -> &NodeIndex {
-        self.calculated.idx_by_node_id.get(n.id()).unwrap()
+    fn get_node_index(&self, id: &Uuid) -> &NodeIndex {
+        self.calculated.idx_by_node_id.get(id).unwrap()
     }
 
-    fn get_edge_index(&self, e: &Edge) -> &EdgeIndex {
-        self.calculated.idx_by_edge_id.get(e.id()).unwrap()
+    fn get_edge_index(&self, id: &Uuid) -> &EdgeIndex {
+        self.calculated.idx_by_edge_id.get(id).unwrap()
     }
 
     fn get_edge(&self, idx: EdgeIndex) -> &Edge {
@@ -922,74 +925,114 @@ impl State {
     //     result
     // }
 
-    // fn get_cone_elements(
-    //     &self,
-    //     root: &Node,
-    //     dir: Direction,
-    //     max_steps: i32,
-    // ) -> Elements {
-    //     let root_idx = self.get_node_index(root);
+    fn get_cone_elements(&self, root: &Node, dir: Direction, max_steps: i32) -> Elements {
+        let root_idx = self.get_node_index(root.id());
 
-    //     let mut nodes = HashSet::new();
-    //     let mut edges = HashSet::new();
+        let mut nodes = HashSet::new();
+        let mut edges = HashSet::new();
 
-    //     nodes.insert(root.clone());
+        nodes.insert(root.clone());
 
-    //     if max_steps == 0 {
-    //         return Elements::new(nodes, edges);
-    //     }
+        let mut steps = 0;
+        let mut starts = vec![*root_idx];
+        loop {
+            steps += 1;
+            if max_steps != -1 && steps > max_steps {
+                break;
+            }
 
-    //     let mut steps = 0;
-    //     let mut roots = vec![root_idx];
-    //     loop {
-    //         let connected = self
-    //         .graph
-    //         .edges_directed(root_idx, dir)
-    //         .map(|e| {
-    //             edges.insert(self.get_edge(e.id()));
-    //             match dir {
-    //                 Outgoing => e.target(),
-    //                 Incoming => e.source(),
-    //             }
-    //         })
-    //         .collect::<Vec<_>>();
+            let mut neighbours = vec![];
+            let mut curr_neighbours = vec![];
+            starts.iter().for_each(|s| {
+                self.graph.edges_directed(*s, dir).for_each(|e| {
+                    let edge = e.weight();
+                    if edges.contains(edge) {
+                        return;
+                    }
+                    edges.insert(edge.clone());
 
-    //         connected.drain(..).for_each(|sibling_idx| {
-    //             let sibling_node = self.get_node(sibling_idx);
-    //             if nodes.contains(&sibling_node) {
-    //                 return;
-    //             }
-    //             nodes.insert(sibling_node);
+                    let node_idx = match dir {
+                        Outgoing => e.target(),
+                        Incoming => e.source(),
+                    };
+                    let node = self.get_node(node_idx);
+                    if nodes.contains(node) {
+                        return;
+                    }
+                    nodes.insert(node.clone());
 
-    //             let mut new_connected = self
-    //                 .graph
-    //                 .edges_directed(sibling, dir)
-    //                 .map(|edge| {
-    //                     next_edges.push(edge.id());
+                    curr_neighbours.push(node_idx);
+                });
 
-    //                     match dir {
-    //                         Outgoing => edge.target(),
-    //                         Incoming => edge.source(),
-    //                     }
-    //                 })
-    //                 .collect::<Vec<_>>();
+                neighbours.append(&mut curr_neighbours);
+            });
 
-    //             next_connected.append(&mut new_connected);
-    //         });
+            if neighbours.is_empty() {
+                break;
+            }
 
-    //         if connected.is_empty() {
-    //             break
-    //         }
+            starts = neighbours;
+        }
 
-    //         if max_steps != -1 && steps >= max_steps {
-    //             break;
-    //         }
+        Elements::new(nodes, edges)
+    }
 
-    //         steps += 1;
-    //     }
+    fn delete_elements(&mut self, elements: &Elements) {
+        elements.nodes().iter().for_each(|n| {
+            self.delete_node(n);
+        });
 
-    //     Elements::new(nodes, edges)
-    // }
+        elements.edges().iter().for_each(|e| {
+            self.delete_edge(e);
+        });
+
+        self.recalculate_metadata()
+    }
+
+    fn delete_node(&mut self, node: &Node) {
+        let idx = *self.get_node_index(node.id());
+
+        self.calculated
+            .node_by_idx
+            .get_mut(&idx)
+            .unwrap()
+            .mark_deleted();
+
+        self.calculated
+            .node_by_name
+            .get_mut(node.name())
+            .unwrap()
+            .mark_deleted();
+
+        let mut node_copy = node.clone();
+        node_copy.mark_deleted();
+
+        self.calculated.ini_nodes.take(node);
+        self.calculated.ini_nodes.insert(node_copy.clone());
+
+        self.calculated.fin_nodes.take(node);
+        self.calculated.fin_nodes.insert(node_copy);
+
+        self.graph.remove_node(idx);
+    }
+
+    fn delete_edge(&mut self, edge: &Edge) {
+        let idx = *self.get_edge_index(edge.id());
+
+        self.calculated
+            .edge_by_idx
+            .get_mut(&idx)
+            .unwrap()
+            .mark_deleted();
+
+        self.calculated
+            .edge_by_name
+            .get_mut(edge.name())
+            .unwrap()
+            .mark_deleted();
+
+        self.graph.remove_edge(idx);
+    }
 }
 
 /// is not used now

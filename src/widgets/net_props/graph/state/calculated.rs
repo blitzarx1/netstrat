@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use petgraph::{
     dot::Dot,
@@ -22,8 +22,8 @@ pub struct Calculated {
     pub edge_by_idx: HashMap<EdgeIndex, Edge>,
     pub idx_by_node_id: HashMap<Uuid, NodeIndex>,
     pub idx_by_edge_id: HashMap<Uuid, EdgeIndex>,
-    pub ini: Elements,
-    pub fin: Elements,
+    pub ini_nodes: HashSet<Node>,
+    pub fin_nodes: HashSet<Node>,
     pub dot: String,
     pub colored: Elements,
     // pub signal: Elements,
@@ -35,8 +35,8 @@ pub struct Calculated {
 impl Calculated {
     pub fn new(
         g: &StableDiGraph<Node, Edge>,
-        fin: Elements,
-        ini: Elements,
+        fin: HashSet<Node>,
+        ini: HashSet<Node>,
         colored: Elements,
     ) -> Calculated {
         let node_by_name = g
@@ -68,8 +68,8 @@ impl Calculated {
         let dot = Dot::new(g).to_string();
 
         Calculated {
-            fin,
-            ini,
+            fin_nodes: fin,
+            ini_nodes: ini,
             colored,
 
             node_by_name,

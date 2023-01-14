@@ -30,15 +30,15 @@ impl Node {
     }
 
     pub fn set_name(&mut self, new_name: String) {
-        self.name = new_name;
-    }
-
-    pub fn deleted(&self) -> bool {
-        self.deleted
+        self.name = new_name
     }
 
     pub fn id(&self) -> &Uuid {
         &self.id
+    }
+
+    pub fn mark_deleted(&mut self) {
+        self.deleted = true
     }
 
     fn build(id: Uuid, name: String) -> Node {
@@ -85,6 +85,10 @@ impl Edge {
 
     pub fn id(&self) -> &Uuid {
         &self.id
+    }
+
+    pub fn mark_deleted(&mut self) {
+        self.deleted = true
     }
 
     fn build(id: Uuid, start: &Node, end: &Node, weight: f64) -> Edge {
