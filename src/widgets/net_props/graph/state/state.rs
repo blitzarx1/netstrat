@@ -1,5 +1,5 @@
-use super::calculated;
-use super::calculated::Calculated;
+use super::metadata;
+use super::metadata::Metadata;
 use super::Builder;
 use crate::netstrat::Bus;
 use crate::widgets::history;
@@ -36,25 +36,19 @@ use uuid::Uuid;
 
 type ConeSettingsList = Vec<ConeSettings>;
 
-const MAX_DOT_WEIGHT: f64 = 5.0;
-
 #[derive(Clone, Default)]
 pub struct State {
     graph: StableDiGraph<Node, Edge>,
     history: History,
-    calculated: Calculated,
+    metadata: Metadata,
 }
 
 impl State {
-    pub fn new(
-        graph: StableDiGraph<Node, Edge>,
-        history: History,
-        calculated: Calculated,
-    ) -> State {
+    pub fn new(graph: StableDiGraph<Node, Edge>, history: History, metadata: Metadata) -> State {
         State {
             graph,
             history,
-            calculated,
+            metadata,
         }
     }
 
@@ -261,7 +255,7 @@ impl State {
     pub fn diamond_filter(&mut self) {
         // gather cone of all children of inis
         let ini_cones_union = self
-            .calculated
+            .metadata
             .ini_nodes
             .iter()
             .fold(Elements::default(), |accum, n| {
@@ -270,7 +264,7 @@ impl State {
 
         // gather cone of all parents of fins
         let fin_cones_union = self
-            .calculated
+            .metadata
             .fin_nodes
             .iter()
             .fold(Elements::default(), |accum, n| {
@@ -290,7 +284,9 @@ impl State {
             .filter(|e| !to_keep.edges().contains(e))
             .cloned()
             .collect::<HashSet<_>>();
-        self.delete_elements(&Elements::new(to_delete_nodes, to_delete_edges));
+
+        self.delete_elements_and_update(&Elements::new(to_delete_nodes, to_delete_edges));
+        self.metadata.recalculate(&self.graph);
     }
 
     // pub fn delete_cycles(&mut self, cycle_idxs: &HashSet<usize>) {
@@ -381,23 +377,12 @@ impl State {
     // }
 
     pub fn dot(&self) -> String {
-        self.calculated.dot.clone()
+        self.metadata.dot.clone()
     }
 
     /*     pub fn adj_matrix(&self) -> MatrixState {
         self.calculated.adj_mat.clone()
     } */
-
-    pub fn recalculate_metadata(&mut self) {
-        // self.calculated.ini = self.collect_ini();
-        // self.calculated.fin = self.collect_fin();
-        // self.calculated.longest_path = self.calc_longest_path();
-
-        // self.calculated.cycles = self.calc_cycles();
-        self.calculated.dot = self.calc_dot();
-
-        info!("graph metadata recalculated");
-    }
 
     pub fn history(&mut self) -> &mut History {
         &mut self.history
@@ -631,7 +616,7 @@ impl State {
     //     Elements::new(elements_nodes, elements_edges)
     // }
 
-    fn color_elements(&mut self, elements: &Elements) {
+    fn color_elements_and_update(&mut self, elements: &Elements) {
         debug!("coloring elements");
         if elements.is_empty() {
             return;
@@ -639,7 +624,7 @@ impl State {
 
         let step_diff = StepDifference {
             elements: Default::default(),
-            colored: self.calculated.colored.compute_difference(elements),
+            colored: self.metadata.colored.compute_difference(elements),
             signal_holders: Default::default(),
         };
         self.history
@@ -647,8 +632,8 @@ impl State {
 
         info!("elements colored");
 
-        self.calculated.colored = elements.clone();
-        self.recalculate_metadata()
+        self.metadata.color(elements);
+        self.metadata.recalculate(&self.graph)
     }
 
     // fn soft_delete_elements(&mut self, elements: &Elements) {
@@ -720,23 +705,19 @@ impl State {
     } */
 
     fn get_node_index(&self, id: &Uuid) -> &NodeIndex {
-        self.calculated.idx_by_node_id.get(id).unwrap()
+        self.metadata.idx_by_node_id.get(id).unwrap()
     }
 
     fn get_edge_index(&self, id: &Uuid) -> &EdgeIndex {
-        self.calculated.idx_by_edge_id.get(id).unwrap()
+        self.metadata.idx_by_edge_id.get(id).unwrap()
     }
 
     fn get_edge(&self, idx: EdgeIndex) -> &Edge {
-        self.calculated.edge_by_idx.get(&idx).unwrap()
+        self.metadata.edge_by_idx.get(&idx).unwrap()
     }
 
     fn get_node(&self, idx: NodeIndex) -> &Node {
-        self.calculated.node_by_idx.get(&idx).unwrap()
-    }
-
-    fn calc_dot(&self) -> String {
-        self.color_dot()
+        self.metadata.node_by_idx.get(&idx).unwrap()
     }
 
     // fn elements_to_matrix_elements(&self, elements: &Elements) -> MatrixElements {
@@ -821,84 +802,6 @@ impl State {
     //     cycles
     // }
 
-    // pub fn dot(&self) -> String {
-    //     // TODO: use the same method to color graph dot.
-    //     Dot::with_attr_getters(&self.tree, &[], &|g, r| String::new(), &|g, r| {
-    //         if r.0.index() == self.current_step {
-    //             return "color=red".to_string();
-    //         }
-
-    //         String::new()
-    //     })
-    //     .to_string()
-    // }
-
-    fn color_dot(&self) -> String {
-        Dot::with_attr_getters(
-            &self.graph,
-            &[],
-            &|g, r| {
-                if !self.calculated.colored.edges().contains(r.weight()) {
-                    return String::new();
-                }
-
-                return "color=red".to_string();
-            },
-            &|g, r| {
-                if !self.calculated.colored.nodes().contains(r.1) {
-                    return String::new();
-                }
-
-                return "color=red".to_string();
-            },
-        )
-        .to_string()
-    }
-
-    // fn weight_dot(&self, dot: String) -> String {
-    //     let max_weight_index = self
-    //         .graph
-    //         .edge_indices()
-    //         .max_by(|left, right| {
-    //             self.graph
-    //                 .edge_weight(*left)
-    //                 .unwrap()
-    //                 .partial_cmp(self.graph.edge_weight(*right).unwrap())
-    //                 .unwrap()
-    //         })
-    //         .unwrap();
-
-    //     let max_weight = *self.graph.edge_weight(max_weight_index).unwrap();
-
-    //     dot.lines()
-    //         .map(|l| -> String {
-    //             let mut res = l.to_string();
-    //             if l.contains("->") {
-    //                 // line is edge
-    //                 self.graph.edge_indices().for_each(|edge| {
-    //                     let (start, end) = self.graph.edge_endpoints(edge).unwrap();
-
-    //                     if let Some((s, e, _)) = parse_edge_from_dot(l.to_string()) {
-    //                         if s == start.index().to_string() && e == end.index().to_string() {
-    //                             let weight = *self.graph.edge_weight(edge).unwrap();
-    //                             let mut normed = (weight / max_weight) * MAX_DOT_WEIGHT;
-    //                             if normed < 0.5 {
-    //                                 normed = 0.5
-    //                             }
-
-    //                             res = weight_line(l.to_string(), normed);
-    //                         }
-    //                     } else {
-    //                         error!("failed to parse edge from line: {l}")
-    //                     }
-    //                 });
-    //             }
-
-    //             format!("{res}\n")
-    //         })
-    //         .collect()
-    // }
-
     // fn collect_ini(&self) -> Elements {
     //     self.graph.node_indices().for_each(|idx| {
     //         if !self.graph.node_weight(idx).unwrap().contains("ini") {
@@ -977,7 +880,7 @@ impl State {
         Elements::new(nodes, edges)
     }
 
-    fn delete_elements(&mut self, elements: &Elements) {
+    fn delete_elements_and_update(&mut self, elements: &Elements) {
         elements.nodes().iter().for_each(|n| {
             self.delete_node(n);
         });
@@ -986,52 +889,19 @@ impl State {
             self.delete_edge(e);
         });
 
-        self.recalculate_metadata()
+        self.metadata.recalculate(&self.graph)
     }
 
     fn delete_node(&mut self, node: &Node) {
-        let idx = *self.get_node_index(node.id());
+        self.graph.remove_node(*self.get_node_index(node.id()));
 
-        self.calculated
-            .node_by_idx
-            .get_mut(&idx)
-            .unwrap()
-            .mark_deleted();
-
-        self.calculated
-            .node_by_name
-            .get_mut(node.name())
-            .unwrap()
-            .mark_deleted();
-
-        let mut node_copy = node.clone();
-        node_copy.mark_deleted();
-
-        self.calculated.ini_nodes.take(node);
-        self.calculated.ini_nodes.insert(node_copy.clone());
-
-        self.calculated.fin_nodes.take(node);
-        self.calculated.fin_nodes.insert(node_copy);
-
-        self.graph.remove_node(idx);
+        self.metadata.delete_node(node);
     }
 
     fn delete_edge(&mut self, edge: &Edge) {
-        let idx = *self.get_edge_index(edge.id());
+        self.graph.remove_edge(*self.get_edge_index(edge.id()));
 
-        self.calculated
-            .edge_by_idx
-            .get_mut(&idx)
-            .unwrap()
-            .mark_deleted();
-
-        self.calculated
-            .edge_by_name
-            .get_mut(edge.name())
-            .unwrap()
-            .mark_deleted();
-
-        self.graph.remove_edge(idx);
+        self.metadata.delete_edge(edge)
     }
 }
 

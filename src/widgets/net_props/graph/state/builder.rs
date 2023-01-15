@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use petgraph::{
     stable_graph::{NodeIndex, StableDiGraph},
     visit::EdgeRef,
-    Direction,
     Direction::{Incoming, Outgoing},
 };
 use rand::{distributions::Uniform, prelude::Distribution, rngs::ThreadRng, seq::IteratorRandom};
@@ -16,7 +15,7 @@ use crate::{
         net_props::{
             graph::{
                 elements::{Edge, Node},
-                state::calculated::Calculated,
+                state::metadata::Metadata,
             },
             settings::{EdgeWeight, Settings},
         },
@@ -62,106 +61,8 @@ impl Builder {
 
         let mut rng = rand::thread_rng();
         let ini_nodes = self.pick_inis(&mut g, &mut rng);
-
-        // TODO: extract to function
-        // add edges
-        let mut ends = vec![];
-        let max_degree_pool = Uniform::from(0..self.settings.max_out_degree);
-        let edge_weight_pool = Uniform::from(0.0..1.0);
-        let mut last_leafs = ini_nodes.iter().cloned().collect::<Vec<_>>();
-        let mut starts = HashSet::new();
-        let mut edges = HashSet::<[usize; 2]>::new();
-        // TODO: use in statistics for longest path
-        let mut path_len = 0;
-        loop {
-            let mut next_last_ends = vec![];
-            let mut started = 0;
-            last_leafs.iter().for_each(|leaf_idx| {
-                if starts.contains(leaf_idx) {
-                    // add output edges only for nodes without output edges
-                    return;
-                }
-
-                starts.insert(*leaf_idx);
-                started += 1;
-
-                let rnd = max_degree_pool.sample(&mut rng);
-                // make sure we have at least one edge from ini node
-                let curr_degree = match rnd == 0 && path_len == 0 {
-                    true => 1,
-                    false => rnd,
-                };
-
-                let leaf_node = g.node_weight(*leaf_idx).unwrap().clone();
-
-                // create edges
-                (0..curr_degree).for_each(|_| {
-                    let end_idx = g.node_indices().choose(&mut rng).unwrap();
-
-                    // check for twin edges
-                    if self.settings.no_twin_edges
-                        && edges.contains(&[leaf_idx.index(), end_idx.index()])
-                    {
-                        return;
-                    }
-
-                    let mut new_edge_weight = self.settings.edge_weight;
-                    if self.settings.edge_weight_type == EdgeWeight::Random {
-                        new_edge_weight = edge_weight_pool.sample(&mut rng);
-                    }
-
-                    let end_node = g.node_weight(end_idx).unwrap();
-                    let edge = Edge::new(&leaf_node, end_node, new_edge_weight);
-
-                    g.add_edge(*leaf_idx, end_idx, edge);
-                    edges.insert([leaf_idx.index(), end_idx.index()]);
-                    next_last_ends.push(end_idx);
-                    ends.push(end_idx);
-                });
-            });
-
-            last_leafs = next_last_ends;
-
-            if started == 0 {
-                break;
-            }
-
-            path_len += 1
-        }
-
-        // TODO: extract to function
-        // define fins
-        let mut fin_nodes = HashSet::with_capacity(self.settings.fin_cnt);
-        (0..self.settings.fin_cnt).for_each(|_| {
-            let end_idx = ends.iter().choose(&mut rng).unwrap();
-            if fin_nodes.contains(end_idx) {
-                return;
-            }
-
-            let w = &mut g[*end_idx];
-            let new_name = format!("{}_{}", PREFIX_FIN, w.name());
-            w.set_name(new_name);
-
-            // need to change name of edges as well
-            let mut affected_edges = vec![];
-            g.edges_directed(*end_idx, Outgoing).for_each(|e_ref| {
-                affected_edges.push(e_ref.id());
-            });
-            g.edges_directed(*end_idx, Incoming).for_each(|e_ref| {
-                affected_edges.push(e_ref.id());
-            });
-
-            affected_edges.iter().for_each(|e_idx| {
-                let (source_idx, target_idx) = g.edge_endpoints(*e_idx).unwrap();
-                let source = g.node_weight(source_idx).cloned().unwrap();
-                let target = g.node_weight(target_idx).cloned().unwrap();
-
-                let e_weight = g.edge_weight_mut(*e_idx).unwrap();
-                *e_weight = Edge::new_with_id(*e_weight.id(), &source, &target, e_weight.weight());
-            });
-
-            fin_nodes.insert(*end_idx);
-        });
+        let ends = self.add_edges(&mut g, &mut rng, &ini_nodes);
+        self.pick_fins(&mut g, &mut rng, ends);
 
         let fin_nodes_set = g
             .node_weights()
@@ -175,7 +76,7 @@ impl Builder {
             .filter(|w| w.name().contains(PREFIX_INI))
             .collect::<HashSet<_>>();
 
-        let calculated = Calculated::new(&g, fin_nodes_set, ini_nodes_set, Default::default());
+        let calculated = Metadata::new(&g, fin_nodes_set, ini_nodes_set, Default::default());
 
         let mut state = State::new(
             g,
@@ -212,5 +113,117 @@ impl Builder {
         }
 
         ini_nodes
+    }
+
+    fn add_edges(
+        &self,
+        g: &mut StableDiGraph<Node, Edge>,
+        rng: &mut ThreadRng,
+        seed: &HashSet<NodeIndex>,
+    ) -> Vec<NodeIndex> {
+        let mut ends = vec![];
+        let max_degree_pool = Uniform::from(0..self.settings.max_out_degree);
+        let edge_weight_pool = Uniform::from(0.0..1.0);
+        let mut last_leafs = seed.iter().cloned().collect::<Vec<_>>();
+        let mut starts = HashSet::new();
+        let mut edges = HashSet::<[usize; 2]>::new();
+        // TODO: use in statistics for longest path
+        let mut path_len = 0;
+        loop {
+            let mut next_last_ends = vec![];
+            let mut started = 0;
+            last_leafs.iter().for_each(|leaf_idx| {
+                if starts.contains(leaf_idx) {
+                    // add output edges only for nodes without output edges
+                    return;
+                }
+
+                starts.insert(*leaf_idx);
+                started += 1;
+
+                let rnd = max_degree_pool.sample(rng);
+                // make sure we have at least one edge from ini node
+                let curr_degree = match rnd == 0 && path_len == 0 {
+                    true => 1,
+                    false => rnd,
+                };
+
+                let leaf_node = g.node_weight(*leaf_idx).unwrap().clone();
+
+                // create edges
+                (0..curr_degree).for_each(|_| {
+                    let end_idx = g.node_indices().choose(rng).unwrap();
+
+                    // check for twin edges
+                    if self.settings.no_twin_edges
+                        && edges.contains(&[leaf_idx.index(), end_idx.index()])
+                    {
+                        return;
+                    }
+
+                    let mut new_edge_weight = self.settings.edge_weight;
+                    if self.settings.edge_weight_type == EdgeWeight::Random {
+                        new_edge_weight = edge_weight_pool.sample(rng);
+                    }
+
+                    let end_node = g.node_weight(end_idx).unwrap();
+                    let edge = Edge::new(&leaf_node, end_node, new_edge_weight);
+
+                    g.add_edge(*leaf_idx, end_idx, edge);
+                    edges.insert([leaf_idx.index(), end_idx.index()]);
+                    next_last_ends.push(end_idx);
+                    ends.push(end_idx);
+                });
+            });
+
+            last_leafs = next_last_ends;
+
+            if started == 0 {
+                break;
+            }
+
+            path_len += 1
+        }
+
+        ends
+    }
+
+    fn pick_fins(
+        &self,
+        g: &mut StableDiGraph<Node, Edge>,
+        rng: &mut ThreadRng,
+        ends: Vec<NodeIndex>,
+    ) {
+        let mut fin_nodes = HashSet::with_capacity(self.settings.fin_cnt);
+        (0..self.settings.fin_cnt).for_each(|_| {
+            let end_idx = ends.iter().choose(rng).unwrap();
+            if fin_nodes.contains(end_idx) {
+                return;
+            }
+
+            let w = &mut g[*end_idx];
+            let new_name = format!("{}_{}", PREFIX_FIN, w.name());
+            w.set_name(new_name);
+
+            // need to change name of edges as well
+            let mut affected_edges = vec![];
+            g.edges_directed(*end_idx, Outgoing).for_each(|e_ref| {
+                affected_edges.push(e_ref.id());
+            });
+            g.edges_directed(*end_idx, Incoming).for_each(|e_ref| {
+                affected_edges.push(e_ref.id());
+            });
+
+            affected_edges.iter().for_each(|e_idx| {
+                let (source_idx, target_idx) = g.edge_endpoints(*e_idx).unwrap();
+                let source = g.node_weight(source_idx).cloned().unwrap();
+                let target = g.node_weight(target_idx).cloned().unwrap();
+
+                let e_weight = g.edge_weight_mut(*e_idx).unwrap();
+                *e_weight = Edge::new_with_id(*e_weight.id(), &source, &target, e_weight.weight());
+            });
+
+            fin_nodes.insert(*end_idx);
+        });
     }
 }

@@ -1,5 +1,5 @@
 mod builder;
-mod calculated;
+mod metadata;
 mod state;
 
 pub use self::builder::Builder;
