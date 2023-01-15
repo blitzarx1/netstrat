@@ -154,10 +154,8 @@ impl Builder {
                 (0..curr_degree).for_each(|_| {
                     let end_idx = g.node_indices().choose(rng).unwrap();
 
-                    // check for twin edges
-                    if self.settings.no_twin_edges
-                        && edges.contains(&[leaf_idx.index(), end_idx.index()])
-                    {
+                    // do not allow twin edges
+                    if edges.contains(&[leaf_idx.index(), end_idx.index()]) {
                         return;
                     }
 
@@ -166,7 +164,7 @@ impl Builder {
                         new_edge_weight = edge_weight_pool.sample(rng);
                     }
 
-                    let end_node = g.node_weight(end_idx).unwrap();
+                    let end_node = &g[end_idx];
                     let edge = Edge::new(&leaf_node, end_node, new_edge_weight);
 
                     g.add_edge(*leaf_idx, end_idx, edge);

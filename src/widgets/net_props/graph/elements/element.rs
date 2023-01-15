@@ -37,6 +37,10 @@ impl Node {
         &self.id
     }
 
+    pub fn deleted(&self) -> bool {
+        self.deleted
+    }
+
     pub fn mark_deleted(&mut self) {
         self.deleted = true
     }
@@ -89,6 +93,10 @@ impl Edge {
 
     pub fn mark_deleted(&mut self) {
         self.deleted = true
+    }
+
+    pub fn deleted(&self) -> bool {
+        self.deleted
     }
 
     fn build(id: Uuid, start: &Node, end: &Node, weight: f64) -> Edge {

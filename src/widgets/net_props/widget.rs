@@ -244,35 +244,35 @@ impl NetProps {
             self.apply_reach_power();
         }
 
-        // if clicks.delete_nodes_and_edges {
-        //     info!("deleting nodes and edges");
-        //     let deleted = self.graph_state.delete_nodes_and_edges(
-        //         self.nodes_and_edges_settings.nodes_input.splitted(),
-        //         self.nodes_and_edges_settings.edges_input.splitted(),
-        //     );
+        if clicks.delete_nodes_and_edges {
+            info!("deleting nodes and edges");
+            let deleted = self.graph_state.delete_nodes_and_edges(
+                self.nodes_and_edges_settings.nodes_input.splitted(),
+                self.nodes_and_edges_settings.edges_input.splitted(),
+            );
 
-        //     if deleted.is_none() {
-        //         self.handle_error("failed to delete node or edge");
-        //         return;
-        //     }
+            if deleted.is_none() {
+                self.handle_error("failed to delete node or edge");
+                return;
+            }
 
-        //     self.update_data();
-        // }
+            self.update_data();
+        }
 
-        // if clicks.color_nodes_and_edges {
-        //     info!("coloring nodes and edges");
-        //     let colored = self.graph_state.color_nodes_and_edges(
-        //         self.nodes_and_edges_settings.nodes_input.splitted(),
-        //         self.nodes_and_edges_settings.edges_input.splitted(),
-        //     );
+        if clicks.color_nodes_and_edges {
+            info!("coloring nodes and edges");
+            let colored = self.graph_state.color_nodes_and_edges(
+                self.nodes_and_edges_settings.nodes_input.splitted(),
+                self.nodes_and_edges_settings.edges_input.splitted(),
+            );
 
-        //     if colored.is_none() {
-        //         self.handle_error("failed to color node or edge");
-        //         return;
-        //     }
+            if colored.is_none() {
+                self.handle_error("failed to color node or edge");
+                return;
+            }
 
-        //     self.update_data();
-        // }
+            self.update_data();
+        }
 
         if clicks.export_dot {
             info!("exporting dot");
@@ -478,12 +478,6 @@ impl NetProps {
                     .text("max_out_degree"),
             );
             ui.add_space(10.0);
-            ui.checkbox(&mut inter.graph_settings.no_twin_edges, "No twin edges");
-            ui.checkbox(
-                &mut inter.graph_settings.diamond_filter,
-                "Apply diamond filter",
-            );
-            ui.add_space(10.0);
             ui.label("Edge weights");
             ui.radio_value(
                 &mut inter.graph_settings.edge_weight_type,
@@ -498,7 +492,7 @@ impl NetProps {
                 );
                 ui.add_enabled(
                     inter.graph_settings.edge_weight_type == EdgeWeight::Fixed,
-                    Slider::new(&mut inter.graph_settings.edge_weight, 0.0..=1.0),
+                    Slider::new(&mut inter.graph_settings.edge_weight, 0.01..=1.0),
                 );
             });
             ui.add_space(10.0);
@@ -510,6 +504,11 @@ impl NetProps {
                     inter.clicks.reset = true;
                 }
             });
+            ui.add_space(10.0);
+            ui.checkbox(
+                &mut inter.graph_settings.diamond_filter,
+                "Apply diamond filter",
+            );
         });
     }
 
@@ -795,7 +794,7 @@ impl AppWidget for NetProps {
         );
         self.draw_create_section(ui, &mut interactions);
         // self.draw_import_export_section(ui, &mut interactions);
-        // self.draw_nodes_and_edges_section(ui, &mut interactions);
+        self.draw_nodes_and_edges_section(ui, &mut interactions);
         // self.draw_cones_section(ui, &mut interactions);
         // self.draw_cycles_section(ui, &mut interactions);
         // self.graph_state.history().show(ui);
