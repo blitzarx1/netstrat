@@ -509,7 +509,7 @@ impl State {
     fn find_nodes_by_names(&self, names: Vec<String>) -> Option<HashSet<Node>> {
         let mut nodes_set = HashSet::with_capacity(names.len());
         for name in names {
-            let node = self.metadata.node_by_name.get(&name)?;
+            let node = self.get_node_by_name(&name)?;
             if node.deleted() {
                 return None;
             }
@@ -526,7 +526,7 @@ impl State {
             let start_name = bound.first().unwrap();
             let end_name = bound.last().unwrap();
             let edge_name = format!("{} -> {}", start_name, end_name);
-            let edge = self.metadata.edge_by_name.get(&edge_name)?;
+            let edge = self.get_edge_by_name(&edge_name)?;
             if edge.deleted() {
                 return None;
             }
@@ -661,6 +661,14 @@ impl State {
 
     fn get_node(&self, idx: NodeIndex) -> &Node {
         self.metadata.node_by_idx.get(&idx).unwrap()
+    }
+
+    fn get_node_by_name(&self, name: &String) -> Option<&Node> {
+        self.metadata.node_by_name.get(name)
+    }
+
+    fn get_edge_by_name(&self, name: &String) -> Option<&Edge> {
+        self.metadata.edge_by_name.get(name)
     }
 
     // fn elements_to_matrix_elements(&self, elements: &Elements) -> MatrixElements {
@@ -846,12 +854,6 @@ impl State {
 
         self.metadata.delete_edge(edge)
     }
-}
-
-/// is not used now
-fn weight_line(line: String, weight: f64) -> String {
-    let first_part = line.replace(']', "");
-    format!("{first_part}, penwidth={weight} ]")
 }
 
 fn parse_edge_from_dot(line: String) -> Option<(String, String, String)> {
