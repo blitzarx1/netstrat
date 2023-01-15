@@ -10,7 +10,7 @@ use super::{
 
 const SIGN_NODES: &str = "🇳";
 const SIGN_EDGES: &str = "🇪";
-const offset: &str = "    ";
+const OFFSET: &str = "    ";
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct Elements {
@@ -24,16 +24,16 @@ impl Display for Elements {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "\n{}{}: {}\n{}{}: {}",
+            OFFSET,
             SIGN_NODES,
-            offset,
             self.frozen()
                 .nodes()
                 .iter()
                 .map(|n| n.name().clone())
                 .collect::<Vec<_>>()
                 .join(", "),
+            OFFSET,
             SIGN_EDGES,
-            offset,
             self.frozen()
                 .edges()
                 .iter()
@@ -111,14 +111,14 @@ impl Elements {
             .cloned()
             .collect::<HashSet<_>>();
 
-        let plus_nodes = self
+        let plus_nodes = other
             .nodes
             .iter()
             .filter(|n| !self.nodes.contains(n))
             .cloned()
             .collect::<HashSet<_>>();
 
-        let plus_edges = self
+        let plus_edges = other
             .edges()
             .iter()
             .filter(|e| !self.edges.contains(e))

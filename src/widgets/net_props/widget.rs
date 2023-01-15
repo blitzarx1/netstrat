@@ -797,7 +797,7 @@ impl AppWidget for NetProps {
         self.draw_nodes_and_edges_section(ui, &mut interactions);
         // self.draw_cones_section(ui, &mut interactions);
         // self.draw_cycles_section(ui, &mut interactions);
-        // self.graph_state.history().show(ui);
+        self.graph_state.history().show(ui);
         // self.draw_section_matrices(ui, &mut interactions);
         // self.draw_dot_preview_section(ui, &mut interactions);
 

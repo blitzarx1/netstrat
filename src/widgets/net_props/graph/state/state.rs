@@ -560,7 +560,6 @@ impl State {
     // }
 
     fn color_elements_and_update(&mut self, elements: &Elements) {
-        debug!("coloring elements");
         if elements.is_empty() {
             return;
         }
@@ -570,10 +569,9 @@ impl State {
             colored: self.metadata.colored.compute_difference(elements),
             signal_holders: Default::default(),
         };
+
         self.history
             .add_step("color elements".to_string(), step_diff);
-
-        info!("elements colored");
 
         self.metadata.color(elements);
         self.metadata.recalculate(&self.graph)
