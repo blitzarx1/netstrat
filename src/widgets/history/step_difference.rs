@@ -7,7 +7,7 @@ use crate::widgets::net_props::Elements;
 const SIGN_PLUS: &str = "➕";
 const SIGN_MINUS: &str = "➖";
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct Difference {
     pub plus: Elements,
     pub minus: Elements,
@@ -28,7 +28,7 @@ impl Difference {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct StepDifference {
     pub elements: Difference,
     pub colored: Difference,

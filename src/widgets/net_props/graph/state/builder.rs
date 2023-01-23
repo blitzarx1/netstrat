@@ -24,8 +24,8 @@ use crate::{
 
 use super::State;
 
-const PREFIX_INI: &str = "ini";
-const PREFIX_FIN: &str = "fin";
+pub const PREFIX_INI: &str = "ini";
+pub const PREFIX_FIN: &str = "fin";
 
 #[derive(Default, Clone)]
 pub struct Builder {
@@ -78,11 +78,7 @@ impl Builder {
 
         let calculated = Metadata::new(&g, fin_nodes_set, ini_nodes_set, Default::default());
 
-        let mut state = State::new(
-            g,
-            History::new("create".to_string(), self.bus.clone()),
-            calculated,
-        );
+        let mut state = State::new(g, self.bus.clone(), calculated);
 
         if self.settings.diamond_filter {
             state.diamond_filter()

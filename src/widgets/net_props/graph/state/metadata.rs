@@ -14,6 +14,8 @@ use crate::widgets::net_props::graph::{
     elements::{Edge, Elements, Node},
 };
 
+use super::{PREFIX_FIN, PREFIX_INI};
+
 const MAX_DOT_WEIGHT: f64 = 2.0;
 const MIN_DOT_WEIGHT: f64 = 0.5;
 
@@ -28,6 +30,7 @@ pub struct Metadata {
     pub idx_by_edge_id: HashMap<Uuid, EdgeIndex>,
     pub ini_nodes: HashSet<Node>,
     pub fin_nodes: HashSet<Node>,
+
     pub colored: Elements,
 
     // calculated
@@ -124,6 +127,43 @@ impl Metadata {
             .get_mut(edge.name())
             .unwrap()
             .mark_deleted();
+    }
+
+    pub fn restore_node(&mut self, id: &Uuid, idx: &NodeIndex) {
+        let old_idx = self.idx_by_node_id.remove(id).unwrap();
+        let mut node = self.node_by_idx.remove(&old_idx).unwrap();
+
+        let name = node.name().clone();
+        if name.contains(PREFIX_INI) {
+            self.ini_nodes.take(&node);
+        }
+        if name.contains(PREFIX_FIN) {
+            self.fin_nodes.take(&node);
+        }
+
+        node.restore();
+
+        self.idx_by_node_id.insert(*id, *idx);
+        self.node_by_idx.insert(*idx, node.clone());
+
+        self.node_by_name.insert(name.clone(), node.clone());
+        if name.contains(PREFIX_INI) {
+            self.ini_nodes.insert(node.clone());
+        }
+        if name.contains(PREFIX_FIN) {
+            self.fin_nodes.insert(node);
+        }
+    }
+
+    pub fn restore_edge(&mut self, id: &Uuid, idx: &EdgeIndex) {
+        let old_idx = self.idx_by_edge_id.remove(id).unwrap();
+        let mut edge = self.edge_by_idx.remove(&old_idx).unwrap();
+
+        edge.restore();
+
+        self.idx_by_edge_id.insert(*id, *idx);
+        self.edge_by_idx.insert(*idx, edge.clone());
+        self.edge_by_name.insert(edge.name().clone(), edge);
     }
 
     pub fn color(&mut self, elements: &Elements) {

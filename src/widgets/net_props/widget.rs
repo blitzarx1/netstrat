@@ -75,7 +75,7 @@ impl NetProps {
             nodes_and_edges_settings: Default::default(),
         };
 
-        s.update_data();
+        s.update_data("Graph created");
 
         s
     }
@@ -87,7 +87,7 @@ impl NetProps {
     fn reset(&mut self) {
         self.graph_state = self.reset_data();
 
-        self.update_data();
+        self.update_data("Graph resetted");
         self.reset_settings();
     }
 
@@ -102,7 +102,7 @@ impl NetProps {
             .with_settings(self.net_settings.clone())
             .build();
 
-        self.update_data();
+        self.update_data("Graph created");
 
         if let Err(err) = self.bus.write(
             channels::SIMULATION_CHANNEL.to_string(),
@@ -190,12 +190,12 @@ impl NetProps {
         self.reach_matrix_power_input = reach_matrix_power_input;
     }
 
-    fn update_data(&mut self) {
+    fn update_data(&mut self, message: &str) {
         debug!("updating graph state");
 
         // self.adj_matrix.set_state(self.graph_state.adj_matrix());
         self.update_frame();
-        self.trigger_changed_toast();
+        self.trigger_info_toast(message);
     }
 
     fn handle_error(&mut self, msg: &str) {
@@ -256,7 +256,7 @@ impl NetProps {
                 return;
             }
 
-            self.update_data();
+            self.update_data("elements deleted");
         }
 
         if clicks.color_nodes_and_edges {
@@ -271,7 +271,7 @@ impl NetProps {
                 return;
             }
 
-            self.update_data();
+            self.update_data("Elements colored");
         }
 
         if clicks.export_dot {
@@ -342,9 +342,9 @@ impl NetProps {
         self.net_drawer.lock().unwrap().update_image(image);
     }
 
-    fn trigger_changed_toast(&mut self) {
+    fn trigger_info_toast(&mut self, message: &str) {
         self.toasts
-            .success("Graph changed")
+            .success(message)
             .set_duration(Some(Duration::from_secs(3)));
     }
 
@@ -722,20 +722,20 @@ impl NetProps {
     //     });
     // }
 
-    // fn check_history_diff_event(&mut self) {
-    //     let history_diff_wrapped = self.bus.read(channels::HISTORY_DIFFERENCE.to_string());
-    //     if history_diff_wrapped.is_err() {
-    //         return;
-    //     }
-    //     let msg_history_diff = serde_json::from_str::<StepDifference>(
-    //         history_diff_wrapped.unwrap().payload().as_str(),
-    //     )
-    //     .unwrap();
+    fn check_history_diff_event(&mut self) {
+        let history_diff_wrapped = self.bus.read(channels::HISTORY_DIFFERENCE.to_string());
+        if history_diff_wrapped.is_err() {
+            return;
+        }
+        let msg_history_diff = serde_json::from_str::<StepDifference>(
+            history_diff_wrapped.unwrap().payload().as_str(),
+        )
+        .unwrap();
 
-    //     self.graph_state.apply_difference(msg_history_diff);
+        self.graph_state.apply_difference(msg_history_diff);
 
-    //     self.update_data();
-    // }
+        self.update_data("History loaded");
+    }
 
     // fn check_simulation_event(&mut self) {
     //     let operation_wrapped = self.bus.read(channels::SIMULATION_CHANNEL.to_string());
@@ -774,7 +774,7 @@ impl NetProps {
     // }
 
     fn check_events(&mut self) {
-        // self.check_history_diff_event();
+        self.check_history_diff_event();
         // self.check_simulation_event();
     }
 }

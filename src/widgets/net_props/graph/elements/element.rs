@@ -45,6 +45,10 @@ impl Node {
         self.deleted = true
     }
 
+    pub fn restore(&mut self) {
+        self.deleted = false
+    }
+
     fn build(id: Uuid, name: String) -> Node {
         Node {
             id,
@@ -79,6 +83,14 @@ impl Edge {
         Edge::build(id, start, end, weight)
     }
 
+    pub fn start(&self) -> &Uuid {
+        &self.start
+    }
+
+    pub fn end(&self) -> &Uuid {
+        &self.end
+    }
+
     pub fn weight(&self) -> f64 {
         self.weight_x_10_6 as f64 / 1_000_000_f64
     }
@@ -93,6 +105,10 @@ impl Edge {
 
     pub fn mark_deleted(&mut self) {
         self.deleted = true
+    }
+
+    pub fn restore(&mut self) {
+        self.deleted = false
     }
 
     pub fn deleted(&self) -> bool {
