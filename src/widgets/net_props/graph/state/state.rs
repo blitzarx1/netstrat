@@ -341,13 +341,14 @@ impl State {
             self.find_nodes_by_names(nodes)?,
             self.find_edges_by_nodes_names(edges)?,
         );
-        self.color_elements(elements);
 
         let step_diff = StepDifference {
             elements: Default::default(),
             colored: self.metadata.colored.compute_difference(elements),
-            signal_holders: Default::default(),
+            // signal_holders: Default::default(),
         };
+
+        self.color_elements(elements);
 
         self.history
             .add_step("color elements".to_string(), step_diff);
@@ -361,6 +362,9 @@ impl State {
         nodes: Vec<String>,
         edges: Vec<[String; 2]>,
     ) -> Option<()> {
+        let old_colored = self.metadata.colored.clone();
+        // let old_signal = self.metadata.signal.clone();
+
         let elements = &self.delete_elements(&Elements::new(
             self.find_nodes_by_names(nodes)?,
             self.find_edges_by_nodes_names(edges)?,
@@ -368,8 +372,8 @@ impl State {
 
         let step_diff = StepDifference {
             elements: elements.compute_difference(&Default::default()),
-            colored: Default::default(),
-            signal_holders: Default::default(),
+            colored: old_colored.compute_difference(&old_colored.sub(elements)),
+            // signal_holders: elements.compute_difference(&old_signal),
         };
 
         self.history
@@ -499,7 +503,6 @@ impl State {
 
         elements.edges().iter().for_each(|e| self.restore_edge(e));
     }
-
 
     fn restore_node(&mut self, n: &Node) {
         let mut node = n.clone();
@@ -855,7 +858,7 @@ impl State {
 
         elements.nodes().iter().fold(
             Elements::new(elements.nodes().clone(), elements.edges().clone()),
-            |res, node| res.union(&self.delete_node(&node)),
+            |res, node| res.union(&self.delete_node(node)),
         )
     }
 

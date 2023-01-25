@@ -84,8 +84,8 @@ impl Elements {
         let mut nodes = self.nodes().iter().cloned().collect::<Vec<_>>();
         let mut edges = self.edges().iter().cloned().collect::<Vec<_>>();
 
-        nodes.sort_by(|l, r| l.cmp(r));
-        edges.sort_by(|l, r| l.cmp(r));
+        nodes.sort();
+        edges.sort();
 
         FrozenElements::new(nodes, edges)
     }
@@ -233,5 +233,41 @@ mod test {
         let res: Elements = serde_json::from_str(SERIALIZED_DATA).unwrap();
 
         assert_eq!(res, elements());
+    }
+
+    #[test]
+    fn test_compute_difference() {
+        let els = elements();
+
+        let n1 = Node::new_with_id(
+            Uuid::parse_str("788aa271-f148-48b5-bf79-486071424ccc").unwrap(),
+            "fin_3".to_string(),
+        );
+        let els_minus_n1 = els.sub(&Elements::new(
+            vec![n1.clone()].into_iter().collect(),
+            Default::default(),
+        ));
+
+        assert_eq!(
+            Difference {
+                plus: Default::default(),
+                minus: Elements::new(vec![n1].into_iter().collect(), Default::default()),
+            },
+            els.compute_difference(&els_minus_n1)
+        );
+        assert_eq!(
+            Difference {
+                plus: Default::default(),
+                minus: els.clone(),
+            },
+            els.compute_difference(&Default::default())
+        );
+        assert_eq!(
+            Difference {
+                plus: els.clone(),
+                minus: Default::default(),
+            },
+            Elements::default().compute_difference(&els)
+        );
     }
 }

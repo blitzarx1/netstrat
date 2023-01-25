@@ -32,10 +32,10 @@ pub struct Metadata {
     pub fin_nodes: HashSet<Node>,
 
     pub colored: Elements,
+    // pub signal: Elements,
 
     // calculated
     pub dot: String,
-    // pub signal: Elements,
     // pub cycles: Vec<Cycle>,
     // pub adj_mat: MatrixState,
     // pub longest_path: usize,
@@ -77,7 +77,9 @@ impl Metadata {
         let mut res = Metadata {
             fin_nodes: fin,
             ini_nodes: ini,
+
             colored,
+            // signal: Default::default(),
 
             node_by_name,
             node_by_idx,
@@ -102,7 +104,6 @@ impl Metadata {
         let idx = self.idx_by_node_id[node.id()];
 
         self.node_by_idx.get_mut(&idx).unwrap().mark_deleted();
-
         self.node_by_name
             .get_mut(node.name())
             .unwrap()
@@ -122,7 +123,6 @@ impl Metadata {
         let idx = self.idx_by_edge_id[edge.id()];
 
         self.edge_by_idx.get_mut(&idx).unwrap().mark_deleted();
-
         self.edge_by_name
             .get_mut(edge.name())
             .unwrap()
@@ -132,25 +132,21 @@ impl Metadata {
     pub fn restore_node(&mut self, id: &Uuid, idx: &NodeIndex) {
         let old_idx = self.idx_by_node_id.remove(id).unwrap();
         let mut node = self.node_by_idx.remove(&old_idx).unwrap();
-
-        let name = node.name().clone();
-        if name.contains(PREFIX_INI) {
-            self.ini_nodes.take(&node);
-        }
-        if name.contains(PREFIX_FIN) {
-            self.fin_nodes.take(&node);
-        }
+        let node_copy = node.clone();
 
         node.restore();
 
         self.idx_by_node_id.insert(*id, *idx);
         self.node_by_idx.insert(*idx, node.clone());
 
+        let name = node.name().clone();
         self.node_by_name.insert(name.clone(), node.clone());
         if name.contains(PREFIX_INI) {
+            self.ini_nodes.take(&node_copy);
             self.ini_nodes.insert(node.clone());
         }
         if name.contains(PREFIX_FIN) {
+            self.fin_nodes.take(&node_copy);
             self.fin_nodes.insert(node);
         }
     }
@@ -174,6 +170,7 @@ impl Metadata {
     fn calc_dot(&self, g: &StableDiGraph<Node, Edge>) -> String {
         let max_weight = g
             .edge_weights()
+            .filter(|e| !e.deleted())
             .map(|e| e.weight())
             .max_by(|left, right| left.partial_cmp(right).unwrap())
             .unwrap();

@@ -7,7 +7,7 @@ use crate::widgets::net_props::Elements;
 const SIGN_PLUS: &str = "➕";
 const SIGN_MINUS: &str = "➖";
 
-#[derive(Clone, Serialize, Deserialize, Default, Debug)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug, PartialEq)]
 pub struct Difference {
     pub plus: Elements,
     pub minus: Elements,
@@ -32,7 +32,7 @@ impl Difference {
 pub struct StepDifference {
     pub elements: Difference,
     pub colored: Difference,
-    pub signal_holders: Difference,
+    // pub signal_holders: Difference,
 }
 
 impl Display for StepDifference {
@@ -44,9 +44,9 @@ impl Display for StepDifference {
         if !self.colored.minus.is_empty() || !self.colored.plus.is_empty() {
             tooltip_vec.push(format!("color\n{}\n", self.colored));
         }
-        if !self.signal_holders.minus.is_empty() || !self.signal_holders.plus.is_empty() {
-            tooltip_vec.push(format!("signal\n{}\n", self.signal_holders));
-        }
+        // if !self.signal_holders.minus.is_empty() || !self.signal_holders.plus.is_empty() {
+        //     tooltip_vec.push(format!("signal\n{}\n", self.signal_holders));
+        // }
 
         f.write_str(tooltip_vec.join("\n").as_str())
     }
@@ -63,10 +63,10 @@ impl StepDifference {
                 plus: self.colored.plus.union(&other.colored.plus),
                 minus: self.colored.minus.union(&other.colored.minus),
             },
-            signal_holders: Difference {
-                plus: self.signal_holders.plus.union(&other.signal_holders.plus),
-                minus: self.signal_holders.minus.union(&other.signal_holders.minus),
-            },
+            // signal_holders: Difference {
+            //     plus: self.signal_holders.plus.union(&other.signal_holders.plus),
+            //     minus: self.signal_holders.minus.union(&other.signal_holders.minus),
+            // },
         }
     }
 
@@ -80,10 +80,10 @@ impl StepDifference {
                 plus: self.colored.clone().minus,
                 minus: self.colored.clone().plus,
             },
-            signal_holders: Difference {
-                plus: self.signal_holders.clone().minus,
-                minus: self.signal_holders.clone().plus,
-            },
+            // signal_holders: Difference {
+            //     plus: self.signal_holders.clone().minus,
+            //     minus: self.signal_holders.clone().plus,
+            // },
         }
     }
 }
