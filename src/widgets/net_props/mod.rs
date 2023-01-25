@@ -10,3 +10,4 @@ mod widget;
 
 pub use self::graph::{Elements, FrozenElements, State};
 pub use self::widget::NetProps;
+pub use self::graph::Graph;

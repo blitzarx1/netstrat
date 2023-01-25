@@ -1,17 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use petgraph::{
-    dot::Dot,
-    graph::EdgeIndex,
-    graph::NodeIndex,
-    stable_graph::StableDiGraph,
-    visit::{IntoEdgeReferences, IntoEdges, IntoNodeReferences},
-};
+use petgraph::{dot::Dot, graph::EdgeIndex, graph::NodeIndex, visit::IntoNodeReferences};
 use uuid::Uuid;
 
-use crate::widgets::net_props::graph::{
-    cycle::Cycle,
-    elements::{Edge, Elements, Node},
+use crate::widgets::net_props::{
+    graph::elements::{Edge, Elements, Node},
+    Graph,
 };
 
 use super::{PREFIX_FIN, PREFIX_INI};
@@ -42,12 +36,7 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn new(
-        g: &StableDiGraph<Node, Edge>,
-        fin: HashSet<Node>,
-        ini: HashSet<Node>,
-        colored: Elements,
-    ) -> Metadata {
+    pub fn new(g: &Graph, fin: HashSet<Node>, ini: HashSet<Node>, colored: Elements) -> Metadata {
         let node_by_name = g
             .node_weights()
             .cloned()
@@ -80,7 +69,6 @@ impl Metadata {
 
             colored,
             // signal: Default::default(),
-
             node_by_name,
             node_by_idx,
             idx_by_node_id,
@@ -96,7 +84,7 @@ impl Metadata {
         res
     }
 
-    pub fn recalculate(&mut self, g: &StableDiGraph<Node, Edge>) {
+    pub fn recalculate(&mut self, g: &Graph) {
         self.dot = self.calc_dot(g)
     }
 
@@ -167,7 +155,7 @@ impl Metadata {
         self.colored = elements.clone();
     }
 
-    fn calc_dot(&self, g: &StableDiGraph<Node, Edge>) -> String {
+    fn calc_dot(&self, g: &Graph) -> String {
         let max_weight = g
             .edge_weights()
             .filter(|e| !e.deleted())

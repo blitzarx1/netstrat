@@ -7,12 +7,13 @@ use crate::widgets::history::Difference;
 use crate::widgets::history::History;
 use crate::widgets::matrix::Elements as MatrixElements;
 use crate::widgets::matrix::State as MatrixState;
+use crate::widgets::net_props::Graph;
 use crate::widgets::net_props::graph::cycle::Cycle;
 use crate::widgets::net_props::graph::elements::Edge;
 use crate::widgets::net_props::graph::elements::Elements;
 use crate::widgets::net_props::graph::elements::Node;
 use crate::widgets::net_props::graph::path::Path;
-use crate::widgets::net_props::settings::{ConeSettings, EdgeWeight, Settings};
+use crate::widgets::net_props::settings::ConeSettings;
 use crate::widgets::StepDifference;
 use lazy_static::lazy_static;
 use ndarray::Array;
@@ -20,7 +21,7 @@ use ndarray::Array2;
 use petgraph::algo::all_simple_paths;
 use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
-use petgraph::prelude::{EdgeRef, StableDiGraph};
+use petgraph::prelude::EdgeRef;
 use petgraph::stable_graph::EdgeIndex;
 use petgraph::visit::Visitable;
 use petgraph::visit::{depth_first_search, IntoEdgeReferences, IntoNodeReferences, NodeIndexable};
@@ -38,14 +39,14 @@ type ConeSettingsList = Vec<ConeSettings>;
 
 #[derive(Clone, Default)]
 pub struct State {
-    graph: StableDiGraph<Node, Edge>,
+    graph: Graph,
     history: History,
     metadata: Metadata,
 }
 
 impl State {
-    pub fn new(graph: StableDiGraph<Node, Edge>, bus: Bus, metadata: Metadata) -> State {
-        let history = History::new("create".to_string(), bus.clone());
+    pub fn new(graph: Graph, bus: Bus, metadata: Metadata) -> State {
+        let history = History::new("create".to_string(), bus);
         State {
             graph,
             history,

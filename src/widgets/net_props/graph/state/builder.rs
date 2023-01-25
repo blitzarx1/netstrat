@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use petgraph::{
-    stable_graph::{NodeIndex, StableDiGraph},
+    stable_graph::NodeIndex,
     visit::EdgeRef,
     Direction::{Incoming, Outgoing},
 };
@@ -11,13 +11,12 @@ use tracing::debug;
 use crate::{
     netstrat::Bus,
     widgets::{
-        history::History,
         net_props::{
             graph::{
                 elements::{Edge, Node},
                 state::metadata::Metadata,
             },
-            settings::{EdgeWeight, Settings},
+            settings::{EdgeWeight, Settings}, Graph,
         },
     },
 };
@@ -49,7 +48,7 @@ impl Builder {
     pub fn build(&self) -> State {
         debug!("building graph state with settings: {:?}", self.settings);
 
-        let mut g: StableDiGraph<Node, Edge> = StableDiGraph::with_capacity(
+        let mut g: Graph = Graph::with_capacity(
             self.settings.total_cnt,
             self.settings.total_cnt * self.settings.total_cnt,
         );
@@ -89,7 +88,7 @@ impl Builder {
 
     fn pick_inis(
         &self,
-        g: &mut StableDiGraph<Node, Edge>,
+        g: &mut Graph,
         r: &mut ThreadRng,
     ) -> HashSet<NodeIndex> {
         let mut ini_nodes = HashSet::with_capacity(self.settings.ini_cnt);
@@ -113,7 +112,7 @@ impl Builder {
 
     fn add_edges(
         &self,
-        g: &mut StableDiGraph<Node, Edge>,
+        g: &mut Graph,
         rng: &mut ThreadRng,
         seed: &HashSet<NodeIndex>,
     ) -> Vec<NodeIndex> {
@@ -184,7 +183,7 @@ impl Builder {
 
     fn pick_fins(
         &self,
-        g: &mut StableDiGraph<Node, Edge>,
+        g: &mut Graph,
         rng: &mut ThreadRng,
         ends: Vec<NodeIndex>,
     ) {
