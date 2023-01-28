@@ -8,25 +8,25 @@ use crate::widgets::net_props::{
     Graph,
 };
 
-use super::{PREFIX_FIN, PREFIX_INI};
-
 const MAX_DOT_WEIGHT: f64 = 2.0;
 const MIN_DOT_WEIGHT: f64 = 0.5;
 
 #[derive(Default, Clone)]
 pub struct Metadata {
-    // store
-    pub node_by_name: HashMap<String, Node>,
-    pub edge_by_name: HashMap<String, Edge>,
-    pub node_by_idx: HashMap<NodeIndex, Node>,
-    pub edge_by_idx: HashMap<EdgeIndex, Edge>,
+    pub node_by_id: HashMap<Uuid, Node>,
+    pub edge_by_id: HashMap<Uuid, Edge>,
+
+    pub ini_nodes: HashSet<Uuid>,
+    pub fin_nodes: HashSet<Uuid>,
+
+    pub node_by_name: HashMap<String, Uuid>,
+    pub edge_by_name: HashMap<String, Uuid>,
+
     pub idx_by_node_id: HashMap<Uuid, NodeIndex>,
     pub idx_by_edge_id: HashMap<Uuid, EdgeIndex>,
-    pub ini_nodes: HashSet<Node>,
-    pub fin_nodes: HashSet<Node>,
 
-    pub colored: Elements,
-    // pub signal: Elements,
+    pub selected: Elements,
+    pub elements: Elements,
 
     // calculated
     pub dot: String,
@@ -36,16 +36,27 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn new(g: &Graph, fin: HashSet<Node>, ini: HashSet<Node>, colored: Elements) -> Metadata {
+    pub fn new(g: &Graph, fin: HashSet<Uuid>, ini: HashSet<Uuid>) -> Metadata {
+        let node_by_id = g
+            .node_weights()
+            .cloned()
+            .map(|w| (*w.id(), w))
+            .collect::<HashMap<_, _>>();
+        let edge_by_id = g
+            .edge_weights()
+            .cloned()
+            .map(|w| (*w.id(), w))
+            .collect::<HashMap<_, _>>();
+
         let node_by_name = g
             .node_weights()
             .cloned()
-            .map(|w| (w.name().clone(), w))
+            .map(|w| (w.name().clone(), *w.id()))
             .collect::<HashMap<_, _>>();
         let edge_by_name = g
             .edge_weights()
             .cloned()
-            .map(|w| (w.name().clone(), w))
+            .map(|w| (w.name().clone(), *w.id()))
             .collect::<HashMap<_, _>>();
 
         let mut idx_by_node_id = HashMap::with_capacity(g.node_count());
@@ -67,15 +78,17 @@ impl Metadata {
             fin_nodes: fin,
             ini_nodes: ini,
 
-            colored,
-            // signal: Default::default(),
             node_by_name,
-            node_by_idx,
             idx_by_node_id,
 
             edge_by_name,
-            edge_by_idx,
             idx_by_edge_id,
+
+            node_by_id,
+            edge_by_id,
+
+            selected: Default::default(),
+            elements: Default::default(),
 
             dot: Default::default(),
         };
@@ -88,77 +101,9 @@ impl Metadata {
         self.dot = self.calc_dot(g)
     }
 
-    pub fn delete_node(&mut self, node: &Node) {
-        let idx = self.idx_by_node_id[node.id()];
-
-        self.node_by_idx.get_mut(&idx).unwrap().mark_deleted();
-        self.node_by_name
-            .get_mut(node.name())
-            .unwrap()
-            .mark_deleted();
-
-        let mut node_copy = node.clone();
-        node_copy.mark_deleted();
-
-        self.ini_nodes.take(node);
-        self.ini_nodes.insert(node_copy.clone());
-
-        self.fin_nodes.take(node);
-        self.fin_nodes.insert(node_copy);
-    }
-
-    pub fn delete_edge(&mut self, edge: &Edge) {
-        let idx = self.idx_by_edge_id[edge.id()];
-
-        self.edge_by_idx.get_mut(&idx).unwrap().mark_deleted();
-        self.edge_by_name
-            .get_mut(edge.name())
-            .unwrap()
-            .mark_deleted();
-    }
-
-    pub fn restore_node(&mut self, id: &Uuid, idx: &NodeIndex) {
-        let old_idx = self.idx_by_node_id.remove(id).unwrap();
-        let mut node = self.node_by_idx.remove(&old_idx).unwrap();
-        let node_copy = node.clone();
-
-        node.restore();
-
-        self.idx_by_node_id.insert(*id, *idx);
-        self.node_by_idx.insert(*idx, node.clone());
-
-        let name = node.name().clone();
-        self.node_by_name.insert(name.clone(), node.clone());
-        if name.contains(PREFIX_INI) {
-            self.ini_nodes.take(&node_copy);
-            self.ini_nodes.insert(node.clone());
-        }
-        if name.contains(PREFIX_FIN) {
-            self.fin_nodes.take(&node_copy);
-            self.fin_nodes.insert(node);
-        }
-    }
-
-    pub fn restore_edge(&mut self, id: &Uuid, idx: &EdgeIndex) {
-        let old_idx = self.idx_by_edge_id.remove(id).unwrap();
-        let mut edge = self.edge_by_idx.remove(&old_idx).unwrap();
-
-        edge.restore();
-
-        self.idx_by_edge_id.insert(*id, *idx);
-        self.edge_by_idx.insert(*idx, edge.clone());
-        self.edge_by_name.insert(edge.name().clone(), edge);
-    }
-
-    pub fn color(&mut self, elements: &Elements) {
-        // TODO: maybe move this to Element attributes?
-        self.colored = elements.clone();
-    }
-
     fn calc_dot(&self, g: &Graph) -> String {
         let max_weight = g
             .edge_weights()
-            .filter(|e| !e.deleted())
             .map(|e| e.weight())
             .max_by(|left, right| left.partial_cmp(right).unwrap())
             .unwrap();
@@ -166,27 +111,42 @@ impl Metadata {
         Dot::with_attr_getters(
             g,
             &[],
-            &|g, r| {
+            &|_g, r| {
+                let edge = r.weight();
                 let mut attrs = vec![];
 
-                if self.colored.edges().contains(r.weight()) {
-                    attrs.push("color=red".to_string())
-                }
-
-                let weight = r.weight().weight();
+                let weight = edge.weight();
                 let mut normed = (weight / max_weight) * MAX_DOT_WEIGHT;
                 if normed < MIN_DOT_WEIGHT {
                     normed = MIN_DOT_WEIGHT
                 }
                 attrs.push(format!("penwidth={}", normed));
 
+                let mut color = "black".to_string();
+                if edge.deleted() {
+                    color = "lightgray".to_string();
+                }
+                if !edge.deleted() && edge.selected() {
+                    color = "red".to_string();
+                }
+                attrs.push(format!("color={}", color));
+                attrs.push(format!("fontcolor={}", color));
+
                 attrs.join(", ")
             },
-            &|g, r| {
+            &|_g, r| {
+                let node = r.1;
                 let mut attrs = vec![];
-                if self.colored.nodes().contains(r.1) {
-                    attrs.push("color=red".to_string())
+
+                let mut color = "black".to_string();
+                if node.deleted() {
+                    color = "lightgray".to_string();
                 }
+                if !node.deleted() && node.selected() {
+                    color = "red".to_string();
+                }
+                attrs.push(format!("color={}", color));
+                attrs.push(format!("fontcolor={}", color));
 
                 attrs.join(", ")
             },

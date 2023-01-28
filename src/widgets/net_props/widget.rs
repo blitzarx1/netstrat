@@ -256,22 +256,22 @@ impl NetProps {
                 return;
             }
 
-            self.update_data("elements deleted");
+            self.update_data("Elements deleted");
         }
 
-        if clicks.color_nodes_and_edges {
-            info!("coloring nodes and edges");
-            let colored = self.graph_state.color_nodes_and_edges(
+        if clicks.select_nodes_and_edges {
+            info!("selecting nodes and edges");
+            let selected = self.graph_state.select_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
 
-            if colored.is_none() {
-                self.handle_error("failed to color node or edge");
+            if selected.is_none() {
+                self.handle_error("failed to select node or edge");
                 return;
             }
 
-            self.update_data("Elements colored");
+            self.update_data("Elements selected");
         }
 
         if clicks.export_dot {
@@ -540,8 +540,8 @@ impl NetProps {
             );
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
-                if ui.button("color").clicked() {
-                    inter.clicks.color_nodes_and_edges = true;
+                if ui.button("select").clicked() {
+                    inter.clicks.select_nodes_and_edges = true;
                 };
                 if ui.button("delete").clicked() {
                     inter.clicks.delete_nodes_and_edges = true;
@@ -606,8 +606,8 @@ impl NetProps {
             });
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
-                if ui.button("color").clicked() {
-                    inter.clicks.color_cones = true;
+                if ui.button("select").clicked() {
+                    inter.clicks.select_cones = true;
                 };
                 if ui.button("delete").clicked() {
                     inter.clicks.delete_cone = true;
@@ -799,7 +799,7 @@ impl AppWidget for NetProps {
         // self.draw_cycles_section(ui, &mut interactions);
         self.graph_state.history().show(ui);
         // self.draw_section_matrices(ui, &mut interactions);
-        // self.draw_dot_preview_section(ui, &mut interactions);
+        self.draw_dot_preview_section(ui, &mut interactions);
 
         if self.net_drawer.lock().unwrap().has_unread_image() {
             self.drawer_pub.send(self.net_drawer.clone()).unwrap();

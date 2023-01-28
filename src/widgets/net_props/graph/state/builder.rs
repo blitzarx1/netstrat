@@ -10,14 +10,13 @@ use tracing::debug;
 
 use crate::{
     netstrat::Bus,
-    widgets::{
-        net_props::{
-            graph::{
-                elements::{Edge, Node},
-                state::metadata::Metadata,
-            },
-            settings::{EdgeWeight, Settings}, Graph,
+    widgets::net_props::{
+        graph::{
+            elements::{Edge, Node},
+            state::metadata::Metadata,
         },
+        settings::{EdgeWeight, Settings},
+        Graph,
     },
 };
 
@@ -67,15 +66,17 @@ impl Builder {
             .node_weights()
             .cloned()
             .filter(|w| w.name().contains(PREFIX_FIN))
+            .map(|n| *n.id())
             .collect::<HashSet<_>>();
 
         let ini_nodes_set = g
             .node_weights()
             .cloned()
             .filter(|w| w.name().contains(PREFIX_INI))
+            .map(|n| *n.id())
             .collect::<HashSet<_>>();
 
-        let calculated = Metadata::new(&g, fin_nodes_set, ini_nodes_set, Default::default());
+        let calculated = Metadata::new(&g, fin_nodes_set, ini_nodes_set);
 
         let mut state = State::new(g, self.bus.clone(), calculated);
 
@@ -86,11 +87,7 @@ impl Builder {
         state
     }
 
-    fn pick_inis(
-        &self,
-        g: &mut Graph,
-        r: &mut ThreadRng,
-    ) -> HashSet<NodeIndex> {
+    fn pick_inis(&self, g: &mut Graph, r: &mut ThreadRng) -> HashSet<NodeIndex> {
         let mut ini_nodes = HashSet::with_capacity(self.settings.ini_cnt);
         let mut ini_to_add = self.settings.ini_cnt;
         while ini_to_add > 0 {
@@ -181,12 +178,7 @@ impl Builder {
         ends
     }
 
-    fn pick_fins(
-        &self,
-        g: &mut Graph,
-        rng: &mut ThreadRng,
-        ends: Vec<NodeIndex>,
-    ) {
+    fn pick_fins(&self, g: &mut Graph, rng: &mut ThreadRng, ends: Vec<NodeIndex>) {
         let mut fin_nodes = HashSet::with_capacity(self.settings.fin_cnt);
         (0..self.settings.fin_cnt).for_each(|_| {
             let end_idx = ends.iter().choose(rng).unwrap();

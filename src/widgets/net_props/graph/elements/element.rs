@@ -8,6 +8,7 @@ pub struct Node {
     id: Uuid,
     name: String,
     deleted: bool,
+    selected: bool,
 }
 
 impl Display for Node {
@@ -17,6 +18,15 @@ impl Display for Node {
 }
 
 impl Node {
+    fn build(id: Uuid, name: String) -> Node {
+        Node {
+            id,
+            name,
+            deleted: false,
+            selected: false,
+        }
+    }
+
     pub fn new(name: String) -> Node {
         Node::build(Uuid::new_v4(), name)
     }
@@ -41,7 +51,7 @@ impl Node {
         self.deleted
     }
 
-    pub fn mark_deleted(&mut self) {
+    pub fn delete(&mut self) {
         self.deleted = true
     }
 
@@ -49,12 +59,16 @@ impl Node {
         self.deleted = false
     }
 
-    fn build(id: Uuid, name: String) -> Node {
-        Node {
-            id,
-            name,
-            deleted: false,
-        }
+    pub fn select(&mut self) {
+        self.selected = true
+    }
+
+    pub fn deselect(&mut self) {
+        self.selected = false
+    }
+
+    pub fn selected(&self) -> bool {
+        self.selected
     }
 }
 
@@ -66,6 +80,7 @@ pub struct Edge {
     end: Uuid,
     name: String,
     deleted: bool,
+    selected: bool,
 }
 
 impl Display for Edge {
@@ -75,6 +90,25 @@ impl Display for Edge {
 }
 
 impl Edge {
+    fn build(id: Uuid, start: &Node, end: &Node, weight: f64) -> Edge {
+        let million = 1_000_000_f64;
+        let weight_x_10_6 = (weight * million) as i32;
+
+        // otherwise hack with multiplying by million does not work
+        assert!(weight < million);
+
+        let name = [start.name().clone(), end.name().clone()].join(" -> ");
+        Edge {
+            weight_x_10_6,
+            name,
+            id,
+            start: *start.id(),
+            end: *end.id(),
+            deleted: false,
+            selected: false,
+        }
+    }
+
     pub fn new(start: &Node, end: &Node, weight: f64) -> Edge {
         Edge::build(Uuid::new_v4(), start, end, weight)
     }
@@ -103,8 +137,20 @@ impl Edge {
         &self.id
     }
 
-    pub fn mark_deleted(&mut self) {
+    pub fn delete(&mut self) {
         self.deleted = true
+    }
+
+    pub fn selected(&self) -> bool {
+        self.selected
+    }
+
+    pub fn select(&mut self) {
+        self.selected = true
+    }
+
+    pub fn deselect(&mut self) {
+        self.selected = false
     }
 
     pub fn restore(&mut self) {
@@ -113,24 +159,6 @@ impl Edge {
 
     pub fn deleted(&self) -> bool {
         self.deleted
-    }
-
-    fn build(id: Uuid, start: &Node, end: &Node, weight: f64) -> Edge {
-        let million = 1_000_000_f64;
-        let weight_x_10_6 = (weight * million) as i32;
-
-        // otherwise hack with multiplying by million does not work
-        assert!(weight < million);
-
-        let name = [start.name().clone(), end.name().clone()].join(" -> ");
-        Edge {
-            weight_x_10_6,
-            name,
-            id,
-            start: *start.id(),
-            end: *end.id(),
-            deleted: false,
-        }
     }
 }
 

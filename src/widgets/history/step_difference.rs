@@ -31,8 +31,7 @@ impl Difference {
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct StepDifference {
     pub elements: Difference,
-    pub colored: Difference,
-    // pub signal_holders: Difference,
+    pub selected: Difference,
 }
 
 impl Display for StepDifference {
@@ -41,12 +40,9 @@ impl Display for StepDifference {
         if !self.elements.minus.is_empty() || !self.elements.plus.is_empty() {
             tooltip_vec.push(format!("elements\n{}\n", self.elements));
         }
-        if !self.colored.minus.is_empty() || !self.colored.plus.is_empty() {
-            tooltip_vec.push(format!("color\n{}\n", self.colored));
+        if !self.selected.minus.is_empty() || !self.selected.plus.is_empty() {
+            tooltip_vec.push(format!("selected\n{}\n", self.selected));
         }
-        // if !self.signal_holders.minus.is_empty() || !self.signal_holders.plus.is_empty() {
-        //     tooltip_vec.push(format!("signal\n{}\n", self.signal_holders));
-        // }
 
         f.write_str(tooltip_vec.join("\n").as_str())
     }
@@ -59,9 +55,9 @@ impl StepDifference {
                 plus: self.elements.plus.union(&other.elements.plus),
                 minus: self.elements.minus.union(&other.elements.minus),
             },
-            colored: Difference {
-                plus: self.colored.plus.union(&other.colored.plus),
-                minus: self.colored.minus.union(&other.colored.minus),
+            selected: Difference {
+                plus: self.selected.plus.union(&other.selected.plus),
+                minus: self.selected.minus.union(&other.selected.minus),
             },
             // signal_holders: Difference {
             //     plus: self.signal_holders.plus.union(&other.signal_holders.plus),
@@ -76,9 +72,9 @@ impl StepDifference {
                 plus: self.elements.clone().minus,
                 minus: self.elements.clone().plus,
             },
-            colored: Difference {
-                plus: self.colored.clone().minus,
-                minus: self.colored.clone().plus,
+            selected: Difference {
+                plus: self.selected.clone().minus,
+                minus: self.selected.clone().plus,
             },
             // signal_holders: Difference {
             //     plus: self.signal_holders.clone().minus,
