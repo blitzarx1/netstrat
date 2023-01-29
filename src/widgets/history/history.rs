@@ -134,71 +134,11 @@ impl History {
             == 0
     }
 
-    pub fn serialize(&self) -> String {
-        let history_serializable = HistorySerializable {
-            tree: self.tree.clone(),
-            current_step: self.current_step,
-            max_gen: self.max_gen,
-            root: self.root,
-        };
-
-        serde_json::to_string(&history_serializable).unwrap()
-    }
-
     fn update(&mut self, new_current_step: Option<usize>) {
         if let Some(step) = new_current_step {
             self.send_diff(self.compute_diff(step));
             self.current_step = step;
         }
-    }
-
-    fn send_diffs(&mut self, step: usize) {
-        let to = NodeIndex::from(step as u32);
-        let rollback_point = lca(
-            &self.tree,
-            self.root,
-            NodeIndex::from(self.current_step as u32),
-            to,
-        )
-        .unwrap();
-
-        // walk back to rollback point collecting diff steps
-        let mut diffs = vec![];
-        let mut curr_step = NodeIndex::from(self.current_step as u32);
-        while curr_step != rollback_point {
-            self.tree
-                .neighbors_directed(curr_step, Incoming)
-                .for_each(|n| {
-                    diffs.push(
-                        self.tree
-                            .node_weight(curr_step)
-                            .unwrap()
-                            .parent_difference
-                            .clone(),
-                    );
-
-                    curr_step = n
-                })
-        }
-
-        if let Some(path) =
-            all_simple_paths::<Vec<_>, _>(&self.tree, rollback_point, to, 0, None).next()
-        {
-            path.iter().for_each(|n| {
-                diffs.push(
-                    self.tree
-                        .node_weight(*n)
-                        .unwrap()
-                        .parent_difference
-                        .clone()
-                        .reverse(),
-                );
-            });
-        };
-
-        diffs.iter().for_each(|d| {
-            self.send_diff(d.clone());
-        });
     }
 
     fn compute_diff(&self, step: usize) -> StepDifference {
@@ -234,7 +174,7 @@ impl History {
         let backward_diff = backward_steps
             .iter()
             .fold(StepDifference::default(), |accum, diff| {
-                accum.squash(&diff).reverse()
+                accum.squash(diff).reverse()
             });
 
         // walk forward to selected step collecting diff steps

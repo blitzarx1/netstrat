@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use petgraph::{dot::Dot, graph::EdgeIndex, graph::NodeIndex, visit::IntoNodeReferences};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::widgets::net_props::{
     graph::elements::{ElementID, Elements},
@@ -19,8 +20,8 @@ pub struct Metadata {
     pub node_by_name: HashMap<String, ElementID>,
     pub edge_by_name: HashMap<String, ElementID>,
 
-    pub idx_by_node_id: HashMap<ElementID, NodeIndex>,
-    pub idx_by_edge_id: HashMap<ElementID, EdgeIndex>,
+    pub idx_by_node_id: HashMap<Uuid, NodeIndex>,
+    pub idx_by_edge_id: HashMap<Uuid, EdgeIndex>,
 
     pub selected: Elements,
     pub elements: Elements,
@@ -48,7 +49,7 @@ impl Metadata {
         let mut idx_by_node_id = HashMap::with_capacity(g.node_count());
         let mut node_by_idx = HashMap::with_capacity(g.node_count());
         g.node_references().for_each(|(idx, n)| {
-            idx_by_node_id.insert(n.id().clone(), idx);
+            idx_by_node_id.insert(n.id().id.clone(), idx);
             node_by_idx.insert(idx, n.clone());
         });
 
@@ -56,7 +57,7 @@ impl Metadata {
         let mut edge_by_idx = HashMap::with_capacity(g.edge_count());
         g.edge_indices().for_each(|idx| {
             let e = g.edge_weight(idx).unwrap();
-            idx_by_edge_id.insert(e.id().clone(), idx);
+            idx_by_edge_id.insert(e.id().id.clone(), idx);
             edge_by_idx.insert(idx, e.clone());
         });
 
