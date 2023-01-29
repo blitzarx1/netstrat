@@ -499,20 +499,20 @@ impl State {
         }
 
         diff.minus.nodes().iter().for_each(|n| {
-            let node_idx = self.metadata.idx_by_node_id[n];
+            let node_idx = self.metadata.idx_by_node_id[&n.id];
             self.graph.node_weight_mut(node_idx).unwrap().deselect();
         });
         diff.minus.edges().iter().for_each(|e| {
-            let edge_idx = self.metadata.idx_by_edge_id[e];
+            let edge_idx = self.metadata.idx_by_edge_id[&e.id];
             self.graph.edge_weight_mut(edge_idx).unwrap().deselect();
         });
 
         diff.plus.nodes().iter().for_each(|n| {
-            let node_idx = self.metadata.idx_by_node_id[n];
+            let node_idx = self.metadata.idx_by_node_id[&n.id];
             self.graph.node_weight_mut(node_idx).unwrap().select();
         });
         diff.plus.edges().iter().for_each(|e| {
-            let edge_idx = self.metadata.idx_by_edge_id[e];
+            let edge_idx = self.metadata.idx_by_edge_id[&e.id];
             self.graph.edge_weight_mut(edge_idx).unwrap().select();
         });
 
@@ -525,20 +525,20 @@ impl State {
         }
 
         diff.minus.nodes().iter().for_each(|n| {
-            let node_idx = self.metadata.idx_by_node_id[n];
+            let node_idx = self.metadata.idx_by_node_id[&n.id];
             self.graph.node_weight_mut(node_idx).unwrap().delete();
         });
         diff.minus.edges().iter().for_each(|e| {
-            let edge_idx = self.metadata.idx_by_edge_id[e];
+            let edge_idx = self.metadata.idx_by_edge_id[&e.id];
             self.graph.edge_weight_mut(edge_idx).unwrap().delete();
         });
 
         diff.plus.nodes().iter().for_each(|n| {
-            let node_idx = self.metadata.idx_by_node_id[n];
+            let node_idx = self.metadata.idx_by_node_id[&n.id];
             self.graph.node_weight_mut(node_idx).unwrap().restore();
         });
         diff.plus.edges().iter().for_each(|e| {
-            let edge_idx = self.metadata.idx_by_edge_id[e];
+            let edge_idx = self.metadata.idx_by_edge_id[&e.id];
             self.graph.edge_weight_mut(edge_idx).unwrap().restore();
         });
 
@@ -617,22 +617,22 @@ impl State {
     } */
 
     fn node_index(&self, id: &ElementID) -> &NodeIndex {
-        &self.metadata.idx_by_node_id[id]
+        &self.metadata.idx_by_node_id[&id.id]
     }
 
     fn edge_index(&self, id: &ElementID) -> &EdgeIndex {
-        &self.metadata.idx_by_edge_id[id]
+        &self.metadata.idx_by_edge_id[&id.id]
     }
 
     fn node(&self, id: &ElementID) -> &Node {
         self.graph
-            .node_weight(self.metadata.idx_by_node_id[id])
+            .node_weight(self.metadata.idx_by_node_id[&id.id])
             .unwrap()
     }
 
     fn edge(&self, id: &ElementID) -> &Edge {
         self.graph
-            .edge_weight(self.metadata.idx_by_edge_id[id])
+            .edge_weight(self.metadata.idx_by_edge_id[&id.id])
             .unwrap()
     }
 
