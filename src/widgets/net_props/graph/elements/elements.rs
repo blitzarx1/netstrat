@@ -3,10 +3,7 @@ use std::{collections::HashSet, fmt::Debug, fmt::Display, ops::Sub};
 
 use crate::widgets::history::Difference;
 
-use super::{
-    element::{Edge, Node},
-    frozen_elements::FrozenElements,
-};
+use super::{frozen_elements::FrozenElements, ElementID};
 
 const SIGN_NODES: &str = "🇳";
 const SIGN_EDGES: &str = "🇪";
@@ -14,8 +11,8 @@ const OFFSET: &str = "    ";
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct Elements {
-    nodes: HashSet<Node>,
-    edges: HashSet<Edge>,
+    nodes: HashSet<ElementID>,
+    edges: HashSet<ElementID>,
     frozen: FrozenElements,
 }
 
@@ -29,7 +26,7 @@ impl Display for Elements {
             self.frozen()
                 .nodes()
                 .iter()
-                .map(|n| n.name().clone())
+                .map(|n| n.name.clone())
                 .collect::<Vec<_>>()
                 .join(", "),
             OFFSET,
@@ -37,7 +34,7 @@ impl Display for Elements {
             self.frozen()
                 .edges()
                 .iter()
-                .map(|e| e.name().clone())
+                .map(|e| e.name.clone())
                 .collect::<Vec<_>>()
                 .join(", "),
         ))
@@ -68,7 +65,7 @@ impl<'de> Deserialize<'de> for Elements {
 }
 
 impl Elements {
-    pub fn new(nodes: HashSet<Node>, edges: HashSet<Edge>) -> Self {
+    pub fn new(nodes: HashSet<ElementID>, edges: HashSet<ElementID>) -> Self {
         let mut res = Self {
             nodes,
             edges,
@@ -164,11 +161,11 @@ impl Elements {
         self.nodes.is_empty() && self.edges.is_empty()
     }
 
-    pub fn nodes(&self) -> &HashSet<Node> {
+    pub fn nodes(&self) -> &HashSet<ElementID> {
         &self.nodes
     }
 
-    pub fn edges(&self) -> &HashSet<Edge> {
+    pub fn edges(&self) -> &HashSet<ElementID> {
         &self.edges
     }
 
@@ -181,9 +178,11 @@ impl Elements {
 mod test {
     use uuid::Uuid;
 
+    use crate::widgets::net_props::graph::elements::{Edge, Node};
+
     use super::*;
 
-    const SERIALIZED_DATA: &str = r#"{"nodes":[{"id":"788aa271-f148-48b5-bf79-486071424ccc","name":"fin_3","deleted":false},{"id":"8ff510fa-c034-40b5-8b82-867c8012bc47","name":"ini_1","deleted":false},{"id":"a647c909-d020-4cdc-998d-292e2869152e","name":"2","deleted":false}],"edges":[{"id":"54b2f477-4fad-4cf7-9c10-b7211be19872","weight_x_10_6":1000000,"start":"a647c909-d020-4cdc-998d-292e2869152e","end":"788aa271-f148-48b5-bf79-486071424ccc","name":"2 -> fin_3","deleted":false},{"id":"ce02dd19-0297-460a-877d-40b62c745b0c","weight_x_10_6":1000000,"start":"8ff510fa-c034-40b5-8b82-867c8012bc47","end":"a647c909-d020-4cdc-998d-292e2869152e","name":"ini_1 -> 2","deleted":false}]}"#;
+    const SERIALIZED_DATA: &str = r#"{"nodes":[{"id":"788aa271-f148-48b5-bf79-486071424ccc","name":"fin_3"},{"id":"8ff510fa-c034-40b5-8b82-867c8012bc47","name":"ini_1"},{"id":"a647c909-d020-4cdc-998d-292e2869152e","name":"2"}],"edges":[{"id":"54b2f477-4fad-4cf7-9c10-b7211be19872","name":"2 -> fin_3"},{"id":"ce02dd19-0297-460a-877d-40b62c745b0c","name":"ini_1 -> 2"}]}"#;
 
     fn elements() -> Elements {
         let n1 = Node::new_with_id(
@@ -198,24 +197,27 @@ mod test {
             Uuid::parse_str("a647c909-d020-4cdc-998d-292e2869152e").unwrap(),
             "2".to_string(),
         );
-        let nodes = [n1.clone(), n2.clone(), n3.clone()]
+        let nodes = [n1.id().clone(), n2.id().clone(), n3.id().clone()]
             .iter()
             .cloned()
             .collect::<HashSet<_>>();
 
         let e1 = Edge::new_with_id(
             Uuid::parse_str("54b2f477-4fad-4cf7-9c10-b7211be19872").unwrap(),
-            &n3,
-            &n1,
+            n3.id(),
+            n1.id(),
             1.0,
         );
         let e2 = Edge::new_with_id(
             Uuid::parse_str("ce02dd19-0297-460a-877d-40b62c745b0c").unwrap(),
-            &n2,
-            &n3,
+            n2.id(),
+            n3.id(),
             1.0,
         );
-        let edges = [e1, e2].iter().cloned().collect::<HashSet<_>>();
+        let edges = [e1.id().clone(), e2.id().clone()]
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
 
         Elements::new(nodes, edges)
     }
@@ -244,14 +246,17 @@ mod test {
             "fin_3".to_string(),
         );
         let els_minus_n1 = els.sub(&Elements::new(
-            vec![n1.clone()].into_iter().collect(),
+            vec![n1.id().clone()].into_iter().collect(),
             Default::default(),
         ));
 
         assert_eq!(
             Difference {
                 plus: Default::default(),
-                minus: Elements::new(vec![n1].into_iter().collect(), Default::default()),
+                minus: Elements::new(
+                    vec![n1.id().clone()].into_iter().collect(),
+                    Default::default()
+                ),
             },
             els.compute_difference(&els_minus_n1)
         );

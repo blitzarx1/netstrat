@@ -66,14 +66,14 @@ impl Builder {
             .node_weights()
             .cloned()
             .filter(|w| w.name().contains(PREFIX_FIN))
-            .map(|n| *n.id())
+            .map(|n| n.id().clone())
             .collect::<HashSet<_>>();
 
         let ini_nodes_set = g
             .node_weights()
             .cloned()
             .filter(|w| w.name().contains(PREFIX_INI))
-            .map(|n| *n.id())
+            .map(|n| n.id().clone())
             .collect::<HashSet<_>>();
 
         let calculated = Metadata::new(&g, fin_nodes_set, ini_nodes_set);
@@ -157,7 +157,7 @@ impl Builder {
                     }
 
                     let end_node = &g[end_idx];
-                    let edge = Edge::new(&leaf_node, end_node, new_edge_weight);
+                    let edge = Edge::new(leaf_node.id(), end_node.id(), new_edge_weight);
 
                     g.add_edge(*leaf_idx, end_idx, edge);
                     edges.insert([leaf_idx.index(), end_idx.index()]);
@@ -205,7 +205,12 @@ impl Builder {
                 let target = g.node_weight(target_idx).cloned().unwrap();
 
                 let e_weight = g.edge_weight_mut(*e_idx).unwrap();
-                *e_weight = Edge::new_with_id(*e_weight.id(), &source, &target, e_weight.weight());
+                *e_weight = Edge::new_with_id(
+                    e_weight.id().id,
+                    source.id(),
+                    target.id(),
+                    e_weight.weight(),
+                );
             });
 
             fin_nodes.insert(*end_idx);
