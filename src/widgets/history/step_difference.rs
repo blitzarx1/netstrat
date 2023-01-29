@@ -59,10 +59,6 @@ impl StepDifference {
                 plus: self.selected.plus.union(&other.selected.plus),
                 minus: self.selected.minus.union(&other.selected.minus),
             },
-            // signal_holders: Difference {
-            //     plus: self.signal_holders.plus.union(&other.signal_holders.plus),
-            //     minus: self.signal_holders.minus.union(&other.signal_holders.minus),
-            // },
         }
     }
 

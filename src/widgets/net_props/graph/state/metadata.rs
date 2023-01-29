@@ -35,21 +35,29 @@ pub struct Metadata {
 
 impl Metadata {
     pub fn new(g: &Graph, fin: HashSet<ElementID>, ini: HashSet<ElementID>) -> Metadata {
+        let mut nodes = HashSet::new();
+        let mut edges = HashSet::new();
         let node_by_name = g
             .node_weights()
             .cloned()
-            .map(|w| (w.name().clone(), w.id().clone()))
+            .map(|w| {
+                nodes.insert(w.id().clone());
+                (w.name().clone(), w.id().clone())
+            })
             .collect::<HashMap<_, _>>();
         let edge_by_name = g
             .edge_weights()
             .cloned()
-            .map(|w| (w.name().clone(), w.id().clone()))
+            .map(|w| {
+                edges.insert(w.id().clone());
+                (w.name().clone(), w.id().clone())
+            })
             .collect::<HashMap<_, _>>();
 
         let mut idx_by_node_id = HashMap::with_capacity(g.node_count());
         let mut node_by_idx = HashMap::with_capacity(g.node_count());
         g.node_references().for_each(|(idx, n)| {
-            idx_by_node_id.insert(n.id().id.clone(), idx);
+            idx_by_node_id.insert(n.id().id, idx);
             node_by_idx.insert(idx, n.clone());
         });
 
@@ -57,7 +65,7 @@ impl Metadata {
         let mut edge_by_idx = HashMap::with_capacity(g.edge_count());
         g.edge_indices().for_each(|idx| {
             let e = g.edge_weight(idx).unwrap();
-            idx_by_edge_id.insert(e.id().id.clone(), idx);
+            idx_by_edge_id.insert(e.id().id, idx);
             edge_by_idx.insert(idx, e.clone());
         });
 
@@ -72,7 +80,7 @@ impl Metadata {
             idx_by_edge_id,
 
             selected: Default::default(),
-            elements: Default::default(),
+            elements: Elements::new(nodes, edges),
 
             dot: Default::default(),
         };

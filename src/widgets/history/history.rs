@@ -174,7 +174,7 @@ impl History {
         let backward_diff = backward_steps
             .iter()
             .fold(StepDifference::default(), |accum, diff| {
-                accum.squash(diff).reverse()
+                accum.squash(&diff.reverse())
             });
 
         // walk forward to selected step collecting diff steps
@@ -182,7 +182,7 @@ impl History {
         if let Some(path) =
             all_simple_paths::<Vec<_>, _>(&self.tree, rollback_point, to, 0, None).next()
         {
-            path.iter().for_each(|n| {
+            path.iter().skip(1).for_each(|n| {
                 forward_steps.push(self.tree.node_weight(*n).unwrap().parent_difference.clone());
             });
         }

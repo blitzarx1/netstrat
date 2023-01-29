@@ -161,7 +161,10 @@ impl State {
         });
 
         let elements_to_delete = Elements::new(nodes, edges);
-        let elements_diff = elements_to_delete.compute_difference(&Default::default());
+        let elements_diff = self
+            .metadata
+            .elements
+            .compute_difference(&self.metadata.elements.sub(&elements_to_delete));
         let selected_diff = self
             .metadata
             .selected
@@ -498,14 +501,7 @@ impl State {
             return;
         }
 
-        diff.minus.nodes().iter().for_each(|n| {
-            let node_idx = self.metadata.idx_by_node_id[&n.id];
-            self.graph.node_weight_mut(node_idx).unwrap().deselect();
-        });
-        diff.minus.edges().iter().for_each(|e| {
-            let edge_idx = self.metadata.idx_by_edge_id[&e.id];
-            self.graph.edge_weight_mut(edge_idx).unwrap().deselect();
-        });
+        // order of the next operations matters
 
         diff.plus.nodes().iter().for_each(|n| {
             let node_idx = self.metadata.idx_by_node_id[&n.id];
@@ -516,6 +512,15 @@ impl State {
             self.graph.edge_weight_mut(edge_idx).unwrap().select();
         });
 
+        diff.minus.nodes().iter().for_each(|n| {
+            let node_idx = self.metadata.idx_by_node_id[&n.id];
+            self.graph.node_weight_mut(node_idx).unwrap().deselect();
+        });
+        diff.minus.edges().iter().for_each(|e| {
+            let edge_idx = self.metadata.idx_by_edge_id[&e.id];
+            self.graph.edge_weight_mut(edge_idx).unwrap().deselect();
+        });
+
         self.metadata.selected = self.metadata.selected.apply_difference(diff);
     }
 
@@ -524,14 +529,7 @@ impl State {
             return;
         }
 
-        diff.minus.nodes().iter().for_each(|n| {
-            let node_idx = self.metadata.idx_by_node_id[&n.id];
-            self.graph.node_weight_mut(node_idx).unwrap().delete();
-        });
-        diff.minus.edges().iter().for_each(|e| {
-            let edge_idx = self.metadata.idx_by_edge_id[&e.id];
-            self.graph.edge_weight_mut(edge_idx).unwrap().delete();
-        });
+        // order of the next operations matters
 
         diff.plus.nodes().iter().for_each(|n| {
             let node_idx = self.metadata.idx_by_node_id[&n.id];
@@ -540,6 +538,15 @@ impl State {
         diff.plus.edges().iter().for_each(|e| {
             let edge_idx = self.metadata.idx_by_edge_id[&e.id];
             self.graph.edge_weight_mut(edge_idx).unwrap().restore();
+        });
+
+        diff.minus.nodes().iter().for_each(|n| {
+            let node_idx = self.metadata.idx_by_node_id[&n.id];
+            self.graph.node_weight_mut(node_idx).unwrap().delete();
+        });
+        diff.minus.edges().iter().for_each(|e| {
+            let edge_idx = self.metadata.idx_by_edge_id[&e.id];
+            self.graph.edge_weight_mut(edge_idx).unwrap().delete();
         });
 
         self.metadata.elements = self.metadata.elements.apply_difference(diff);
