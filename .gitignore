@@ -4,6 +4,7 @@
 .idea
 .DS_Store
 
+*.json
 *.csv
 *.dot
 *.svg
