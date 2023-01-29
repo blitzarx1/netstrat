@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use petgraph::{dot::Dot, graph::EdgeIndex, graph::NodeIndex, visit::IntoNodeReferences};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::widgets::net_props::{
@@ -11,7 +12,7 @@ use crate::widgets::net_props::{
 const MAX_DOT_WEIGHT: f64 = 2.0;
 const MIN_DOT_WEIGHT: f64 = 0.5;
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     pub node_by_id: HashMap<Uuid, Node>,
     pub edge_by_id: HashMap<Uuid, Edge>,

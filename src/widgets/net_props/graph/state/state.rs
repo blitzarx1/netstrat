@@ -16,6 +16,7 @@ use crate::widgets::net_props::graph::path::Path;
 use crate::widgets::net_props::settings::ConeSettings;
 use crate::widgets::net_props::Graph;
 use crate::widgets::StepDifference;
+use history::HistorySerializable;
 use lazy_static::lazy_static;
 use ndarray::Array;
 use ndarray::Array2;
@@ -31,6 +32,8 @@ use petgraph::{Direction, Incoming, Outgoing};
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use regex::Regex;
+use serde::Deserialize;
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::vec;
 use tracing::instrument::WithSubscriber;
@@ -38,6 +41,13 @@ use tracing::{debug, error, info, trace};
 use uuid::Uuid;
 
 type ConeSettingsList = Vec<ConeSettings>;
+
+#[derive(Serialize, Deserialize)]
+pub struct StateSerializable {
+    graph: Graph,
+    history: HistorySerializable,
+    metadata: Metadata,
+}
 
 #[derive(Clone, Default)]
 pub struct State {
@@ -47,6 +57,21 @@ pub struct State {
 }
 
 impl State {
+    pub fn from_json_string(input: String, bus: Bus) -> Option<State> {
+        let res = serde_json::from_str::<StateSerializable>(&input);
+        if res.is_err() {
+            return None;
+        }
+
+        let seed = res.unwrap();
+
+        Some(State {
+            graph: seed.graph,
+            history: seed.history.to_history(bus),
+            metadata: seed.metadata,
+        })
+    }
+
     pub fn new(graph: Graph, bus: Bus, metadata: Metadata) -> State {
         let history = History::new("create".to_string(), bus);
         State {
@@ -54,6 +79,16 @@ impl State {
             history,
             metadata,
         }
+    }
+
+    pub fn export(&self) -> String {
+        let serializable = StateSerializable {
+            graph: self.graph.clone(),
+            history: self.history.to_serializable(),
+            metadata: self.metadata.clone(),
+        };
+
+        serde_json::to_string(&serializable).unwrap()
     }
 
     pub fn select_nodes_and_edges(

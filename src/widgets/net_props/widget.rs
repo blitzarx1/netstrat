@@ -131,7 +131,7 @@ impl NetProps {
         self.handle_matrix_power(inter.matrix_power_input);
         self.handle_reach_matrix_power(inter.reach_matrix_power_input);
         self.handle_clicks(inter.clicks);
-        // self.handle_opened_file();
+        self.handle_opened_file();
     }
 
     fn update_nodes_and_edges_settings(&mut self, nodes_and_edges_settings: NodesAndEdgeSettings) {
@@ -140,31 +140,31 @@ impl NetProps {
         }
     }
 
-    // fn handle_opened_file(&mut self) {
-    //     if let Some(path) = self.open_drop_file.path() {
-    //         debug!("opening file: {path}");
-    //         let p = Path::new(path.as_str());
-    //         let extension = p.extension();
+    fn handle_opened_file(&mut self) {
+        if let Some(path) = self.open_drop_file.path() {
+            debug!("opening file: {path}");
+            let p = Path::new(path.as_str());
+            let extension = p.extension();
 
-    //         if extension.is_none() || !extension.unwrap().eq_ignore_ascii_case("dot") {
-    //             self.toasts
-    //                 .error("Invalid file extension. Only '.dot' files are allowed.")
-    //                 .set_duration(Some(Duration::from_secs(5)));
-    //             return;
-    //         }
+            if extension.is_none() || !extension.unwrap().eq_ignore_ascii_case("json") {
+                self.toasts
+                    .error("Invalid file extension. Only '.json' files are allowed.")
+                    .set_duration(Some(Duration::from_secs(5)));
+                return;
+            }
 
-    //         let dot_data = read_to_string(p).unwrap();
-    //         let data = State::from_dot(dot_data);
-    //         if data.is_none() {
-    //             self.toasts.error("Failed to parse imported file");
-    //             return;
-    //         }
+            let dot_data = read_to_string(p).unwrap();
+            let data = State::from_json_string(dot_data, self.bus.clone());
+            if data.is_none() {
+                self.toasts.error("Failed to parse imported file");
+                return;
+            }
 
-    //         self.graph_state = data.unwrap();
-    //         self.update_data();
-    //         self.reset_settings();
-    //     }
-    // }
+            self.graph_state = data.unwrap();
+            self.update_data("Imported");
+            self.reset_settings();
+        }
+    }
 
     fn handle_selected_cycles(&mut self, selected_cycles: HashSet<usize>) {
         if self.selected_cycles == selected_cycles {
@@ -274,9 +274,9 @@ impl NetProps {
             self.update_data("Elements selected");
         }
 
-        if clicks.export_dot {
-            info!("exporting dot");
-            self.export_dot();
+        if clicks.export {
+            info!("exporting");
+            self.export();
         }
 
         if clicks.export_svg {
@@ -348,9 +348,9 @@ impl NetProps {
             .set_duration(Some(Duration::from_secs(3)));
     }
 
-    fn export_dot(&mut self) {
-        let name = format!("{}.dot", generate_unique_export_name());
-        self.write_to_file(name, self.graph_state.dot().as_bytes())
+    fn export(&mut self) {
+        let name = format!("{}.json", generate_unique_export_name());
+        self.write_to_file(name, self.graph_state.export().as_bytes())
     }
 
     fn export_svg(&mut self) {
@@ -517,8 +517,8 @@ impl NetProps {
             self.open_drop_file.show(ui);
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
-                if ui.button("export dot").clicked() {
-                    inter.clicks.export_dot = true;
+                if ui.button("export").clicked() {
+                    inter.clicks.export = true;
                 };
                 if ui.button("export svg").clicked() {
                     inter.clicks.export_svg = true;
@@ -793,7 +793,7 @@ impl AppWidget for NetProps {
             self.reach_matrix_power_input.clone(),
         );
         self.draw_create_section(ui, &mut interactions);
-        // self.draw_import_export_section(ui, &mut interactions);
+        self.draw_import_export_section(ui, &mut interactions);
         self.draw_nodes_and_edges_section(ui, &mut interactions);
         // self.draw_cones_section(ui, &mut interactions);
         // self.draw_cycles_section(ui, &mut interactions);

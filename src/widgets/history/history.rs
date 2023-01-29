@@ -7,6 +7,7 @@ use petgraph::{
     visit::EdgeRef,
     Direction::{Incoming, Outgoing},
 };
+use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use crate::{
@@ -15,6 +16,26 @@ use crate::{
 };
 
 use super::{step_difference::StepDifference, Step};
+
+#[derive(Serialize, Deserialize)]
+pub struct HistorySerializable {
+    tree: StableDiGraph<Step, usize>,
+    current_step: usize,
+    max_gen: usize,
+    root: NodeIndex,
+}
+
+impl HistorySerializable {
+    pub fn to_history(&self, bus: Bus) -> History {
+        History {
+            tree: self.tree.clone(),
+            bus,
+            current_step: self.current_step,
+            max_gen: self.max_gen,
+            root: self.root,
+        }
+    }
+}
 
 #[derive(Clone, Default)]
 pub struct History {
@@ -39,6 +60,15 @@ impl History {
             tree,
             max_gen: 0,
             current_step: root.index(),
+        }
+    }
+
+    pub fn to_serializable(&self) -> HistorySerializable {
+        HistorySerializable {
+            tree: self.tree.clone(),
+            current_step: self.current_step,
+            max_gen: self.max_gen,
+            root: self.root,
         }
     }
 
@@ -102,6 +132,17 @@ impl History {
             .edges_directed(NodeIndex::from(idx as u32), Outgoing)
             .count()
             == 0
+    }
+
+    pub fn serialize(&self) -> String {
+        let history_serializable = HistorySerializable {
+            tree: self.tree.clone(),
+            current_step: self.current_step,
+            max_gen: self.max_gen,
+            root: self.root,
+        };
+
+        serde_json::to_string(&history_serializable).unwrap()
     }
 
     fn update(&mut self, new_current_step: Option<usize>) {

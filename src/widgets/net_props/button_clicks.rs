@@ -4,7 +4,7 @@ pub struct ButtonClicks {
     pub create: bool,
     pub select_cones: bool,
     pub color_cycles: bool,
-    pub export_dot: bool,
+    pub export: bool,
     pub export_svg: bool,
     pub delete_cone: bool,
     pub delete_cycles: bool,
