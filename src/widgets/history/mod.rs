@@ -1,9 +1,7 @@
-mod clicks;
-mod generation_path;
 mod history;
-mod path;
 mod step;
+mod step_difference;
 
-pub use self::clicks::Clicks;
-pub use self::history::{History, Builder};
+pub use self::history::{History, HistorySerializable};
 pub use self::step::Step;
+pub use self::step_difference::{Difference, StepDifference};

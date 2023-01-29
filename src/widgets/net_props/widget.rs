@@ -16,30 +16,27 @@ use petgraph::{Incoming, Outgoing};
 use tracing::{debug, error, info};
 use urlencoding::encode;
 
-use crate::netstrat::{Bus, Drawer, Message};
-use crate::widgets::history::{Clicks, History, Step};
-use crate::widgets::matrix::{Elements, Matrix};
+use crate::netstrat::{channels, Bus, Drawer, Message};
+use crate::widgets::matrix::Matrix;
 use crate::widgets::simulation_props::messages::{MessageOperationResult, OperationType};
 use crate::widgets::OpenDropFile;
-use crate::widgets::{image_drawer, SIMULATION_WIDGET_NAME};
+use crate::widgets::{image_drawer, StepDifference};
 use crate::widgets::{simulation_props, AppWidget};
-use crate::windows::{AppWindow, Simulator};
 
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
-use super::graph::State;
+use super::graph::{Builder, State};
 use super::interactions::Interactions;
 use super::nodes_and_edges::NodesAndEdgeSettings;
-use super::settings::{EdgeWeight, NetSettings};
+use super::settings::{EdgeWeight, Settings};
 use super::FrozenElements;
 
 pub struct NetProps {
     bus: Bus,
-    windows: Vec<Box<dyn AppWindow>>,
+    // windows: Vec<Box<dyn AppWindow>>,
     graph_state: State,
-    adj_matrix: Matrix,
-    net_settings: NetSettings,
-    history: History,
+    // adj_matrix: Matrix,
+    net_settings: Settings,
     cone_settings: ConeSettingsInputs,
     nodes_and_edges_settings: NodesAndEdgeSettings,
     matrix_power_input: String,
@@ -55,28 +52,20 @@ pub struct NetProps {
 
 impl NetProps {
     pub fn new(drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>) -> Self {
-        let data = NetProps::reset_data();
-
-        let history = History::new_builder(Step {
-            name: "create".to_string(),
-            state: data.clone(),
-        })
-        .build();
-
-        let adj_matrix = Matrix::new(data.adj_matrix());
         let bus = Bus::new();
+        let data = Builder::new(bus.clone()).build();
+        // let adj_matrix = Matrix::new(data.adj_matrix());
 
         let mut s = Self {
             drawer_pub,
-            history,
-            adj_matrix,
+            // adj_matrix,
             graph_state: data,
             matrix_power: 1,
             reach_matrix_power: 1,
-            bus: bus.clone(),
+            bus,
             net_drawer: Arc::new(Mutex::new(Box::new(image_drawer::ImageDrawer::default()))),
             toasts: Toasts::default().with_anchor(Anchor::TopRight),
-            windows: vec![Box::new(Simulator::new(false, bus))],
+            // windows: vec![Box::new(Simulator::new(false, bus))],
             open_drop_file: Default::default(),
             net_settings: Default::default(),
             cone_settings: Default::default(),
@@ -86,47 +75,37 @@ impl NetProps {
             nodes_and_edges_settings: Default::default(),
         };
 
-        s.update_data();
+        s.update_data("Graph created");
 
         s
     }
 
-    fn reset_data() -> State {
-        State::new(NetSettings::default())
+    fn reset_data(&self) -> State {
+        Builder::new(self.bus.clone()).build()
     }
 
     fn reset(&mut self) {
-        self.graph_state = NetProps::reset_data();
+        self.graph_state = self.reset_data();
 
-        self.history = History::new_builder(Step {
-            name: "reset".to_string(),
-            state: self.graph_state.clone(),
-        })
-        .build();
-
-        self.update_data();
+        self.update_data("Graph resetted");
         self.reset_settings();
     }
 
     fn reset_settings(&mut self) {
-        self.net_settings = NetSettings::default();
+        self.net_settings = Settings::default();
         self.cone_settings = ConeSettingsInputs::default();
         self.nodes_and_edges_settings = NodesAndEdgeSettings::default();
     }
 
     fn create(&mut self) {
-        self.graph_state = State::new(self.net_settings.clone());
+        self.graph_state = Builder::new(self.bus.clone())
+            .with_settings(self.net_settings.clone())
+            .build();
 
-        self.history = History::new_builder(Step {
-            name: "create".to_string(),
-            state: self.graph_state.clone(),
-        })
-        .build();
-
-        self.update_data();
+        self.update_data("Graph created");
 
         if let Err(err) = self.bus.write(
-            SIMULATION_WIDGET_NAME.to_string(),
+            channels::SIMULATION_CHANNEL.to_string(),
             Message::new(
                 serde_json::to_string(&MessageOperationResult::new(Default::default())).unwrap(),
             ),
@@ -135,7 +114,7 @@ impl NetProps {
         }
     }
 
-    fn update_graph_settings(&mut self, graph_settings: NetSettings) {
+    fn update_graph_settings(&mut self, graph_settings: Settings) {
         if self.net_settings == graph_settings {
             return;
         }
@@ -167,27 +146,22 @@ impl NetProps {
             let p = Path::new(path.as_str());
             let extension = p.extension();
 
-            if extension.is_none() || !extension.unwrap().eq_ignore_ascii_case("dot") {
+            if extension.is_none() || !extension.unwrap().eq_ignore_ascii_case("json") {
                 self.toasts
-                    .error("Invalid file extension. Only '.dot' files are allowed.")
+                    .error("Invalid file extension. Only '.json' files are allowed.")
                     .set_duration(Some(Duration::from_secs(5)));
                 return;
             }
 
             let dot_data = read_to_string(p).unwrap();
-            let data = State::from_dot(dot_data);
+            let data = State::from_json_string(dot_data, self.bus.clone());
             if data.is_none() {
                 self.toasts.error("Failed to parse imported file");
                 return;
             }
 
             self.graph_state = data.unwrap();
-            self.history = History::new_builder(Step {
-                name: "load from file".to_string(),
-                state: self.graph_state.clone(),
-            })
-            .build();
-            self.update_data();
+            self.update_data("Imported");
             self.reset_settings();
         }
     }
@@ -216,12 +190,12 @@ impl NetProps {
         self.reach_matrix_power_input = reach_matrix_power_input;
     }
 
-    fn update_data(&mut self) {
+    fn update_data(&mut self, message: &str) {
         debug!("updating graph state");
 
-        self.adj_matrix.set_state(self.graph_state.adj_matrix());
+        // self.adj_matrix.set_state(self.graph_state.adj_matrix());
         self.update_frame();
-        self.trigger_changed_toast();
+        self.trigger_info_toast(message);
     }
 
     fn handle_error(&mut self, msg: &str) {
@@ -240,25 +214,25 @@ impl NetProps {
             self.create();
         }
 
-        if clicks.color_cones {
-            info!("coloring cones");
-            self.color_cones();
-        }
+        // if clicks.color_cones {
+        //     info!("coloring cones");
+        //     self.color_cones();
+        // }
 
-        if clicks.delete_cone {
-            info!("deleting cone");
-            self.delete_cones();
-        }
+        // if clicks.delete_cone {
+        //     info!("deleting cone");
+        //     self.delete_cones();
+        // }
 
-        if clicks.color_cycles {
-            info!("coloring cycles");
-            self.color_cycles();
-        }
+        // if clicks.color_cycles {
+        //     info!("coloring cycles");
+        //     self.color_cycles();
+        // }
 
-        if clicks.delete_cycles {
-            info!("deleting cycles");
-            self.delete_cycles();
-        }
+        // if clicks.delete_cycles {
+        //     info!("deleting cycles");
+        //     self.delete_cycles();
+        // }
 
         if clicks.apply_power {
             info!("applying matrix power");
@@ -268,41 +242,6 @@ impl NetProps {
         if clicks.apply_reach_power {
             info!("applying reach matrix power");
             self.apply_reach_power();
-        }
-
-        if let Some(history_click) = self.history.last_click() {
-            match history_click {
-                Clicks::Up => {
-                    info!("navigating history up");
-                    match self.history.go_up() {
-                        Some(loaded_step) => {
-                            self.graph_state = loaded_step.state;
-                            self.update_data()
-                        }
-                        None => self.handle_error("failed to load history"),
-                    }
-                }
-                Clicks::Down => {
-                    info!("navigating history down");
-                    match self.history.go_down() {
-                        Some(loaded_step) => {
-                            self.graph_state = loaded_step.state;
-                            self.update_data()
-                        }
-                        None => self.handle_error("failed to load history"),
-                    }
-                }
-                Clicks::Right => {
-                    info!("navigating to history sibling");
-                    match self.history.go_sibling() {
-                        Some(loaded_step) => {
-                            self.graph_state = loaded_step.state;
-                            self.update_data()
-                        }
-                        None => self.handle_error("failed to load history"),
-                    }
-                }
-            }
         }
 
         if clicks.delete_nodes_and_edges {
@@ -317,49 +256,27 @@ impl NetProps {
                 return;
             }
 
-            if self
-                .history
-                .add_and_set_current_step(Step {
-                    name: "delete node or edge".to_string(),
-                    state: self.graph_state.clone(),
-                })
-                .is_none()
-            {
-                self.handle_error("failed to delete node or edge");
-                return;
-            }
-            self.update_data();
+            self.update_data("Elements deleted");
         }
 
-        if clicks.color_nodes_and_edges {
-            info!("coloring nodes and edges");
-            let colored = self.graph_state.color_nodes_and_edges(
+        if clicks.select_nodes_and_edges {
+            info!("selecting nodes and edges");
+            let selected = self.graph_state.select_nodes_and_edges(
                 self.nodes_and_edges_settings.nodes_input.splitted(),
                 self.nodes_and_edges_settings.edges_input.splitted(),
             );
 
-            if colored.is_none() {
-                self.handle_error("failed to color node or edge");
+            if selected.is_none() {
+                self.handle_error("failed to select node or edge");
                 return;
             }
 
-            if self
-                .history
-                .add_and_set_current_step(Step {
-                    name: "color node or edge".to_string(),
-                    state: self.graph_state.clone(),
-                })
-                .is_none()
-            {
-                self.handle_error("failed to color node or edge");
-                return;
-            }
-            self.update_data();
+            self.update_data("Elements selected");
         }
 
-        if clicks.export_dot {
-            info!("exporting dot");
-            self.export_dot();
+        if clicks.export {
+            info!("exporting");
+            self.export();
         }
 
         if clicks.export_svg {
@@ -406,17 +323,12 @@ impl NetProps {
         self.matrix_power = power;
     }
 
-    fn delete_cycles(&mut self) {
-        self.graph_state.delete_cycles(&self.selected_cycles);
-        self.selected_cycles = Default::default();
+    // fn delete_cycles(&mut self) {
+    //     self.graph_state.delete_cycles(&self.selected_cycles);
+    //     self.selected_cycles = Default::default();
 
-        self.history.add_and_set_current_step(Step {
-            name: "delete cycle".to_string(),
-            state: self.graph_state.clone(),
-        });
-
-        self.update_data();
-    }
+    //     self.update_data();
+    // }
 
     fn update_frame(&mut self) {
         let graph_svg = exec(
@@ -430,15 +342,15 @@ impl NetProps {
         self.net_drawer.lock().unwrap().update_image(image);
     }
 
-    fn trigger_changed_toast(&mut self) {
+    fn trigger_info_toast(&mut self, message: &str) {
         self.toasts
-            .success("Graph changed")
+            .success(message)
             .set_duration(Some(Duration::from_secs(3)));
     }
 
-    fn export_dot(&mut self) {
-        let name = format!("{}.dot", generate_unique_export_name());
-        self.write_to_file(name, self.graph_state.dot().as_bytes())
+    fn export(&mut self) {
+        let name = format!("{}.json", generate_unique_export_name());
+        self.write_to_file(name, self.graph_state.export().as_bytes())
     }
 
     fn export_svg(&mut self) {
@@ -491,79 +403,64 @@ impl NetProps {
         self.cone_settings = cone_settings;
     }
 
-    fn color_cones(&mut self) {
-        let colored = match self.cone_settings.cone_type {
-            ConeType::Custom => self.graph_state.color_cones(
-                self.cone_settings
-                    .settings
-                    .iter_mut()
-                    .map(|input| input.prepare_settings())
-                    .collect(),
-            ),
-            ConeType::Initial => {
-                self.graph_state.color_ini_cones();
-                Some(())
-            }
-            ConeType::Final => {
-                self.graph_state.color_fin_cones();
-                Some(())
-            }
-        };
+    // fn color_cones(&mut self) {
+    //     let colored = match self.cone_settings.cone_type {
+    //         ConeType::Custom => self.graph_state.color_cones(
+    //             self.cone_settings
+    //                 .settings
+    //                 .iter_mut()
+    //                 .map(|input| input.prepare_settings())
+    //                 .collect(),
+    //         ),
+    //         ConeType::Initial => {
+    //             self.graph_state.color_ini_cones();
+    //             Some(())
+    //         }
+    //         ConeType::Final => {
+    //             self.graph_state.color_fin_cones();
+    //             Some(())
+    //         }
+    //     };
 
-        if colored.is_none() {
-            self.handle_error("invalid cone");
-            return;
-        }
+    //     if colored.is_none() {
+    //         self.handle_error("invalid cone");
+    //         return;
+    //     }
 
-        self.history.add_and_set_current_step(Step {
-            name: "color cone".to_string(),
-            state: self.graph_state.clone(),
-        });
+    //     self.update_data();
+    // }
 
-        self.update_data();
-    }
+    // fn delete_cones(&mut self) {
+    //     let deleted = match self.cone_settings.cone_type {
+    //         ConeType::Custom => self.graph_state.delete_cones(
+    //             self.cone_settings
+    //                 .settings
+    //                 .iter_mut()
+    //                 .map(|input| input.prepare_settings())
+    //                 .collect(),
+    //         ),
+    //         ConeType::Initial => {
+    //             self.graph_state.delete_initial_cone();
+    //             Some(())
+    //         }
+    //         ConeType::Final => {
+    //             self.graph_state.delete_final_cone();
+    //             Some(())
+    //         }
+    //     };
+    //     if deleted.is_none() {
+    //         self.handle_error("invalid cone");
+    //         return;
+    //     }
 
-    fn delete_cones(&mut self) {
-        let deleted = match self.cone_settings.cone_type {
-            ConeType::Custom => self.graph_state.delete_cones(
-                self.cone_settings
-                    .settings
-                    .iter_mut()
-                    .map(|input| input.prepare_settings())
-                    .collect(),
-            ),
-            ConeType::Initial => {
-                self.graph_state.delete_initial_cone();
-                Some(())
-            }
-            ConeType::Final => {
-                self.graph_state.delete_final_cone();
-                Some(())
-            }
-        };
-        if deleted.is_none() {
-            self.handle_error("invalid cone");
-            return;
-        }
+    //     self.cone_settings = Default::default();
+    //     self.update_data();
+    // }
 
-        self.cone_settings = Default::default();
-
-        self.history.add_and_set_current_step(Step {
-            name: "delete cone".to_string(),
-            state: self.graph_state.clone(),
-        });
-        self.update_data();
-    }
-
-    fn color_cycles(&mut self) {
-        self.graph_state.color_cycles(&self.selected_cycles);
-
-        self.history.add_and_set_current_step(Step {
-            name: "color cycle".to_string(),
-            state: self.graph_state.clone(),
-        });
-        self.update_data();
-    }
+    // fn color_cycles(&mut self) {
+    //     self.graph_state.color_cycles(&self.selected_cycles);
+    //     self.update_data();
+    // }
 
     fn draw_create_section(&self, ui: &mut Ui, inter: &mut Interactions) {
         ui.collapsing("Create", |ui| {
@@ -581,12 +478,6 @@ impl NetProps {
                     .text("max_out_degree"),
             );
             ui.add_space(10.0);
-            ui.checkbox(&mut inter.graph_settings.no_twin_edges, "No twin edges");
-            ui.checkbox(
-                &mut inter.graph_settings.diamond_filter,
-                "Apply diamond filter",
-            );
-            ui.add_space(10.0);
             ui.label("Edge weights");
             ui.radio_value(
                 &mut inter.graph_settings.edge_weight_type,
@@ -601,7 +492,7 @@ impl NetProps {
                 );
                 ui.add_enabled(
                     inter.graph_settings.edge_weight_type == EdgeWeight::Fixed,
-                    Slider::new(&mut inter.graph_settings.edge_weight, 0.0..=1.0),
+                    Slider::new(&mut inter.graph_settings.edge_weight, 0.01..=1.0),
                 );
             });
             ui.add_space(10.0);
@@ -613,6 +504,11 @@ impl NetProps {
                     inter.clicks.reset = true;
                 }
             });
+            ui.add_space(10.0);
+            ui.checkbox(
+                &mut inter.graph_settings.diamond_filter,
+                "Apply diamond filter",
+            );
         });
     }
 
@@ -621,8 +517,8 @@ impl NetProps {
             self.open_drop_file.show(ui);
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
-                if ui.button("export dot").clicked() {
-                    inter.clicks.export_dot = true;
+                if ui.button("export").clicked() {
+                    inter.clicks.export = true;
                 };
                 if ui.button("export svg").clicked() {
                     inter.clicks.export_svg = true;
@@ -644,8 +540,8 @@ impl NetProps {
             );
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
-                if ui.button("color").clicked() {
-                    inter.clicks.color_nodes_and_edges = true;
+                if ui.button("select").clicked() {
+                    inter.clicks.select_nodes_and_edges = true;
                 };
                 if ui.button("delete").clicked() {
                     inter.clicks.delete_nodes_and_edges = true;
@@ -710,8 +606,8 @@ impl NetProps {
             });
             ui.add_space(10.0);
             ui.horizontal_top(|ui| {
-                if ui.button("color").clicked() {
-                    inter.clicks.color_cones = true;
+                if ui.button("select").clicked() {
+                    inter.clicks.select_cones = true;
                 };
                 if ui.button("delete").clicked() {
                     inter.clicks.delete_cone = true;
@@ -720,87 +616,87 @@ impl NetProps {
         });
     }
 
-    fn draw_cycles_section(&self, ui: &mut Ui, inter: &mut Interactions) {
-        ui.collapsing("Cycles", |ui| {
-            ui.label("Cycles which are reachable from ini nodes");
-            ScrollArea::vertical()
-                .auto_shrink([false, true])
-                .show(ui, |ui| {
-                    self.graph_state
-                        .clone()
-                        .cycles()
-                        .iter()
-                        .enumerate()
-                        .for_each(|(i, c)| {
-                            let checked = inter.selected_cycles.contains(&i);
-                            if ui
-                                .selectable_label(checked, format!("{} steps", c.len()))
-                                .clicked()
-                            {
-                                match checked {
-                                    true => inter.selected_cycles.remove(&i),
-                                    false => inter.selected_cycles.insert(i),
-                                };
-                            };
-                        });
-                });
+    // fn draw_cycles_section(&self, ui: &mut Ui, inter: &mut Interactions) {
+    //     ui.collapsing("Cycles", |ui| {
+    //         ui.label("Cycles which are reachable from ini nodes");
+    //         ScrollArea::vertical()
+    //             .auto_shrink([false, true])
+    //             .show(ui, |ui| {
+    //                 self.graph_state
+    //                     .clone()
+    //                     .cycles()
+    //                     .iter()
+    //                     .enumerate()
+    //                     .for_each(|(i, c)| {
+    //                         let checked = inter.selected_cycles.contains(&i);
+    //                         if ui
+    //                             .selectable_label(checked, format!("{} steps", c.len()))
+    //                             .clicked()
+    //                         {
+    //                             match checked {
+    //                                 true => inter.selected_cycles.remove(&i),
+    //                                 false => inter.selected_cycles.insert(i),
+    //                             };
+    //                         };
+    //                     });
+    //             });
 
-            ui.horizontal_top(|ui| {
-                if ui.button("color").clicked() {
-                    inter.clicks.color_cycles = true;
-                };
-                if ui.button("delete").clicked() {
-                    inter.clicks.delete_cycles = true;
-                }
-            });
-        });
-    }
+    //         ui.horizontal_top(|ui| {
+    //             if ui.button("color").clicked() {
+    //                 inter.clicks.color_cycles = true;
+    //             };
+    //             if ui.button("delete").clicked() {
+    //                 inter.clicks.delete_cycles = true;
+    //             }
+    //         });
+    //     });
+    // }
 
-    fn draw_section_matrices(&mut self, ui: &mut Ui, inter: &mut Interactions) {
-        ui.collapsing("Matrices", |ui| {
-            ScrollArea::both()
-                .auto_shrink([false, true])
-                .show(ui, |ui| {
-                    ui.collapsing("Adj", |ui| {
-                        self.adj_matrix.show(ui);
-                        ui.collapsing("Power", |ui| {
-                            ui.horizontal_top(|ui| {
-                                ui.add(
-                                    TextEdit::singleline(&mut inter.matrix_power_input)
-                                        .desired_width(50.0),
-                                );
-                                if ui.button("Apply").clicked() {
-                                    inter.clicks.apply_power = true
-                                }
-                            });
-                            ui.add_space(5.0);
-                            self.adj_matrix.powered(self.matrix_power).show(ui);
-                        });
-                    });
-                    ui.collapsing("Reach", |ui| {
-                        self.adj_matrix.reach(-1).show(ui);
-                        ui.collapsing("Steps", |ui| {
-                            ui.horizontal_top(|ui| {
-                                ui.add(
-                                    TextEdit::singleline(&mut inter.reach_matrix_power_input)
-                                        .desired_width(50.0),
-                                );
-                                if ui.button("Apply").clicked() {
-                                    inter.clicks.apply_reach_power = true
-                                }
-                            });
-                            ui.add_space(5.0);
-                            self.adj_matrix
-                                .reach(self.reach_matrix_power as isize)
-                                .show(ui);
-                        });
-                    });
-                    ui.collapsing("Cone Distance", |ui| {
-                        self.adj_matrix.cone_distance().show(ui);
-                    });
-                });
-        });
-    }
+    // fn draw_section_matrices(&mut self, ui: &mut Ui, inter: &mut Interactions) {
+    //     ui.collapsing("Matrices", |ui| {
+    //         ScrollArea::both()
+    //             .auto_shrink([false, true])
+    //             .show(ui, |ui| {
+    //                 ui.collapsing("Adj", |ui| {
+    //                     self.adj_matrix.show(ui);
+    //                     ui.collapsing("Power", |ui| {
+    //                         ui.horizontal_top(|ui| {
+    //                             ui.add(
+    //                                 TextEdit::singleline(&mut inter.matrix_power_input)
+    //                                     .desired_width(50.0),
+    //                             );
+    //                             if ui.button("Apply").clicked() {
+    //                                 inter.clicks.apply_power = true
+    //                             }
+    //                         });
+    //                         ui.add_space(5.0);
+    //                         self.adj_matrix.powered(self.matrix_power).show(ui);
+    //                     });
+    //                 });
+    //                 ui.collapsing("Reach", |ui| {
+    //                     self.adj_matrix.reach(-1).show(ui);
+    //                     ui.collapsing("Steps", |ui| {
+    //                         ui.horizontal_top(|ui| {
+    //                             ui.add(
+    //                                 TextEdit::singleline(&mut inter.reach_matrix_power_input)
+    //                                     .desired_width(50.0),
+    //                             );
+    //                             if ui.button("Apply").clicked() {
+    //                                 inter.clicks.apply_reach_power = true
+    //                             }
+    //                         });
+    //                         ui.add_space(5.0);
+    //                         self.adj_matrix
+    //                             .reach(self.reach_matrix_power as isize)
+    //                             .show(ui);
+    //                     });
+    //                 });
+    //                 ui.collapsing("Cone Distance", |ui| {
+    //                     self.adj_matrix.cone_distance().show(ui);
+    //                 });
+    //             });
+    //     });
+    // }
 
     fn draw_dot_preview_section(&mut self, ui: &mut Ui, inter: &mut Interactions) {
         let mut dot_mock_interaction = self.graph_state.dot();
@@ -819,62 +715,79 @@ impl NetProps {
         });
     }
 
-    fn draw_windows(&mut self, ui: &mut Ui) {
-        self.windows.iter_mut().for_each(|w| {
-            w.toggle_btn(ui);
-            w.show(ui);
-        });
-    }
+    // fn draw_windows(&mut self, ui: &mut Ui) {
+    //     self.windows.iter_mut().for_each(|w| {
+    //         w.toggle_btn(ui);
+    //         w.show(ui);
+    //     });
+    // }
 
-    fn check_events(&mut self) {
-        let operation_wrapped = self.bus.read(SIMULATION_WIDGET_NAME.to_string());
-        if operation_wrapped.is_err() {
+    fn check_history_diff_event(&mut self) {
+        let history_diff_wrapped = self.bus.read(channels::HISTORY_DIFFERENCE.to_string());
+        if history_diff_wrapped.is_err() {
             return;
         }
-
-        let msg_operation = serde_json::from_str::<simulation_props::messages::MessageOperation>(
-            operation_wrapped.unwrap().payload().as_str(),
+        let msg_history_diff = serde_json::from_str::<StepDifference>(
+            history_diff_wrapped.unwrap().payload().as_str(),
         )
         .unwrap();
 
-        let mut signal_holders = Default::default();
-        match msg_operation.operation() {
-            OperationType::NextStep => signal_holders = self.graph_state.signal_forward(),
-            OperationType::BackStep => signal_holders = self.graph_state.signal_backward(),
-            OperationType::Reset => self.graph_state.simulation_reset(),
-        };
+        self.graph_state.apply_difference(msg_history_diff);
 
-        if signal_holders.is_none() {
-            signal_holders = Some(Default::default());
-        }
+        self.update_data("History loaded");
+    }
 
-        if let Err(err) = self.bus.write(
-            SIMULATION_WIDGET_NAME.to_string(),
-            Message::new(
-                serde_json::to_string(&MessageOperationResult::new(FrozenElements::from_elements(
-                    &signal_holders.unwrap(),
-                )))
-                .unwrap(),
-            ),
-        ) {
-            self.handle_error("failed to send step to simualtion widget: {err}")
-        }
+    // fn check_simulation_event(&mut self) {
+    //     let operation_wrapped = self.bus.read(channels::SIMULATION_CHANNEL.to_string());
+    //     if operation_wrapped.is_err() {
+    //         return;
+    //     }
+    //     let msg_operation = serde_json::from_str::<simulation_props::messages::MessageOperation>(
+    //         operation_wrapped.unwrap().payload().as_str(),
+    //     )
+    //     .unwrap();
 
-        self.update_data();
+    //     let mut signal_holders = Default::default();
+    //     match msg_operation.operation() {
+    //         OperationType::NextStep => signal_holders = self.graph_state.signal_forward(),
+    //         OperationType::BackStep => signal_holders = self.graph_state.signal_backward(),
+    //         OperationType::Reset => self.graph_state.simulation_reset(),
+    //     };
+
+    //     if signal_holders.is_empty() {
+    //         signal_holders = Default::default();
+    //     }
+
+    //     if let Err(err) = self.bus.write(
+    //         channels::SIMULATION_CHANNEL.to_string(),
+    //         Message::new(
+    //             serde_json::to_string(&MessageOperationResult::new(FrozenElements::from_elements(
+    //                 &signal_holders,
+    //             )))
+    //             .unwrap(),
+    //         ),
+    //     ) {
+    //         self.handle_error("failed to send step to simualtion widget: {err}")
+    //     }
+
+    //     self.update_data();
+    // }
+
+    fn check_events(&mut self) {
+        self.check_history_diff_event();
+        // self.check_simulation_event();
     }
 }
 
 impl AppWidget for NetProps {
     fn show(&mut self, ui: &mut Ui) {
-        self.draw_windows(ui);
-
-        ui.separator();
+        // self.draw_windows(ui);
+        // ui.separator();
 
         let mut interactions = Interactions::new(
             self.selected_cycles.clone(),
             self.net_settings.clone(),
             self.cone_settings.clone(),
-            self.history.get_current_step().unwrap(),
             self.nodes_and_edges_settings.clone(),
             self.matrix_power_input.clone(),
             self.reach_matrix_power_input.clone(),
@@ -882,10 +795,10 @@ impl AppWidget for NetProps {
         self.draw_create_section(ui, &mut interactions);
         self.draw_import_export_section(ui, &mut interactions);
         self.draw_nodes_and_edges_section(ui, &mut interactions);
-        self.draw_cones_section(ui, &mut interactions);
-        self.draw_cycles_section(ui, &mut interactions);
-        self.history.show(ui);
-        self.draw_section_matrices(ui, &mut interactions);
+        // self.draw_cones_section(ui, &mut interactions);
+        // self.draw_cycles_section(ui, &mut interactions);
+        self.graph_state.history().show(ui);
+        // self.draw_section_matrices(ui, &mut interactions);
         self.draw_dot_preview_section(ui, &mut interactions);
 
         if self.net_drawer.lock().unwrap().has_unread_image() {

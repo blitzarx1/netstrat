@@ -22,7 +22,7 @@ tracing-subscriber = { version = "0.3.11", features = ["env-filter"] }
 rand = "0.8.5"
 quick-error = "2.0.1"
 egui-notify = "0.4.0"
-petgraph = "0.6.2"
+petgraph = { vesion = "0.6.2", features = ["serde-1"]}
 open = "3.0.2"
 urlencoding = "2.1.2"
 rfd = "0.10"
@@ -30,3 +30,4 @@ lazy_static = "1.4.0"
 regex = "1.6.0"
 graphviz-rust = "0.3.0"
 ndarray = "0.15.6"
+uuid = { version = "1.2.2", features = ["v4", "serde"] }

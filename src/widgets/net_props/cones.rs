@@ -24,7 +24,7 @@ pub struct ConeInput {
 impl ConeInput {
     pub fn prepare_settings(&self) -> ConeSettings {
         ConeSettings {
-            roots_weights: self.nodes_names.splitted(),
+            roots_names: self.nodes_names.splitted(),
             dir: self.cone_settings.dir,
             max_steps: self.cone_settings.max_steps,
         }

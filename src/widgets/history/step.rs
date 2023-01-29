@@ -1,11 +1,13 @@
 use std::fmt::Display;
 
-use crate::widgets::net_props::State;
+use serde::{Serialize, Deserialize};
 
-#[derive(Clone)]
+use super::step_difference::StepDifference;
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Step {
     pub name: String,
-    pub state: State,
+    pub parent_difference: StepDifference,
 }
 
 impl Display for Step {
