@@ -69,7 +69,7 @@ impl AppWidget for OpenDropFile {
         if response.clicked() {
             debug!("opening file dialog");
             if let Some(opened_path) = rfd::FileDialog::new()
-                .add_filter("Json files", &["json"])
+                .add_filter("JSON files", &["json"])
                 .pick_file()
             {
                 file_path = opened_path.display().to_string();
