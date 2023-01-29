@@ -550,21 +550,22 @@ impl State {
             return;
         }
 
-        diff.plus.nodes().iter().for_each(|n| {
-            let node_idx = self.metadata.idx_by_node_id[n.id()];
-            self.graph.node_weight_mut(node_idx).unwrap().select();
-        });
         diff.minus.nodes().iter().for_each(|n| {
             let node_idx = self.metadata.idx_by_node_id[n.id()];
             self.graph.node_weight_mut(node_idx).unwrap().deselect();
         });
-        diff.plus.edges().iter().for_each(|e| {
-            let edge_idx = self.metadata.idx_by_edge_id[e.id()];
-            self.graph.edge_weight_mut(edge_idx).unwrap().select();
-        });
         diff.minus.edges().iter().for_each(|e| {
             let edge_idx = self.metadata.idx_by_edge_id[e.id()];
             self.graph.edge_weight_mut(edge_idx).unwrap().deselect();
+        });
+
+        diff.plus.nodes().iter().for_each(|n| {
+            let node_idx = self.metadata.idx_by_node_id[n.id()];
+            self.graph.node_weight_mut(node_idx).unwrap().select();
+        });
+        diff.plus.edges().iter().for_each(|e| {
+            let edge_idx = self.metadata.idx_by_edge_id[e.id()];
+            self.graph.edge_weight_mut(edge_idx).unwrap().select();
         });
 
         self.metadata.selected = self.metadata.selected.apply_difference(diff);
@@ -575,21 +576,22 @@ impl State {
             return;
         }
 
-        diff.plus.nodes().iter().for_each(|n| {
-            let node_idx = self.metadata.idx_by_node_id[n.id()];
-            self.graph.node_weight_mut(node_idx).unwrap().restore();
-        });
         diff.minus.nodes().iter().for_each(|n| {
             let node_idx = self.metadata.idx_by_node_id[n.id()];
             self.graph.node_weight_mut(node_idx).unwrap().delete();
         });
-        diff.plus.edges().iter().for_each(|e| {
-            let edge_idx = self.metadata.idx_by_edge_id[e.id()];
-            self.graph.edge_weight_mut(edge_idx).unwrap().restore();
-        });
         diff.minus.edges().iter().for_each(|e| {
             let edge_idx = self.metadata.idx_by_edge_id[e.id()];
             self.graph.edge_weight_mut(edge_idx).unwrap().delete();
+        });
+
+        diff.plus.nodes().iter().for_each(|n| {
+            let node_idx = self.metadata.idx_by_node_id[n.id()];
+            self.graph.node_weight_mut(node_idx).unwrap().restore();
+        });
+        diff.plus.edges().iter().for_each(|e| {
+            let edge_idx = self.metadata.idx_by_edge_id[e.id()];
+            self.graph.edge_weight_mut(edge_idx).unwrap().restore();
         });
 
         self.metadata.elements = self.metadata.elements.apply_difference(diff);
