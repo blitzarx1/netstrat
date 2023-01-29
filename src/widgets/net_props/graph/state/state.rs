@@ -125,7 +125,7 @@ impl State {
 
         // delete edges connected to deleted nodes as well
         nodes.iter().for_each(|n| {
-            let node_idx = *self.get_node_index(n.id());
+            let node_idx = *self.node_index(n.id());
             edges = edges
                 .union(
                     &self
@@ -553,22 +553,18 @@ impl State {
         diff.plus.nodes().iter().for_each(|n| {
             let node_idx = self.metadata.idx_by_node_id[n.id()];
             self.graph.node_weight_mut(node_idx).unwrap().select();
-            self.metadata.node_by_id.get_mut(n.id()).unwrap().select();
         });
         diff.minus.nodes().iter().for_each(|n| {
             let node_idx = self.metadata.idx_by_node_id[n.id()];
             self.graph.node_weight_mut(node_idx).unwrap().deselect();
-            self.metadata.node_by_id.get_mut(n.id()).unwrap().deselect();
         });
         diff.plus.edges().iter().for_each(|e| {
             let edge_idx = self.metadata.idx_by_edge_id[e.id()];
             self.graph.edge_weight_mut(edge_idx).unwrap().select();
-            self.metadata.edge_by_id.get_mut(e.id()).unwrap().select();
         });
         diff.minus.edges().iter().for_each(|e| {
             let edge_idx = self.metadata.idx_by_edge_id[e.id()];
             self.graph.edge_weight_mut(edge_idx).unwrap().deselect();
-            self.metadata.edge_by_id.get_mut(e.id()).unwrap().deselect();
         });
 
         self.metadata.selected = self.metadata.selected.apply_difference(diff);
@@ -582,22 +578,18 @@ impl State {
         diff.plus.nodes().iter().for_each(|n| {
             let node_idx = self.metadata.idx_by_node_id[n.id()];
             self.graph.node_weight_mut(node_idx).unwrap().restore();
-            self.metadata.node_by_id.get_mut(n.id()).unwrap().restore();
         });
         diff.minus.nodes().iter().for_each(|n| {
             let node_idx = self.metadata.idx_by_node_id[n.id()];
             self.graph.node_weight_mut(node_idx).unwrap().delete();
-            self.metadata.node_by_id.get_mut(n.id()).unwrap().delete();
         });
         diff.plus.edges().iter().for_each(|e| {
             let edge_idx = self.metadata.idx_by_edge_id[e.id()];
             self.graph.edge_weight_mut(edge_idx).unwrap().restore();
-            self.metadata.edge_by_id.get_mut(e.id()).unwrap().restore();
         });
         diff.minus.edges().iter().for_each(|e| {
             let edge_idx = self.metadata.idx_by_edge_id[e.id()];
             self.graph.edge_weight_mut(edge_idx).unwrap().delete();
-            self.metadata.edge_by_id.get_mut(e.id()).unwrap().delete();
         });
 
         self.metadata.elements = self.metadata.elements.apply_difference(diff);
@@ -620,7 +612,7 @@ impl State {
     fn find_nodes_by_names(&self, names: Vec<String>) -> Option<HashSet<Node>> {
         let mut nodes_set = HashSet::with_capacity(names.len());
         for name in names {
-            let node = self.get_node_by_name(&name)?;
+            let node = self.node_by_name(&name)?;
             if node.deleted() {
                 return None;
             }
@@ -637,7 +629,7 @@ impl State {
             let start_name = bound.first().unwrap();
             let end_name = bound.last().unwrap();
             let edge_name = format!("{} -> {}", start_name, end_name);
-            let edge = self.get_edge_by_name(&edge_name)?;
+            let edge = self.edge_by_name(&edge_name)?;
             if edge.deleted() {
                 return None;
             }
@@ -677,14 +669,14 @@ impl State {
 
         elements.nodes().iter().for_each(|n| {
             self.graph
-                .node_weight_mut(*self.get_node_index(n.id()))
+                .node_weight_mut(*self.node_index(n.id()))
                 .unwrap()
                 .select();
         });
 
         elements.edges().iter().for_each(|e| {
             self.graph
-                .edge_weight_mut(*self.get_edge_index(e.id()))
+                .edge_weight_mut(*self.edge_index(e.id()))
                 .unwrap()
                 .select();
         });
@@ -760,20 +752,32 @@ impl State {
         }
     } */
 
-    fn get_node_index(&self, id: &Uuid) -> &NodeIndex {
+    fn node_index(&self, id: &Uuid) -> &NodeIndex {
         &self.metadata.idx_by_node_id[id]
     }
 
-    fn get_edge_index(&self, id: &Uuid) -> &EdgeIndex {
+    fn edge_index(&self, id: &Uuid) -> &EdgeIndex {
         &self.metadata.idx_by_edge_id[id]
     }
 
-    fn get_node_by_name(&self, name: &String) -> Option<&Node> {
-        Some(&self.metadata.node_by_id[self.metadata.node_by_name.get(name)?])
+    fn node(&self, id: &Uuid) -> &Node {
+        self.graph
+            .node_weight(self.metadata.idx_by_node_id[id])
+            .unwrap()
     }
 
-    fn get_edge_by_name(&self, name: &String) -> Option<&Edge> {
-        Some(&self.metadata.edge_by_id[self.metadata.edge_by_name.get(name)?])
+    fn edge(&self, id: &Uuid) -> &Edge {
+        self.graph
+            .edge_weight(self.metadata.idx_by_edge_id[id])
+            .unwrap()
+    }
+
+    fn node_by_name(&self, name: &String) -> Option<&Node> {
+        Some(self.node(self.metadata.node_by_name.get(name)?))
+    }
+
+    fn edge_by_name(&self, name: &String) -> Option<&Edge> {
+        Some(self.edge(self.metadata.edge_by_name.get(name)?))
     }
 
     // fn elements_to_matrix_elements(&self, elements: &Elements) -> MatrixElements {
@@ -885,12 +889,12 @@ impl State {
     // }
 
     fn get_cone_elements(&self, root_id: &Uuid, dir: Direction, max_steps: i32) -> Elements {
-        let root_idx = self.get_node_index(root_id);
+        let root_idx = self.node_index(root_id);
 
         let mut nodes = HashSet::new();
         let mut edges = HashSet::new();
 
-        nodes.insert(self.metadata.node_by_id[root_id].clone());
+        nodes.insert(self.node(root_id).clone());
 
         let mut steps = 0;
         let mut starts = vec![*root_idx];

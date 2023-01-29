@@ -14,9 +14,6 @@ const MIN_DOT_WEIGHT: f64 = 0.5;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Metadata {
-    pub node_by_id: HashMap<Uuid, Node>,
-    pub edge_by_id: HashMap<Uuid, Edge>,
-
     pub ini_nodes: HashSet<Uuid>,
     pub fin_nodes: HashSet<Uuid>,
 
@@ -84,9 +81,6 @@ impl Metadata {
 
             edge_by_name,
             idx_by_edge_id,
-
-            node_by_id,
-            edge_by_id,
 
             selected: Default::default(),
             elements: Default::default(),
