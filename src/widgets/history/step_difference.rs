@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashSet, fmt::Display};
 
 use serde::{Deserialize, Serialize};
 
@@ -49,15 +49,57 @@ impl Display for StepDifference {
 }
 
 impl StepDifference {
+    /// Squashes two `StepDifference`s into a single `StepDifference`
+    ///
+    /// The resulting `StepDifference` will contain the union of the two input `StepDifference`s' elements and selected fields.
+    /// Nodes and edges present in both `plus` and `minus` fields will be filtered out.
+    ///
+    /// # Arguments
+    /// * `other` - the `StepDifference` to squash with
+    ///
+    /// # Returns
+    /// A `StepDifference` containing the union of the two `StepDifference`s' elements and selected fields, filtered as described above.
     pub fn squash(&self, other: &StepDifference) -> StepDifference {
+        let mut elements_plus = self.elements.plus.union(&other.elements.plus);
+        let mut elements_minus = self.elements.minus.union(&other.elements.minus);
+        let mut nodes = elements_plus
+            .nodes()
+            .iter()
+            .cloned()
+            .filter(|n| elements_minus.nodes_mut().take(n).is_none())
+            .collect::<HashSet<_>>();
+        let mut edges = elements_plus
+            .edges()
+            .iter()
+            .cloned()
+            .filter(|e| elements_minus.edges_mut().take(e).is_none())
+            .collect::<HashSet<_>>();
+        elements_plus = Elements::new(nodes, edges);
+
+        let mut selected_plus = self.selected.plus.union(&other.selected.plus);
+        let mut selected_minus = self.selected.minus.union(&other.selected.minus);
+        nodes = selected_plus
+            .nodes()
+            .iter()
+            .cloned()
+            .filter(|n| selected_minus.nodes_mut().take(n).is_none())
+            .collect::<HashSet<_>>();
+        edges = selected_plus
+            .edges()
+            .iter()
+            .cloned()
+            .filter(|e| selected_minus.edges_mut().take(e).is_none())
+            .collect::<HashSet<_>>();
+        selected_plus = Elements::new(nodes, edges);
+
         StepDifference {
             elements: Difference {
-                plus: self.elements.plus.union(&other.elements.plus),
-                minus: self.elements.minus.union(&other.elements.minus),
+                plus: elements_plus,
+                minus: elements_minus,
             },
             selected: Difference {
-                plus: self.selected.plus.union(&other.selected.plus),
-                minus: self.selected.minus.union(&other.selected.minus),
+                plus: selected_plus,
+                minus: selected_minus,
             },
         }
     }
@@ -72,10 +114,6 @@ impl StepDifference {
                 plus: self.selected.clone().minus,
                 minus: self.selected.clone().plus,
             },
-            // signal_holders: Difference {
-            //     plus: self.signal_holders.clone().minus,
-            //     minus: self.signal_holders.clone().plus,
-            // },
         }
     }
 }
