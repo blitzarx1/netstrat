@@ -165,8 +165,16 @@ impl Elements {
         &self.nodes
     }
 
+    pub fn nodes_mut(&mut self) -> &mut HashSet<ElementID> {
+        &mut self.nodes
+    }
+
     pub fn edges(&self) -> &HashSet<ElementID> {
         &self.edges
+    }
+
+    pub fn edges_mut(&mut self) -> &mut HashSet<ElementID> {
+        &mut self.edges
     }
 
     pub fn frozen(&self) -> &FrozenElements {
