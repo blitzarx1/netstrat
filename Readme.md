@@ -5,19 +5,22 @@
 
 <img alt="Screen Shot 2022-10-21 at 13 23 18" src="https://user-images.githubusercontent.com/32969427/197162032-ba3efb31-af82-4f41-ad0b-25de5bc4834e.png">
 
-### depedencies
+### Depedencies
 You need to have [graphviz binary](https://graphviz.org/download/) installed
 
-### build
+### Build
 ```bash
 # windows 10
 cargo build --target=x86_64-pc-windows-gnu --release
 ```
 ```bash
-# apple intel
+# Apple intel
 cargo build --target=x86_64-apple-darwin --release
 ```
 ```bash
-# apple silicon
+# Apple silicon
 cargo build --target=aarch64-apple-darwin --release
 ```
+
+# Plans 
+Remove graphviz integration in favor of native rust solutions for graph data visualization.
