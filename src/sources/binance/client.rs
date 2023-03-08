@@ -161,7 +161,7 @@ impl Client {
 
         Ok(res
             .into_iter()
-            .map(|data| Kline::from_kline_data(data))
+            .map(Kline::from_kline_data)
             .collect())
     }
 

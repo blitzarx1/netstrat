@@ -36,7 +36,7 @@ impl AppWindow for SymbolsGraph {
             .show(ui.ctx(), |ui| {
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     StripBuilder::new(ui)
-                        .size(Size::relative(0.2).at_most(200.0))
+                        .size(Size::relative(0.25).at_most(200.0))
                         .size(Size::remainder())
                         .horizontal(|mut strip| {
                             strip.cell(|ui| {
