@@ -2,11 +2,14 @@ use std::cmp::Ordering;
 
 use serde::{Deserialize, Serialize};
 use serde_json;
+use tracing::debug;
 
 use crate::network::rest::Rest;
 use crate::sources::binance::interval::Interval;
 
 use super::errors::ClientError;
+
+const HEADER_REQ_WEIGHT: &str = "x-mbx-used-weight-1m";
 
 #[derive(Clone, Debug, Default)]
 pub struct Client {}
@@ -142,7 +145,7 @@ impl PartialOrd for Kline {
 }
 
 impl Client {
-    pub async fn kline(
+    pub fn kline(
         symbol: String,
         interval: Interval,
         start_time: i64,
@@ -155,20 +158,29 @@ impl Client {
             ("startTime", &start_time.to_string()),
             ("limit", &limit.to_string()),
         ];
-        let resp = Rest::new().get_with_params(&url, params).await?;
-        let json_str = &resp.text().await?;
+
+        let resp = Rest::new().get_with_params(&url, params)?;
+
+        debug!(
+            "got status: {} and req weight per minute: {}",
+            resp.status(),
+            resp.headers()
+                .get(HEADER_REQ_WEIGHT)
+                .unwrap()
+                .to_str()
+                .unwrap()
+        );
+
+        let json_str = &resp.text()?;
         let res = serde_json::from_str::<Vec<KlineData>>(json_str)?;
 
-        Ok(res
-            .into_iter()
-            .map(Kline::from_kline_data)
-            .collect())
+        Ok(res.into_iter().map(Kline::from_kline_data).collect())
     }
 
     pub async fn info() -> Info {
         let url = format!("{}{}", BASE_URL, PATH_INFO);
-        let resp = Rest::new().get(&url).await.unwrap();
-        let json_str = &resp.text().await.unwrap();
+        let resp = Rest::new().get(&url).unwrap();
+        let json_str = &resp.text().unwrap();
         let res: Info = serde_json::from_str(json_str).unwrap();
         res
     }

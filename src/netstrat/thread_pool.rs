@@ -18,10 +18,12 @@ impl Worker {
 
         let thread = thread::spawn(move || loop {
             if let Ok(job) = receiver.recv() {
-                trace!("worker {id} got a job; executing.");
+                debug!("worker {id} got a job; executing...");
 
                 let f = job.f;
                 f();
+
+                debug!("worker {id} finished the job");
             }
         });
 

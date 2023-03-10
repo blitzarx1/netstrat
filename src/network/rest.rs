@@ -1,39 +1,39 @@
-use tracing::trace;
+use tracing::{trace, debug};
 
 #[derive(Clone, Debug)]
 pub struct Rest {
-    c: reqwest::Client,
+    c: reqwest::blocking::Client,
 }
 
 impl Rest {
     pub fn new() -> Rest {
         Rest {
-            c: reqwest::Client::new(),
+            c: reqwest::blocking::Client::new(),
         }
     }
 
-    pub async fn get(&self, url: &str) -> Result<reqwest::Response, reqwest::Error> {
+    pub fn get(&self, url: &str) -> Result<reqwest::blocking::Response, reqwest::Error> {
         let req = self.c.get(url);
 
-        self.execute_request(req).await
+        self.execute_request(req)
     }
 
-    pub async fn get_with_params(
+    pub fn get_with_params(
         &self,
         url: &str,
         params: &[(&str, &str)],
-    ) -> Result<reqwest::Response, reqwest::Error> {
+    ) -> Result<reqwest::blocking::Response, reqwest::Error> {
         let req = self.c.get(url).query(params);
 
-        self.execute_request(req).await
+        self.execute_request(req)
     }
 
-    async fn execute_request(
+    fn execute_request(
         &self,
-        req: reqwest::RequestBuilder,
-    ) -> Result<reqwest::Response, reqwest::Error> {
+        req: reqwest::blocking::RequestBuilder,
+    ) -> Result<reqwest::blocking::Response, reqwest::Error> {
         let req_builded = req.build()?;
-        trace!(
+        debug!(
             "sending request: method: {:?}; url: {:?}; headers: {:?}; body: {:?}.",
             req_builded.method(),
             req_builded.url().as_str(),
@@ -41,6 +41,6 @@ impl Rest {
             req_builded.body(),
         );
 
-        self.c.execute(req_builded).await
+        self.c.execute(req_builded)
     }
 }
