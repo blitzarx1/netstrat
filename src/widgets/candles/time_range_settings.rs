@@ -2,7 +2,7 @@ use chrono::{Date, DateTime, Duration, NaiveTime, Timelike, Utc};
 
 use crate::sources::binance::Interval;
 
-use super::bounds::{BoundsSet, Bounds};
+use super::bounds::{Bounds, BoundsSet};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimeRangeSettings {

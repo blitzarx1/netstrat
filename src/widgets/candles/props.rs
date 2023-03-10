@@ -7,7 +7,6 @@ use chrono::{Date, NaiveDateTime, Utc};
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use egui::{CentralPanel, ProgressBar, TopBottomPanel, Ui};
 use egui_notify::{Anchor, Toasts};
-use poll_promise::Promise;
 use tracing::{debug, error, info, trace};
 
 use crate::netstrat::{Drawer, ThreadPool};
@@ -21,6 +20,8 @@ use super::error::CandlesError;
 use super::state::State;
 use super::time_range_settings::TimeRangeSettings;
 use super::TimeRange;
+
+const THREAD_POOL_SIZE: usize = 10;
 
 #[derive(Default)]
 struct ExportState {
@@ -76,7 +77,7 @@ impl Default for Props {
 
         let candles = CandlesDrawer::new(s_bounds);
 
-        let pool = ThreadPool::new(1);
+        let pool = ThreadPool::new(THREAD_POOL_SIZE);
 
         Self {
             max_frame_pages,
@@ -157,32 +158,26 @@ impl Props {
             let interval = self.state.props.interval;
             let limit = self.state.loading.page_size();
             let symbol = self.symbol.to_string();
-            let p = Mutex::new(Promise::spawn_async(async move {
-                Client::kline(symbol, interval, start_time, limit).await
-            }));
 
             let sender = Mutex::new(self.klines_pub.clone());
             self.pool.execute(move || {
-                while p.lock().unwrap().ready().is_none() {}
-
-                if let Some(data) = p.lock().unwrap().ready() {
-                    let res: Result<Vec<Kline>, CandlesError>;
-                    match data {
+                debug!("executing clines request: symbol: {symbol}, t_start: {start_time}, limit: {limit}");
+                let data = Client::kline(symbol, interval, start_time, limit);
+                    let res = match data {
                         Ok(payload) => {
-                            res = Ok(payload.clone());
+                            Ok(payload)
                         }
                         Err(err) => {
                             error!("got klines result with error: {err}");
-                            res = Err(CandlesError::Error);
+                            Err(CandlesError::Error)
                         }
-                    }
+                    };
 
                     let send_res = sender.lock().unwrap().send(res);
                     if let Err(err) = send_res {
                         error!("failed to send klines to channel: {err}");
                     };
-                }
-            });
+                });
         }
     }
 
@@ -313,7 +308,9 @@ impl Props {
                 Ok(klines) => klines.iter().for_each(|k| {
                     res.push(*k);
                 }),
-                Err(err) => panic!("got error from binance client {err}"),
+                Err(err) => {
+                    panic!("got error from binance client {err}");
+                },
             }
 
             got += 1;

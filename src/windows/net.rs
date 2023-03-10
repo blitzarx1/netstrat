@@ -1,6 +1,6 @@
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 
-use crate::{widgets::NetProps, netstrat::Drawer};
+use crate::{netstrat::Drawer, widgets::NetProps};
 use crossbeam::channel::Sender;
 use egui::{ScrollArea, Ui, Window};
 use tracing::info;

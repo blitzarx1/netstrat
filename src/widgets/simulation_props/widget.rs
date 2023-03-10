@@ -4,7 +4,7 @@ use egui::ScrollArea;
 use tracing::error;
 
 use crate::{
-    netstrat::{Bus, Message, channels},
+    netstrat::{channels, Bus, Message},
     widgets::{
         history::{History, Step},
         net_props::FrozenElements,
@@ -67,7 +67,10 @@ impl SimulationProps {
             serde_json::to_string(&MessageOperation::new(payload_operation.unwrap())).unwrap(),
         );
 
-        if let Err(err) = self.bus.write(channels::SIMULATION_CHANNEL.to_string(), msg) {
+        if let Err(err) = self
+            .bus
+            .write(channels::SIMULATION_CHANNEL.to_string(), msg)
+        {
             error!("failed to publish message: {err}");
         }
     }

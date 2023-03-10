@@ -6,12 +6,9 @@ use egui::{
 };
 use tracing::{error, info};
 
-use crate::{
-    sources::binance::Kline,
-    widgets::AppWidget, netstrat::Drawer,
-};
+use crate::{netstrat::Drawer, sources::binance::Kline, widgets::AppWidget};
 
-use super::{data::Data, bounds::Bounds};
+use super::{bounds::Bounds, data::Data};
 
 const BOUNDS_SEND_DELAY_MILLIS: i64 = 300;
 
@@ -43,7 +40,6 @@ impl Default for CandlesDrawer {
         }
     }
 }
-
 
 // TODO:  refactor drawer trait to be more generalized
 impl Drawer for CandlesDrawer {
