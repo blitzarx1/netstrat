@@ -9,6 +9,7 @@ mod time_input;
 mod time_range;
 mod time_range_settings;
 mod canles_drawer;
+mod error;
 
 pub use self::props::Props;
 pub use self::symbols::Symbols;

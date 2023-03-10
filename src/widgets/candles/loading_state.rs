@@ -1,4 +1,4 @@
-use tracing::debug;
+use tracing::{debug, info};
 
 use super::{
     pages::{Page, Pages}, bounds::BoundsSet,
@@ -38,6 +38,7 @@ impl LoadingState {
 
     pub fn inc_loaded_pages(&mut self, cnt: usize) {
         self.loaded_pages += cnt;
+        info!("inced pages: {cnt}; {}/{}", self.loaded_pages, self.pages.len());
     }
 
     pub fn progress(&mut self) -> f32 {
