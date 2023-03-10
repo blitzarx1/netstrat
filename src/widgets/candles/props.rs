@@ -17,6 +17,7 @@ use crate::widgets::AppWidget;
 
 use super::bounds::Bounds;
 use super::canles_drawer::CandlesDrawer;
+use super::error::CandlesError;
 use super::state::State;
 use super::time_range_settings::TimeRangeSettings;
 use super::TimeRange;
@@ -41,8 +42,8 @@ pub struct Props {
 
     pool: ThreadPool,
 
-    klines_pub: Sender<Vec<Kline>>,
-    klines_sub: Receiver<Vec<Kline>>,
+    klines_pub: Sender<Result<Vec<Kline>, CandlesError>>,
+    klines_sub: Receiver<Result<Vec<Kline>, CandlesError>>,
     drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>,
     symbol_pub: Sender<String>,
     symbol_sub: Receiver<String>,
@@ -75,7 +76,7 @@ impl Default for Props {
 
         let candles = CandlesDrawer::new(s_bounds);
 
-        let pool = ThreadPool::new(100);
+        let pool = ThreadPool::new(1);
 
         Self {
             max_frame_pages,
@@ -151,7 +152,6 @@ impl Props {
     }
 
     fn perform_data_request(&mut self) {
-        debug!("asking for new klines");
         while self.state.loading.get_next_page().is_some() {
             let start_time = self.state.loading.left_edge();
             let interval = self.state.props.interval;
@@ -166,17 +166,21 @@ impl Props {
                 while p.lock().unwrap().ready().is_none() {}
 
                 if let Some(data) = p.lock().unwrap().ready() {
+                    let res: Result<Vec<Kline>, CandlesError>;
                     match data {
                         Ok(payload) => {
-                            let res = sender.lock().unwrap().send(payload.clone());
-                            if let Err(err) = res {
-                                error!("failed to send klines to channel: {err}");
-                            };
+                            res = Ok(payload.clone());
                         }
                         Err(err) => {
-                            error!("got klines result with error: {err}")
+                            error!("got klines result with error: {err}");
+                            res = Err(CandlesError::Error);
                         }
                     }
+
+                    let send_res = sender.lock().unwrap().send(res);
+                    if let Err(err) = send_res {
+                        error!("failed to send klines to channel: {err}");
+                    };
                 }
             });
         }
@@ -194,7 +198,7 @@ impl Props {
         );
 
         let path = Path::new(&name);
-        let f_res = File::create(&path);
+        let f_res = File::create(path);
         if let Err(err) = f_res {
             error!("failed to create file with error: {err}");
             return;
@@ -295,14 +299,23 @@ impl Props {
         let mut got = 0;
         let mut res = vec![];
         loop {
-            let klines_res = self.klines_sub.recv_timeout(Duration::from_millis(1));
-            if klines_res.is_err() || got == self.max_frame_pages {
+            if got == self.max_frame_pages {
                 break;
             }
 
-            klines_res.unwrap().iter().for_each(|k| {
-                res.push(*k);
-            });
+            let package_res = self.klines_sub.recv_timeout(Duration::from_millis(1));
+            if package_res.is_err() {
+                break;
+            }
+
+            let klines_res = package_res.unwrap();
+            match klines_res {
+                Ok(klines) => klines.iter().for_each(|k| {
+                    res.push(*k);
+                }),
+                Err(err) => panic!("got error from binance client {err}"),
+            }
+
             got += 1;
         }
 
