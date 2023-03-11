@@ -74,16 +74,11 @@ impl Symbols {
         {
             debug!("using optimized version");
 
-            self.filtered = self
-                .filtered
-                .iter()
-                .filter(|el| {
+            self.filtered.retain(|el| {
                     el.symbol
                         .to_lowercase()
                         .contains(filter_normalized.as_str())
-                })
-                .cloned()
-                .collect();
+                });
         } else {
             debug!("using heavy version");
 
@@ -100,12 +95,7 @@ impl Symbols {
         }
 
         if active_only != self.filter.active_only && active_only {
-            self.filtered = self
-                .filtered
-                .iter()
-                .filter(|el| el.active() == active_only)
-                .cloned()
-                .collect();
+            self.filtered.retain(|el| el.active() == active_only);
         }
 
         self.filter.value = filter_normalized;
