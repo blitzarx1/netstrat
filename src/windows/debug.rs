@@ -21,7 +21,7 @@ impl BuffWriter {
 impl Write for BuffWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.publisher.send(buf.to_vec()).unwrap();
-
+        print!("{}", std::str::from_utf8(buf).unwrap());
         Ok(buf.len())
     }
 
@@ -147,12 +147,7 @@ impl Debug {
         if filter_normalized.contains(self.filter.as_str()) {
             trace!("using optimized version");
 
-            self.filtered = self
-                .filtered
-                .iter()
-                .filter(|el| el.to_lowercase().contains(filter_normalized.as_str()))
-                .cloned()
-                .collect();
+            self.filtered.retain(|el| el.to_lowercase().contains(filter_normalized.as_str()));
 
             self.filter = filter_normalized;
             return;
