@@ -21,7 +21,7 @@ use super::state::State;
 use super::time_range_settings::TimeRangeSettings;
 use super::TimeRange;
 
-const THREAD_POOL_SIZE: usize = 10;
+const THREAD_POOL_SIZE: usize = 50;
 
 #[derive(Default)]
 struct ExportState {
@@ -293,6 +293,7 @@ impl Props {
 
         let mut got = 0;
         let mut res = vec![];
+        self.state.loading.has_error = false;
         loop {
             if got == self.max_frame_pages {
                 break;
@@ -308,9 +309,10 @@ impl Props {
                 Ok(klines) => klines.iter().for_each(|k| {
                     res.push(*k);
                 }),
-                Err(err) => {
-                    panic!("got error from binance client {err}");
-                },
+                Err(_) => {
+                    self.state.loading.has_error = true;
+                    self.toasts.error("Failed to get candles from Binance");
+                }
             }
 
             got += 1;
@@ -322,12 +324,11 @@ impl Props {
             self.update_data(&mut res);
         }
 
-        let finished = self.state.loading.progress() == 1.0;
-        if finished && self.export_state.triggered {
+        if self.state.loading.progress() == 1.0 && self.export_state.triggered {
             self.export_data();
         }
 
-        self.candles.set_enabled(finished);
+        self.candles.set_enabled(self.state.loading.progress() == 1.0);
     }
 
     fn draw_data(&mut self, ui: &Ui) {

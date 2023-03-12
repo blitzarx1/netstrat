@@ -51,8 +51,7 @@ pub struct NetProps {
 }
 
 impl NetProps {
-    pub fn new(drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>) -> Self {
-        let bus = Bus::new();
+    pub fn new(bus: Bus, drawer_pub: Sender<Arc<Mutex<Box<dyn Drawer>>>>) -> Self {
         let data = Builder::new(bus.clone()).build();
         // let adj_matrix = Matrix::new(data.adj_matrix());
 

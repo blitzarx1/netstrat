@@ -11,7 +11,7 @@ use netstrat::Drawer;
 use tracing::{debug, info, Level};
 use tracing_subscriber::EnvFilter;
 
-use crate::windows::{BuffWriter, Net};
+use crate::{windows::{BuffWriter, Net}, netstrat::Bus};
 use windows::{AppWindow, Debug, SymbolsGraph};
 
 mod netstrat;
@@ -64,9 +64,11 @@ impl TemplateApp {
         let (net_drawer_s, net_drawer_r) = unbounded();
         let (candles_drawer_s, candles_drawer_r) = unbounded();
 
+        let bus  = Bus::new();
+
         Self {
             windows: vec![
-                Box::new(Net::new(net_drawer_s, false)),
+                Box::new(Net::new(bus.clone(), net_drawer_s, false)),
                 Box::new(SymbolsGraph::new(candles_drawer_s, false)),
                 Box::new(Debug::new(buffer_r, false)),
             ],
