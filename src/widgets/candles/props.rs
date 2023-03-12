@@ -1,7 +1,7 @@
+use std::fs::File;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::{cmp::Ordering, fs::File};
 
 use chrono::{Date, NaiveDateTime, Utc};
 use crossbeam::channel::{unbounded, Receiver, Sender};
@@ -21,7 +21,7 @@ use super::state::State;
 use super::time_range_settings::TimeRangeSettings;
 use super::TimeRange;
 
-const THREAD_POOL_SIZE: usize = 50;
+const THREAD_POOL_SIZE: usize = 15;
 
 #[derive(Default)]
 struct ExportState {
@@ -161,7 +161,7 @@ impl Props {
 
             let sender = Mutex::new(self.klines_pub.clone());
             self.pool.execute(move || {
-                debug!("executing clines request: symbol: {symbol}, t_start: {start_time}, limit: {limit}");
+                debug!("executing klines request: symbol: {symbol}, t_start: {start_time}, limit: {limit}");
                 let data = Client::kline(symbol, interval, start_time, limit);
                     let res = match data {
                         Ok(payload) => {
@@ -203,19 +203,8 @@ impl Props {
         debug!("saving to file: {}", abs_path.display());
 
         let mut wtr = csv::Writer::from_writer(f_res.unwrap());
-
-        let mut data = self.candles.get_data().vals;
-        data.sort_by(|a, b| {
-            if a.t_close < b.t_close {
-                return Ordering::Less;
-            }
-
-            if a.t_close > b.t_close {
-                return Ordering::Greater;
-            }
-
-            Ordering::Equal
-        });
+        
+        let data = self.candles.get_ordered_data().vals;
         data.iter().for_each(|el| {
             wtr.serialize(el).unwrap();
         });
@@ -311,7 +300,6 @@ impl Props {
                 }),
                 Err(_) => {
                     has_error = true;
-                    
                 }
             }
 
@@ -332,7 +320,8 @@ impl Props {
             self.export_data();
         }
 
-        self.candles.set_enabled(self.state.loading.progress() == 1.0);
+        self.candles
+            .set_enabled(self.state.loading.progress() == 1.0);
     }
 
     fn draw_data(&mut self, ui: &Ui) {

@@ -28,7 +28,7 @@ pub struct Symbols {
 impl Default for Symbols {
     fn default() -> Self {
         let (s, _) = unbounded();
-        let symbols_promise = Some(Promise::spawn_async(async { Client::info().await }));
+        let symbols_promise = Some(Promise::spawn_blocking(Client::info));
         let loading = true;
         Self {
             loading,
@@ -75,10 +75,10 @@ impl Symbols {
             debug!("using optimized version");
 
             self.filtered.retain(|el| {
-                    el.symbol
-                        .to_lowercase()
-                        .contains(filter_normalized.as_str())
-                });
+                el.symbol
+                    .to_lowercase()
+                    .contains(filter_normalized.as_str())
+            });
         } else {
             debug!("using heavy version");
 

@@ -60,8 +60,10 @@ impl CandlesDrawer {
         }
     }
 
-    pub fn get_data(&self) -> Data {
-        self.data.clone()
+    pub fn get_ordered_data(&self) -> Data {
+        let mut res = self.data.clone();
+        res.vals.sort_by(|a, b| a.t_close.cmp(&b.t_close));
+        res
     }
 
     pub fn add_data(&mut self, vals: &mut Vec<Kline>) {
