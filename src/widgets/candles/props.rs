@@ -293,7 +293,7 @@ impl Props {
 
         let mut got = 0;
         let mut res = vec![];
-        self.state.loading.has_error = false;
+        let mut has_error = false;
         loop {
             if got == self.max_frame_pages {
                 break;
@@ -310,12 +310,16 @@ impl Props {
                     res.push(*k);
                 }),
                 Err(_) => {
-                    self.state.loading.has_error = true;
-                    self.toasts.error("Failed to get candles from Binance");
+                    has_error = true;
+                    
                 }
             }
 
             got += 1;
+        }
+
+        if has_error {
+            self.toasts.error("Failed to get candles from Binance");
         }
 
         if got > 0 {
@@ -355,7 +359,7 @@ impl AppWidget for Props {
 
         TopBottomPanel::top("graph_toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
-                if self.state.loading.progress() < 1.0 && !self.state.loading.has_error {
+                if self.state.loading.progress() < 1.0 {
                     ui.add(
                         ProgressBar::new(self.state.loading.progress())
                             .show_percentage()

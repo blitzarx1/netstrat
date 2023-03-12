@@ -10,7 +10,6 @@ pub struct LoadingState {
     loaded_pages: usize,
     pages: Pages,
     curr_page: Page,
-    pub has_error: bool,
 }
 
 impl LoadingState {
