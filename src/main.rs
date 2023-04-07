@@ -90,7 +90,7 @@ impl TemplateApp {
 }
 
 impl App for TemplateApp {
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, _: &mut eframe::Frame) {
         TopBottomPanel::top("header").show(ctx, |ui| {
             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                 self.windows.iter_mut().for_each(|w| {

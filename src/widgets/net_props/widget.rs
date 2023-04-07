@@ -330,6 +330,7 @@ impl NetProps {
     // }
 
     fn update_frame(&mut self) {
+        // TODO: dont use exec. we will delete it in the future when we use native graph support
         let graph_svg = exec(
             parse(self.graph_state.dot().as_str()).unwrap(),
             &mut PrinterContext::default(),
