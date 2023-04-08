@@ -29,6 +29,3 @@ cargo build --target=x86_64-apple-darwin --release
 # Apple silicon
 cargo build --target=aarch64-apple-darwin --release
 ```
-
-# Plans 
-Remove graphviz integration in favor of native rust solutions for graph data visualization.
