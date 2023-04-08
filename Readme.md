@@ -7,9 +7,12 @@
 
 ### Status
 The project is under active development. No stable version yet. First release should include:
-- binance client for tick data download and visualization;
-- graph based trading strategy constructor;
-- backtesting tool;
+NAME                                                          Completion
+------------------------------------------------------------+------------
+- binance client for tick data download and visualization   |   90%
+- graph based trading strategy constructor                  |   10%
+- backtesting tool                                          |    0%
+- graph analysis tool to support ML based trading strategies|   40%
 
 Short term plan is to build and use [my own egui based implementation for graph visualizaton](https://github.com/blitzarx1/egui_graph) and get rid of graphviz dependency
 
