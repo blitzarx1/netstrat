@@ -9,7 +9,7 @@
 The project is under active development. No stable version yet. First release should include:
 
 <pre>
-NAME                                                          Completion
+Tool                                                          Completion
 ------------------------------------------------------------+------------
 - binance client for tick data download and visualization   |   90%
 - graph based trading strategy constructor                  |   10%
