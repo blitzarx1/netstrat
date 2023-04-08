@@ -7,8 +7,11 @@
 
 ### Status
 The project is under active development. No stable version yet. First release should include:
+
 NAME                                                          Completion
+
 ------------------------------------------------------------+------------
+
 - binance client for tick data download and visualization   |   90%
 - graph based trading strategy constructor                  |   10%
 - backtesting tool                                          |    0%
