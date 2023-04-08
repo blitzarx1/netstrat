@@ -5,6 +5,14 @@
 
 <img alt="Screen Shot 2022-10-21 at 13 23 18" src="https://user-images.githubusercontent.com/32969427/197162032-ba3efb31-af82-4f41-ad0b-25de5bc4834e.png">
 
+### Status
+The project is under active development. No stable version yet. First release should include:
+- binance client for tick data download and visualization;
+- graph based strategy constructor;
+- backtesting tool;
+
+Short term plan is to build and use egui based implementation for graph visualizaton and get rid of graphvize dependency
+
 ### Depedencies
 You need to have [graphviz binary](https://graphviz.org/download/) installed
 
