@@ -2,6 +2,8 @@
 edition = "2021"
 name = "netstrat"
 version = "0.1.0"
+authors = ["Dmitrii Samsonov <blitzarx1@gmail.com>"]
+license = "MIT"
 repository = "https://github.com/qzarx1/netstrat"
 
 [dependencies]
@@ -13,7 +15,7 @@ egui = { version = "0.19.0" }
 egui_extras = { version = "0.19.0", features = ["chrono", "svg"] }
 futures = "0.3"
 poll-promise = { version = "0.1.0", features = ["tokio"] }
-reqwest = { version = "0.11.10", features = ["blocking"]}
+reqwest = { version = "0.11.10", features = ["blocking"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.81"
 tokio = { version = "1.19.2", features = ["full"] }
@@ -22,7 +24,7 @@ tracing-subscriber = { version = "0.3.11", features = ["env-filter"] }
 rand = "0.8.5"
 quick-error = "2.0.1"
 egui-notify = "0.4.0"
-petgraph = { vesion = "0.6.2", features = ["serde-1"]}
+petgraph = { vesion = "0.6.2", features = ["serde-1"] }
 open = "3.0.2"
 urlencoding = "2.1.2"
 rfd = "0.10"
