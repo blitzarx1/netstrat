@@ -16,7 +16,7 @@ Tool                                                          Completion
 - backtesting tool                                          |    0%
 - graph analysis tool to support ML based trading strategies|   40%
 </pre>
-Short term plan is to build and use [my own egui based implementation for graph visualizaton](https://github.com/blitzarx1/egui_graph) and get rid of graphviz dependency
+Short term plan is to build and use [my own egui based implementation for graph visualizaton](https://github.com/blitzarx1/egui_graphs) and get rid of graphviz dependency
 
 <img width="801" alt="Screenshot 2023-04-08 at 14 33 14" src="https://user-images.githubusercontent.com/32969427/230716665-b86ac6c5-b94f-4354-85c8-5d55dd3d380f.png">
 
