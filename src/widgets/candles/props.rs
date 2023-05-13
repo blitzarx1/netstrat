@@ -15,7 +15,7 @@ use crate::widgets::candles::bounds::BoundsSet;
 use crate::widgets::AppWidget;
 
 use super::bounds::Bounds;
-use super::canles_drawer::CandlesDrawer;
+use super::candles_drawer::CandlesDrawer;
 use super::error::CandlesError;
 use super::state::State;
 use super::time_range_settings::TimeRangeSettings;

@@ -17,11 +17,10 @@ use tracing::{debug, error, info};
 use urlencoding::encode;
 
 use crate::netstrat::{channels, Bus, Drawer, Message};
-use crate::widgets::matrix::Matrix;
-use crate::widgets::simulation_props::messages::{MessageOperationResult, OperationType};
+use crate::widgets::simulation_props::messages::MessageOperationResult;
+use crate::widgets::AppWidget;
 use crate::widgets::OpenDropFile;
 use crate::widgets::{image_drawer, StepDifference};
-use crate::widgets::{simulation_props, AppWidget};
 
 use super::button_clicks::ButtonClicks;
 use super::cones::{ConeInput, ConeSettingsInputs, ConeType};
@@ -29,7 +28,6 @@ use super::graph::{Builder, State};
 use super::interactions::Interactions;
 use super::nodes_and_edges::NodesAndEdgeSettings;
 use super::settings::{EdgeWeight, Settings};
-use super::FrozenElements;
 
 pub struct NetProps {
     bus: Bus,

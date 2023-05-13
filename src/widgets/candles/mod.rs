@@ -1,5 +1,5 @@
 mod bounds;
-mod canles_drawer;
+mod candles_drawer;
 mod data;
 mod error;
 mod loading_state;

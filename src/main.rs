@@ -68,7 +68,7 @@ impl TemplateApp {
 
         Self {
             windows: vec![
-                Box::new(Net::new(bus.clone(), net_drawer_s, false)),
+                Box::new(Net::new(bus, net_drawer_s, false)),
                 Box::new(SymbolsGraph::new(candles_drawer_s, false)),
                 Box::new(Debug::new(buffer_r, false)),
             ],
