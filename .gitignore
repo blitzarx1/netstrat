@@ -1,10 +1,1 @@
 /target
-.vscode
-.fleet
-.idea
-.DS_Store
-
-*.json
-*.csv
-*.dot
-*.svg
