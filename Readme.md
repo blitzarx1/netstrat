@@ -21,7 +21,7 @@ Short term plan is to build and use [my own egui based implementation for graph 
 <img width="801" alt="Screenshot 2023-04-08 at 14 33 14" src="https://user-images.githubusercontent.com/32969427/230716665-b86ac6c5-b94f-4354-85c8-5d55dd3d380f.png">
 
 ### Depedencies
-You need to have [graphviz binary](https://graphviz.org/download/) installed
+You need to have [graphviz binary](https://graphviz.org/download/) and [rust](https://rustup.rs/) installed
 
 ### Run
 ```bash
