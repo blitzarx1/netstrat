@@ -23,16 +23,7 @@ Short term plan is to build and use [my own egui based implementation for graph 
 ### Depedencies
 You need to have [graphviz binary](https://graphviz.org/download/) installed
 
-### Build
+### Run
 ```bash
-# windows 10
-cargo build --target=x86_64-pc-windows-gnu --release
-```
-```bash
-# Apple intel
-cargo build --target=x86_64-apple-darwin --release
-```
-```bash
-# Apple silicon
-cargo build --target=aarch64-apple-darwin --release
+cargo run --release
 ```
